@@ -89,6 +89,8 @@ Each release links to full notes on the
   - `clip_under_threshold` has no effect on `List[StructuredModel]`, so an FD
     pair keeps its score
     ([#415](https://github.com/awslabs/stickler/issues/415)).
+  - `clip_under_threshold` defaults to off, not on, for dict and plain-model
+    fields declared in Python and for lists of them.
   - `aggregate` leaves out FN and FA items beside an accepted sibling, and a
     field `threshold` on `List[StructuredModel]` raises `ValueError`.
   - A primitive list element row's `weighted_score` in `field_comparisons` is

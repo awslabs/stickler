@@ -51,7 +51,7 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 | `comparator` | `BaseComparator` | `LevenshteinComparator()` | The comparison algorithm to use. See [Comparators](../Comparators/README.md) for the full list. |
 | `threshold` | `float` (0.0--1.0) | `0.5` | Minimum similarity score required for a field to be classified as a match. |
 | `weight` | `float` (> 0.0) | `1.0` | Relative importance of this field when computing aggregate scores. |
-| `clip_under_threshold` | `bool` | `True` | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. List fields follow the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract, with defaults that depend on the element type. |
+| `clip_under_threshold` | `bool` | `True` (`False` on dict and plain-model fields and lists of them) | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. List fields follow the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract. |
 
 ### How Each Parameter Affects Scoring
 
@@ -74,7 +74,7 @@ overall_score = sum(field_score * weight) / sum(weights)
 
 Fields with higher weights pull the overall score toward their individual result. At the dataset level, `BulkStructuredModelEvaluator.compute()` exposes this weight-aware aggregate as `metrics["weighted_overall_score"]` -- prefer it over `cm_f1` when weights are non-uniform, since `cm_f1` treats every field-match equally. See [Weighted Overall Score](bulk-evaluation.md#weighted-overall-score) in the bulk-evaluation guide.
 
-**`clip_under_threshold`** -- When enabled (the default), a field that scores below its threshold contributes 0.0 to the weighted average instead of its partial similarity. This prevents low-confidence matches from inflating the overall score. A list field follows the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
+**`clip_under_threshold`** -- When enabled (the default, except on dict and plain-model fields), a field that scores below its threshold contributes 0.0 to the weighted average instead of its partial similarity. This prevents low-confidence matches from inflating the overall score. A list field follows the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 ### Example Model
 

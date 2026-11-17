@@ -39,7 +39,7 @@ class Invoice(StructuredModel):
 **What it gates:**
 
 - **TP vs FD classification:** If `similarity >= threshold` (see [Meeting a Threshold](#meeting-a-threshold)), the field is a True Positive. Otherwise, it's a False Discovery.
-- **Score clipping:** When `clip_under_threshold=True` (the default), scores below the threshold are zeroed out in the weighted average. A list field follows the [Score](../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
+- **Score clipping:** When `clip_under_threshold=True` (the default, except on dict and plain-model fields), scores below the threshold are zeroed out in the weighted average. A list field follows the [Score](../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 **Default:** `0.5`
 
