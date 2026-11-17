@@ -40,8 +40,8 @@ class TestStructuredModelValidation:
             "Unused threshold for field 'products' of model 'OrderWithThreshold': "
             "ComparableField(threshold=0.9) has no effect on a List[Product] "
             "field: its items are matched up using Product.match_threshold. "
-            "Remove threshold=0.9. To change how items match, add "
-            "match_threshold = 0.9 to the body of class Product. (Set at "
+            "Remove threshold=0.9. To change how items match, set "
+            "Product.match_threshold, now 0.7, to 0.9. (Set at "
         )
         assert "test_model_validation.py:" in error_message
 
@@ -175,7 +175,7 @@ class TestStructuredModelValidation:
                 )
 
         error_message = str(exc_info.value)
-        assert "add match_threshold = 0.95 to the body of class Product." in error_message
+        assert "set Product.match_threshold, now 0.7, to 0.95." in error_message
 
     def test_validation_works_with_different_threshold_values(self):
         """Test that validation catches different threshold values correctly."""

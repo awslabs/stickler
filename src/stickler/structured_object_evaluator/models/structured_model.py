@@ -395,6 +395,39 @@ def _string_list_element(text: str) -> Optional[str]:
     return None if inner is None else _bare_name(inner)
 
 
+def _unresolved_type_name(annotation: Any) -> str:
+    """``Vendor`` for ``"Vendor"`` or ``Optional["Vendor"]``; ``""`` if not one name."""
+    if isinstance(annotation, ForwardRef):
+        annotation = annotation.__forward_arg__
+    if isinstance(annotation, str):
+        return _bare_name(annotation) or ""
+    inner = unwrap_optional(unwrap_annotated(annotation))[0]
+    if isinstance(inner, (str, ForwardRef)):
+        return _unresolved_type_name(inner)
+    return ""
+
+
+def _element_match_threshold(annotation: Any) -> Optional[float]:
+    """The ``match_threshold`` the element class of a resolved list of models sets.
+
+    ``None`` when it keeps ``StructuredModel``'s default, or is not a number.
+    """
+    annotation = unwrap_annotated(_unalias(annotation))
+    for arm in (annotation, *union_args(annotation)):
+        arm = unwrap_annotated(arm)
+        if get_origin(arm) in (list, List) and get_args(arm):
+            element = unwrap_optional(unwrap_annotated(get_args(arm)[0]))[0]
+            if not isinstance(element, type):
+                return None
+            for klass in element.__mro__:
+                if klass is StructuredModel:
+                    return None
+                if "match_threshold" in klass.__dict__:
+                    value = klass.__dict__["match_threshold"]
+                    return value if type(value) in (int, float) else None
+    return None
+
+
 def _class_statement_namespace() -> tuple:
     """``(globals, locals)`` of the ``class`` statement being run, or two empty dicts."""
     frame = outside_frame()
@@ -880,6 +913,9 @@ class StructuredModel(BaseModel):
                                     field=field_name,
                                     model=cls.__name__,
                                     element=_list_element_name(field_type),
+                                    element_match_threshold=_element_match_threshold(
+                                        field_type
+                                    ),
                                     set_at=getattr(
                                         field_default.json_schema_extra,
                                         "_set_at",
@@ -942,6 +978,9 @@ class StructuredModel(BaseModel):
                                         field=field_name,
                                         model=cls.__name__,
                                         element=_list_element_name(field_type),
+                                        element_match_threshold=_element_match_threshold(
+                                            field_type
+                                        ),
                                     ),
                                     category=UserWarning,
                                     stacklevel=stacklevel_outside(
@@ -1111,12 +1150,15 @@ class StructuredModel(BaseModel):
         unresolved = _is_unresolved(annotation)
         resolved = _unalias(annotation)
         list_element = None
+        element_match_threshold = None
         if (
             _is_visibly_list(annotation)
             if unresolved
             else cls._is_list_of_structured_model_type(resolved)
         ):
             list_element = _list_element_name(resolved)
+            if not unresolved:
+                element_match_threshold = _element_match_threshold(resolved)
         nested = (
             comparator is not None
             and not unresolved
@@ -1136,6 +1178,8 @@ class StructuredModel(BaseModel):
             nested_model=nested_model,
             list_element=list_element,
             list_unresolved=unresolved,
+            unresolved_name=_unresolved_type_name(annotation) if unresolved else None,
+            element_match_threshold=element_match_threshold,
             set_at=getattr(extra, "_set_at", None) or set_at,
         )
 

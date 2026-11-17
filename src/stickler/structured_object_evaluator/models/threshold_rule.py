@@ -347,6 +347,8 @@ def threshold_error(
     nested_model: Optional[str] = None,
     list_element: Optional[str] = None,
     list_unresolved: bool = False,
+    unresolved_name: Optional[str] = None,
+    element_match_threshold: Optional[float] = None,
     defined_at: Optional[str] = None,
     set_at: Optional[str] = None,
 ) -> ValueError:
@@ -358,7 +360,11 @@ def threshold_error(
     (the element class, or ``""``) when the field is a list of models, which
     matches its items on ``match_threshold`` instead, and ``list_unresolved``
     when it is a list of a class not defined yet, which may or may not be a
-    model. ``defined_at`` is the JSON pointer of a property reached through a
+    model. ``list_unresolved`` with no ``list_element`` is a type not defined
+    yet that is not visibly a list, named by ``unresolved_name`` (or ``""``),
+    which may still name one. ``element_match_threshold`` is the
+    ``match_threshold`` the element class sets itself, if any.
+    ``defined_at`` is the JSON pointer of a property reached through a
     ``$ref``, and ``set_at`` the location of a ``ComparableField`` call.
     """
     if list_element is not None and comparator is None and not list_unresolved:
@@ -369,6 +375,7 @@ def threshold_error(
             model=model,
             element=list_element,
             valid=False,
+            current=element_match_threshold,
             defined_at=defined_at,
             set_at=set_at,
         )
@@ -390,6 +397,12 @@ def threshold_error(
             parts.append(
                 _unresolved_list_comparator_fix(found, spelling, element, comparator)
             )
+    elif list_unresolved and comparator is None:
+        parts.append(
+            _unresolved_list_fix(
+                found, spelling, "", shown, lead=_not_defined_yet_name(unresolved_name)
+            )
+        )
     elif comparator is not None and nested:
         parts.append(_nested_fix(found, spelling, comparator, nested_model))
     elif comparator is not None:
@@ -407,6 +420,7 @@ def list_threshold_error(
     field: str,
     model: Optional[str],
     element: str,
+    element_match_threshold: Optional[float] = None,
     set_at: Optional[str] = None,
 ) -> ValueError:
     """The error for a valid threshold written on a list of models.
@@ -414,6 +428,7 @@ def list_threshold_error(
     It would decide nothing: the items are matched up on the element class's
     ``match_threshold``. So the fix moves the number there, except 0.0, which as
     a ``match_threshold`` makes every paired object a true positive.
+    ``element_match_threshold`` is the one the element class sets, if any.
     """
     return _list_error(
         value,
@@ -422,6 +437,7 @@ def list_threshold_error(
         model=model,
         element=element,
         valid=True,
+        current=element_match_threshold,
         set_at=set_at,
     )
 
@@ -592,13 +608,7 @@ def _own_fix(found: _Diagnosis, spelling: Spelling, *, match: bool = False) -> s
             f"{spelling.weight.format(found.subject)}."
         )
     if reason == "true":
-        fix = f"Write {key.format('1.0')} to require {perfect}."
-        if match:
-            return fix
-        return (
-            f"{fix} If you meant to zero scores below the threshold, that is "
-            f"{spelling.clip}."
-        )
+        return f"Write {key.format('1.0')} to require {perfect}."
     if reason == "false":
         every = "every pair of objects" if match else "every pair"
         return (
@@ -697,9 +707,10 @@ def _comparator_fix(
     fix += "."
     if comparator.takes_threshold and not comparator.written:
         fix += (
-            f" If {comparator.name} sets {shown} itself, pass threshold "
-            "to super().__init__() unchanged and put its default in "
-            "DEFAULT_THRESHOLD."
+            f" If {comparator.name} sets {shown} itself, make that default a "
+            "number from 0.0 to 1.0. If the field should not adopt it, pass "
+            "threshold to super().__init__() unchanged and put the default in "
+            "DEFAULT_THRESHOLD; the field then uses its own default."
         )
     return fix
 
@@ -724,23 +735,29 @@ def _nested_fix(
                 f"{note} {lead}Write {spelling.threshold_key} with a number from 0.0 "
                 "to 1.0 and drop the comparator."
             )
-        other = (
-            f"write {comparator.written.format(s)}"
-            if comparator.written
-            else f"pass threshold={s} to {comparator.name}"
-        )
         return (
             f"{note} {lead}"
             + _sentence(
                 f"{_prefix(found)}write {spelling.threshold.format(s)} and drop the "
-                f"comparator, or {other}."
+                "comparator."
             )
         )
-    target = comparator.carrier if comparator.remove == "it" else comparator.remove
-    note = (
-        f"{target} is ignored on {spelling.nested}, which is scored field by "
-        "field, except for its threshold."
-    )
+    # The keys to delete: the named comparator, never called, and the config
+    # its threshold is in, when that is a separate key.
+    carrier = comparator.carrier
+    opening = f"On {spelling.nested}, which is scored field by field,"
+    if comparator.remove != "it":
+        note = (
+            f"{opening} {carrier} is never called and only the threshold in "
+            f"{comparator.remove} is read."
+        )
+        target = f"{carrier} and {comparator.remove}"
+    elif comparator.written is None:
+        note = f"{opening} {carrier} is never called and only its threshold is read."
+        target = carrier
+    else:
+        note = f"{opening} only the threshold in {carrier} is read."
+        target = carrier
     if s is None:
         return (
             f"{note} {lead}Delete {target}, and write "
@@ -757,26 +774,45 @@ def _nested_fix(
 _LIST_REASONS = ("percent", "percent_text", "unquote")
 
 
-def _list_words(spelling: Spelling, element: str) -> dict:
+def _list_words(
+    spelling: Spelling, element: str, current: Optional[float] = None
+) -> dict:
     """The list templates of ``spelling`` filled in for ``element``.
 
     An element class that cannot be named reads ``a List[StructuredModel]
-    field`` and ``the element class's match_threshold``.
+    field`` and ``the element class's match_threshold``. ``current`` is the
+    ``match_threshold`` the element class sets, which the fix then changes
+    rather than adds (Python only).
     """
     if spelling.as_json or element not in ("", _ELEMENT):
         name = element or _ELEMENT
-        return {
+        words = {
             "shape": spelling.list_shape.format(element=name),
             "pairing": spelling.list_pairing.format(element=name),
             "add": spelling.list_add.replace("{element}", name),
             "add_key": spelling.list_add_key.format(element=name),
         }
-    return {
-        "shape": "a List[StructuredModel] field",
-        "pairing": "the element class's match_threshold",
-        "add": "add match_threshold = {} to the element class",
-        "add_key": "add match_threshold to the element class",
-    }
+        if current is not None and not spelling.as_json:
+            now = _plain(current, spelling)
+            words["add"] = f"set {name}.match_threshold, now {now}, to {{}}"
+            words["add_key"] = f"set {name}.match_threshold, now {now},"
+            words["add_any"] = f"{words['add_key']} to a number from 0.0 to 1.0"
+            words["positive"] = f"keep {name}.match_threshold, now {now}, positive"
+            words["already"] = f"{name}.match_threshold is already {now}"
+            words["current"] = current
+    else:
+        words = {
+            "shape": "a List[StructuredModel] field",
+            "pairing": "the element class's match_threshold",
+            "add": "add match_threshold = {} to the element class",
+            "add_key": "add match_threshold to the element class",
+        }
+    words.setdefault("add_any", f"{words['add_key']}, as a number from 0.0 to 1.0")
+    words.setdefault(
+        "positive",
+        words["add_key"].replace(" match_threshold", " a positive match_threshold", 1),
+    )
+    return words
 
 
 def _list_error(
@@ -787,6 +823,7 @@ def _list_error(
     model: Optional[str],
     element: str,
     valid: bool,
+    current: Optional[float] = None,
     defined_at: Optional[str] = None,
     set_at: Optional[str] = None,
 ) -> ValueError:
@@ -794,9 +831,11 @@ def _list_error(
 
     The items are matched up on the element class's ``match_threshold``, so the
     fix is to remove it, and to set that instead if the author meant to change
-    how items match. ``valid`` heads it "Unused" rather than "Invalid".
+    how items match. It is headed "Unused" whatever the value; ``valid`` only
+    says whether the value could move there as it is. ``current`` is the
+    element class's own ``match_threshold``, if it sets one.
     """
-    words = _list_words(spelling, element)
+    words = _list_words(spelling, element, current)
     shown = _render(value, spelling)
     add = _list_add(value, spelling, words, shown, valid=valid)
     remove = (
@@ -808,11 +847,17 @@ def _list_error(
         f"{spelling.threshold.format(shown)} has no effect on {words['shape']}: its "
         f"items are matched up using {words['pairing']}.",
         f"Remove {remove}.",
-        f"To change how items match, {add}",
+        _list_change(add, words),
         _locations(set_at, None),
     ]
-    head = "Unused" if valid else "Invalid"
-    return _error(_head(head, field, model, spelling, defined_at) + _join(parts))
+    return _error(_head("Unused", field, model, spelling, defined_at) + _join(parts))
+
+
+def _list_change(add: str, words: dict) -> str:
+    """``To change how items match, <add>``, unless the element already has the value."""
+    if "already" in words and add.startswith(words["already"]):
+        return _sentence(add)
+    return f"To change how items match, {add}"
 
 
 def _list_add(value: Any, spelling: Spelling, words: dict, shown: str, *, valid: bool) -> str:
@@ -824,18 +869,22 @@ def _list_add(value: Any, spelling: Spelling, words: dict, shown: str, *, valid:
         number = as_threshold(value)
         if number == 0:
             return (
-                words["add_key"].replace(" match_threshold", " a positive match_threshold", 1)
+                words["positive"]
                 + ": 0.0 would classify every paired object as a true positive. "
                 f"See {THRESHOLD_DOCS_URL}"
             )
+        if "current" in words and number == words["current"]:
+            return words["already"] + "."
         return words["add"].format(_plain(number, spelling)) + "."
     found = _diagnose(value, spelling, things="values")
     if found.suggestion and found.reason in _LIST_REASONS:
+        if "current" in words and float(found.suggestion) == words["current"]:
+            return words["already"] + "."
         add = words["add"].format(found.suggestion)
         if found.reason != "unquote":
             add += f" (it must be from 0.0 to 1.0, so {shown} would fail there too)"
         return add + "."
-    return f"{words['add_key']}, as a number from 0.0 to 1.0."
+    return f"{words['add_any']}."
 
 
 def list_comparator_warning(
@@ -845,6 +894,7 @@ def list_comparator_warning(
     field: str,
     model: Optional[str],
     element: str,
+    element_match_threshold: Optional[float] = None,
 ) -> str:
     """The warning for a comparator threshold on a ``List[StructuredModel]`` field.
 
@@ -852,7 +902,7 @@ def list_comparator_warning(
     threshold, and a comparator instance can be shared with fields that do
     use it.
     """
-    words = _list_words(PYTHON, element)
+    words = _list_words(PYTHON, element, element_match_threshold)
     shown = _render(value, PYTHON)
     held = (
         comparator.written.format(shown)
@@ -863,30 +913,36 @@ def list_comparator_warning(
     return (
         f"Field {field!r}{_of_model(model, PYTHON)} is {words['shape']}, so {held} "
         f"is never used: its items are matched up using {words['pairing']}. "
-        "Remove the comparator. To change how items match, "
-        + _list_add(value, PYTHON, words, shown, valid=valid)
+        "Remove the comparator. "
+        + _list_change(_list_add(value, PYTHON, words, shown, valid=valid), words)
     )
 
 
 def _unresolved_list_fix(
-    found: _Diagnosis, spelling: Spelling, element: str, shown: str
+    found: _Diagnosis,
+    spelling: Spelling,
+    element: str,
+    shown: str,
+    *,
+    lead: Optional[str] = None,
 ) -> str:
     """A field threshold on a list of a class not defined yet.
 
     The field takes no threshold if the class is a ``StructuredModel``, and then
     a number moved onto the field would load and decide nothing. Otherwise the
-    usual fix applies.
+    usual fix applies. ``lead`` replaces the opening sentence, for a type not
+    defined yet that may itself be a list of models.
     """
     words = _list_words(spelling, element)
     s = found.suggestion if found.reason in _LIST_REASONS else None
-    add = words["add"].format(s) if s else f"{words['add_key']}, as a number from 0.0 to 1.0"
+    add = words["add"].format(s) if s else words["add_any"]
     otherwise = (
         f"write {spelling.threshold.format(found.suggestion)}"
         if found.suggestion
         else "write a number from 0.0 to 1.0 instead"
     )
     return (
-        f"{_not_defined_yet(element)} If it is, remove "
+        f"{lead or _not_defined_yet(element)} If it is, remove "
         f"{spelling.list_remove.format(shown)} and {add}: a threshold on a list of "
         f"models is ignored. If it is not, {otherwise}."
     )
@@ -905,6 +961,15 @@ def _unresolved_list_comparator_fix(
         f"{_not_defined_yet(element)} If it is, remove the comparator: a list of "
         f"models matches its items using {words['pairing']} and never calls it. "
         f"If it is not, {_comparator_options(found, spelling, comparator)}."
+    )
+
+
+def _not_defined_yet_name(name: Optional[str]) -> str:
+    """The opening for a type not defined yet, which may be a list of models."""
+    subject = name or "The field's type"
+    return (
+        f"{subject} is not defined yet, so stickler cannot tell whether it is a "
+        "list of models."
     )
 
 

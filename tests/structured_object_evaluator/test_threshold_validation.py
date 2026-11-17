@@ -415,14 +415,11 @@ class TestTheLikelyFix:
             (
                 "python field",
                 "Write ComparableField(threshold=1.0) to require a perfect "
-                "similarity score. If you meant to zero scores below the "
-                "threshold, that is ComparableField(clip_under_threshold=True).",
+                "similarity score.",
             ),
             (
                 "config field",
-                'Write "threshold": 1.0 to require a perfect similarity score. If '
-                "you meant to zero scores below the threshold, that is "
-                '"clip_under_threshold": true.',
+                'Write "threshold": 1.0 to require a perfect similarity score.',
             ),
             (
                 "python comparator",
@@ -438,8 +435,11 @@ class TestTheLikelyFix:
             ),
         ],
     )
-    def test_true_is_a_perfect_score_or_clip(self, path, fix):
-        """``true`` loaded as 1 on the importers, so 1.0 keeps that verdict."""
+    def test_true_is_a_perfect_score(self, path, fix):
+        """``true`` loaded as 1 on the importers, so 1.0 keeps that verdict.
+
+        No clip hint: ``clip_under_threshold`` is already on for most fields.
+        """
         message = _message(PATHS[path][0], True)
         assert "is a boolean, not a number." in message
         assert message.endswith(fix) or fix + " (Set at" in message
@@ -789,20 +789,20 @@ class TestANestedModelReadsOnlyTheComparatorsThreshold:
         assert (
             "_Inner is scored field by field, so ExactComparator is never called; "
             "the field takes only its threshold. If 85 is a percentage, write "
-            "ComparableField(threshold=0.85) and drop the comparator, or write "
-            "ExactComparator(threshold=0.85)."
+            "ComparableField(threshold=0.85) and drop the comparator."
         ) in message
+        assert "ExactComparator(threshold=0.85)" not in message
 
     def test_config(self):
         message = _message(PATHS["config nested-model comparator_config"][0], 85)
         assert message.endswith(
-            '"comparator_config" is ignored on a nested model, which is scored '
-            'field by field, except for its threshold. Delete "comparator_config", '
+            "On a nested model, which is scored field by field, only the "
+            'threshold in "comparator_config" is read. Delete "comparator_config", '
             'and write "threshold": 0.85 on the field if 85 is a percentage.'
         )
 
-    def test_config_with_a_named_comparator_deletes_the_config(self):
-        """The 85 is in ``comparator_config``: deleting ``comparator`` keeps it."""
+    def test_config_with_a_named_comparator_deletes_both(self):
+        """Deleting only ``comparator_config`` would leave a comparator that warns."""
         message = _message(
             lambda v: _config(
                 {
@@ -815,12 +815,13 @@ class TestANestedModelReadsOnlyTheComparatorsThreshold:
             85,
         )
         assert message.endswith(
-            '"comparator_config" is ignored on a nested model, which is scored '
-            'field by field, except for its threshold. Delete "comparator_config", '
-            'and write "threshold": 0.85 on the field if 85 is a percentage.'
+            'On a nested model, which is scored field by field, "comparator" is '
+            'never called and only the threshold in "comparator_config" is read. '
+            'Delete "comparator" and "comparator_config", and write "threshold": '
+            "0.85 on the field if 85 is a percentage."
         )
 
-    def test_schema_with_a_named_comparator_deletes_the_config(self):
+    def test_schema_with_a_named_comparator_deletes_both(self):
         message = _message(
             lambda v: _schema(
                 {
@@ -833,19 +834,20 @@ class TestANestedModelReadsOnlyTheComparatorsThreshold:
             -1,
         )
         assert message.endswith(
-            '"x-aws-stickler-comparator-config" is ignored on an object with '
-            "properties, which is scored field by field, except for its "
-            'threshold. Delete "x-aws-stickler-comparator-config", and write '
-            '"x-aws-stickler-threshold" on the property with a number from 0.0 '
-            "to 1.0."
+            "On an object with properties, which is scored field by field, "
+            '"x-aws-stickler-comparator" is never called and only the threshold '
+            'in "x-aws-stickler-comparator-config" is read. Delete '
+            '"x-aws-stickler-comparator" and "x-aws-stickler-comparator-config", '
+            'and write "x-aws-stickler-threshold" on the property with a number '
+            "from 0.0 to 1.0."
         )
 
     def test_schema(self):
         message = _message(PATHS["schema nested-object comparator-config"][0], 85)
         assert message.endswith(
-            '"x-aws-stickler-comparator-config" is ignored on an object with '
-            "properties, which is scored field by field, except for its "
-            'threshold. Delete "x-aws-stickler-comparator-config", and write '
+            "On an object with properties, which is scored field by field, only "
+            'the threshold in "x-aws-stickler-comparator-config" is read. Delete '
+            '"x-aws-stickler-comparator-config", and write '
             '"x-aws-stickler-threshold": 0.85 on the property if 85 is a '
             "percentage."
         )
@@ -950,12 +952,15 @@ class TestAListOfModels:
         ],
     )
     def test_a_field_threshold_there_says_to_remove_it(self, build, body):
-        """It has no effect whatever its value, so the range is not taught first."""
+        """It has no effect whatever its value, so the range is not taught first.
+
+        Headed ``Unused`` for any value, as for a valid one.
+        """
         with pytest.raises(ValueError) as caught:
             build()
         message = str(caught.value)
         assert message.startswith(
-            "Invalid threshold for field 'items' of model 'Invoice': " + body
+            "Unused threshold for field 'items' of model 'Invoice': " + body
         )
         assert RULE not in message
 
@@ -977,6 +982,11 @@ class TestAListOfModels:
             os.path.abspath(__file__),
             line,
         )
+
+
+class _Sets06(StructuredModel):
+    match_threshold = 0.6
+    a: str = ComparableField()
 
 
 class TestAValidThresholdOnAListOfModels:
@@ -1006,6 +1016,46 @@ class TestAValidThresholdOnAListOfModels:
         assert f"ComparableField(threshold={written}) has no effect" in message
         assert f"Remove threshold={written}." in message
         assert f"add match_threshold = {moved} to the body of class _Inner." in message
+
+    @pytest.mark.parametrize(
+        "threshold, change",
+        [
+            (85, "To change how items match, set _Sets06.match_threshold, now 0.6, "
+             "to 0.85 (it must be from 0.0 to 1.0, so 85 would fail there too)."),
+            (0.85, "To change how items match, set _Sets06.match_threshold, now "
+             "0.6, to 0.85."),
+            (0.6, "_Sets06.match_threshold is already 0.6."),
+        ],
+    )
+    def test_an_element_class_that_sets_match_threshold(self, threshold, change):
+        """Its value is shown and changed, not added, under one header."""
+        message = _message(
+            lambda v: _python(
+                List[_Sets06], ComparableField(threshold=v), name="Order", attr="items"
+            ),
+            threshold,
+        )
+        assert message.startswith(
+            "Unused threshold for field 'items' of model 'Order': "
+            f"ComparableField(threshold={threshold}) has no effect on a "
+            "List[_Sets06] field: its items are matched up using "
+            f"_Sets06.match_threshold. Remove threshold={threshold}. {change} "
+        )
+
+    def test_the_comparator_warning_shows_the_value_too(self):
+        field = ComparableField(comparator=LevenshteinComparator(threshold=0.85))
+        with pytest.warns(UserWarning) as caught:
+            warnings.simplefilter("always")
+            type(
+                "WarnsSets06",
+                (StructuredModel,),
+                {"__annotations__": {"items": List[_Sets06]}, "items": field},
+            )
+        [warning] = [w for w in caught if "WarnsSets06" in str(w.message)]
+        assert str(warning.message).endswith(
+            "Remove the comparator. To change how items match, set "
+            "_Sets06.match_threshold, now 0.6, to 0.85."
+        )
 
     def test_zero_is_not_echoed_back(self):
         message = _message(
@@ -1190,6 +1240,34 @@ class TestAForwardReference:
             f"body of class {element}: a threshold on a list of models is ignored. "
             "If it is not, write ComparableField(threshold=0.85). "
             "(Set at order_models.py:2.)"
+        )
+
+    @pytest.mark.parametrize(
+        "field, name, below",
+        [
+            ('items: "ItemList"', "ItemList", "ItemList = List[LaterItem]\n"),
+            ('vendor: "Vendor"', "Vendor", "class Vendor(str):\n    pass\n"),
+            ('rows: "Dict[str, Later]"', "The field's type", ""),
+        ],
+    )
+    def test_a_field_threshold_on_a_bare_name_says_what_to_do_either_way(
+        self, field, name, below
+    ):
+        """It may name a list of models, where 0.85 would load and decide nothing."""
+        source = (
+            f"class Order(StructuredModel):\n    {field} = ComparableField(threshold=85)\n"
+            + _ADDRESS.format(name="LaterItem")
+            + below
+        )
+        with pytest.raises(ValueError) as caught:
+            _exec_models(source, postponed=False)
+        assert str(caught.value).endswith(
+            f"{RULE} 85 is above 1.0, so even identical values would not match. "
+            f"{name} is not defined yet, so stickler cannot tell whether it is a "
+            "list of models. If it is, remove threshold=85 and add "
+            "match_threshold = 0.85 to the element class: a threshold on a list "
+            "of models is ignored. If it is not, write "
+            "ComparableField(threshold=0.85). (Set at order_models.py:2.)"
         )
 
     def test_with_no_likely_number(self):
@@ -1581,9 +1659,9 @@ class TestAThresholdTheComparatorSetsItself:
             None,
         )
         assert message.endswith(
-            '"comparator" is ignored on a nested model, which is scored field by '
-            'field, except for its threshold. Delete "comparator", and write '
-            '"threshold" on the field with a number from 0.0 to 1.0.'
+            'On a nested model, which is scored field by field, "comparator" is '
+            'never called and only its threshold is read. Delete "comparator", and '
+            'write "threshold" on the field with a number from 0.0 to 1.0.'
         )
 
 
@@ -1613,8 +1691,10 @@ class TestACustomComparatorThatTakesAThreshold:
             "so even identical values would not match. If 85 is a percentage, "
             "write ComparableField(threshold=0.85), which wins over the "
             "comparator's, or pass threshold=0.85 to _FillsIn85. If _FillsIn85 "
-            "sets 85 itself, pass threshold to super().__init__() unchanged and "
-            "put its default in DEFAULT_THRESHOLD. (Set at "
+            "sets 85 itself, make that default a number from 0.0 to 1.0. If the "
+            "field should not adopt it, pass threshold to super().__init__() "
+            "unchanged and put the default in DEFAULT_THRESHOLD; the field then "
+            "uses its own default. (Set at "
         )
         assert message.endswith(f"_FillsIn85 is defined at {_HERE}:{_FILLS_IN_LINE}.)")
         assert "_FillsIn85(threshold=" not in message
@@ -1915,7 +1995,6 @@ class TestTheRuntimeMatchThresholdIsOutsideTheRule:
     def test_false_does_not_warn_that_the_threshold_is_zero(self, value, warns):
         """``False`` builds with 0.0 but warns as little as it did; 0.0 still warns."""
         import stickler
-        from pydantic import BaseModel
 
         name = f"RuntimeZero{type(value).__name__.title()}"
         line = type(f"{name}Line", (BaseModel,), {"__annotations__": {"sku": str}})
