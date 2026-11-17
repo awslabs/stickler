@@ -79,7 +79,7 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
    | `str` | Levenshtein | 0.7 | yes |
    | nested `BaseModel` | recurse → child shadow model | `match_threshold` | **no** (partial credit, consistent with the same object inside a list) |
    | nested `StructuredModel` | used as configured, never re-inferred | (its own) | (its own) |
-   | `List[BaseModel]` | Hungarian object matching | (element `match_threshold`) | no effect (`explain()` reports `True`; [#415](https://github.com/awslabs/stickler/issues/415)) |
+   | `List[BaseModel]` | Hungarian object matching | (element `match_threshold`) | no effect, although `explain()` reports `True` (a known gap) |
    | `List[primitive]` | element comparator | element | yes |
    | `dict` / `Dict[...]` / `Mapping[...]` | **ANLS\*** over the mapping itself (structural, partial credit) | `match_threshold` | **no** (partial credit, same policy as a nested object) |
    | `tuple` / `set` / `Any` / multi-arm unions | Exact over a canonical JSON string (sorted keys; sets also sort elements) | 1.0 | n/a (Exact is all-or-nothing) |
