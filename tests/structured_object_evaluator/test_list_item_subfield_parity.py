@@ -26,7 +26,7 @@ dispatcher shows up here. See https://github.com/awslabs/stickler/issues/400
 
 import datetime
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import pytest
 from pydantic import BaseModel
@@ -344,6 +344,76 @@ def test_a_model_in_a_sub_field_keeps_its_leaves(
     top = alone["confusion_matrix"]["fields"]["value"]
     assert _counts(top) == overall
     assert _counts(top, "aggregate") == aggregate
+
+
+def _field_names(node):
+    return set(node.get("fields") or {})
+
+
+class SequenceStrElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Sequence[str] = ComparableField()
+    match_threshold = 0.4
+
+
+class SequenceStrHolder(StructuredModel):
+    items: List[SequenceStrElement] = ComparableField()
+
+
+class SequenceModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Sequence[Inner] = ComparableField()
+    match_threshold = 0.4
+
+
+class SequenceModelHolder(StructuredModel):
+    items: List[SequenceModelElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, overall, aggregate, fields",
+    [
+        pytest.param(
+            SequenceStrHolder,
+            SequenceStrElement,
+            ["a", "b"],
+            ["a", "c"],
+            _expect(tp=1, fd=1),
+            _expect(tp=1, fd=1),
+            set(),
+            id="sequence-of-str",
+        ),
+        pytest.param(
+            SequenceModelHolder,
+            SequenceModelElement,
+            [Inner(a="x", b="y"), Inner(a="p", b="q")],
+            [Inner(a="x", b="y"), Inner(a="p", b="q")],
+            _expect(tp=2),
+            _expect(tp=4),
+            {"a", "b"},
+            id="sequence-of-models",
+        ),
+    ],
+)
+def test_a_sequence_sub_field_counts_per_element_as_at_top_level(
+    holder, element, gt, pred, overall, aggregate, fields
+):
+    # `Sequence[...]` is not routed as a list, so its pairs are read by value,
+    # and two lists go to the dispatcher. It counts one per element and keeps
+    # a list of models' fields, as at top level. Before, both rows counted one
+    # TP with no fields.
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == overall
+    assert _counts(node, "aggregate") == aggregate
+    assert _field_names(node) == fields
+
+    alone = element(key="k", value=gt).compare_with(
+        element(key="k", value=pred), include_confusion_matrix=True
+    )
+    top = alone["confusion_matrix"]["fields"]["value"]
+    assert _counts(top) == overall
+    assert _counts(top, "aggregate") == aggregate
+    assert _field_names(top) == fields
 
 
 class Pet(StructuredModel):
