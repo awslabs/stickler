@@ -19,19 +19,14 @@ Each release links to full notes on the
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
 
-- **Breaking:** a sub-field of a `List[StructuredModel]` element is now
-  classified through the same dispatcher as at top level. Its counts called the
-  field's comparator directly, skipping the dispatcher's guards. Scores do not
-  change. Counts do, to match top level:
-  - a dict its comparator cannot score (in an `Any` or `Union` sub-field, or a
-    `Dict` one with an explicit `LevenshteinComparator`) raised `TypeError` out
-    of `compare_with()`. It now warns and counts an FD;
-  - a matched prediction that lacked a field of the first ground-truth
-    element's class raised `AttributeError`: a subclass listed before its base,
-    `List[Union[A, B]]`, or a dict against a model in a list inside an `Any`
-    sub-field. The field now reads as missing, and each pair is classified on
-    its ground-truth element's own fields. A list with the base class first did
-    not raise, and now also counts the subclass's fields;
+- **Breaking:** a sub-field of a `List[StructuredModel]` element that is
+  neither a nested model nor list-annotated, such as `Any`, `Union[A, B]`,
+  `Dict` or `str`, is now classified through the same dispatcher as at top
+  level. Its counts called the field's comparator directly, skipping the
+  dispatcher's guards. Scores do not change. Counts do, to match top level:
+  - a dict its comparator cannot score (in an `Any` or `Union[A, B]`
+    sub-field, or a `Dict` one with an explicit `LevenshteinComparator`)
+    raised `TypeError` out of `compare_with()`. It now warns and counts an FD;
   - a pair the comparator is not given at top level is an FD, not a TP the
     item's score did not credit. With an inferred comparator that is a tuple,
     a set, `bytes`, an arbitrary object, or a `date` against its ISO string;
@@ -42,20 +37,34 @@ Each release links to full notes on the
     is an FD;
   - two lists in an `Any` sub-field count one per element, not one in total,
     so `["a", "b"]` vs `[]` is 2 FN, not 1;
-  - a model of the ground truth's class in an `Any` or `Union` sub-field takes
-    its verdict from the item's score for that field, as at top level, not from
-    its own `compare_with()`, so it can move from FD to TP or back. Its fields
-    now appear under `aggregate` when every pair of that sub-field has them.
-    Otherwise the sub-field stays one leaf, so every pair still counts there.
+  - a model of the ground truth's class in an `Any` or `Union[A, B]`
+    sub-field takes its verdict from the item's score for that field, as at
+    top level, not from its own `compare_with()`, so it can move from FD to TP
+    or back. Its fields now appear under `aggregate` when every pair of that
+    sub-field has them.
 
-  Three cases still differ from top level. A model of another class in an
-  `Any` or `Union` sub-field still takes its verdict from `compare_with()`,
-  which counts the fields the prediction lacks, so a `Search` against a
-  `Browse` stays an FD. A field the predicted element's class does not declare
-  is not counted. An empty list in an `Any` sub-field counts as null, as the
-  classification docs say: `None` vs `[]` is a TN and `"x"` vs `[]` an FN,
-  where top level and `non_matches` give an FA and an FD
-  ([#400](https://github.com/awslabs/stickler/issues/400))
+  In every sub-field, a matched prediction that lacked a field of the first
+  ground-truth element's class raised `AttributeError`: a subclass listed
+  before its base, `List[Union[A, B]]`, or a dict against a model in a list
+  inside an `Any` sub-field. The field now reads as missing, and each pair is
+  classified on its ground-truth element's own fields. A list with the base
+  class first did not raise, and now also counts the subclass's fields.
+  Nested-model and list-annotated sub-fields otherwise count as before.
+
+  Four cases still differ from top level:
+  - in an `Any` or `Union[A, B]` sub-field, a model of another class still
+    takes its verdict from `compare_with()`, which counts the fields the
+    prediction lacks, so a `Search` against a `Browse` stays an FD. In an
+    `Optional` union of models or a union with a list arm, such a pair still
+    counts as at top level;
+  - when such a sub-field holds models in some pairs and `None`, a primitive
+    or a model of another class in others, every pair stays one leaf under
+    `aggregate`, so all pairs count but the models' fields do not;
+  - a field the predicted element's class does not declare is not counted;
+  - an empty list in an `Any` sub-field counts as null, as the classification
+    docs say: `None` vs `[]` is a TN and `"x"` vs `[]` an FN, where top level
+    and `non_matches` give an FA and an FD
+    ([#400](https://github.com/awslabs/stickler/issues/400))
 
 ### Fixed
 
