@@ -920,6 +920,44 @@ class TestAListOfModelsRebuildsItsComparatorWithTheRestOfItsConfig:
             assert info.comparator.pattern == "x"
             assert info.threshold == 0.5
 
+    def test_a_comparator_that_requires_threshold_still_loads(self, monkeypatch):
+        """It cannot be rebuilt without the one key that is dropped.
+
+        It loaded before, so it is built from the full config, and its
+        threshold still does not reach the field.
+        """
+
+        class LevenshteinComparator(BaseComparator):
+            def __init__(self, threshold):
+                super().__init__(threshold=threshold)
+
+            def _compare(self, a, b):
+                return 1.0 if a == b else 0.0
+
+        monkeypatch.setitem(
+            comparator_registry._global_registry._registry,
+            "LevenshteinComparator",
+            LevenshteinComparator,
+        )
+        config = {"threshold": 0.9}
+        for keys in (
+            {"x-aws-stickler-comparator-config": config},
+            {
+                "x-aws-stickler-comparator": "LevenshteinComparator",
+                "x-aws-stickler-comparator-config": config,
+            },
+        ):
+            model, no_effect = _imported(
+                lambda: StructuredModel.from_json_schema(self._schema(**keys))
+            )
+            info = model._get_comparison_info("rows")
+            assert isinstance(info.comparator, LevenshteinComparator)
+            assert info.threshold == 0.5
+            assert stickler.eval_for(model).explain()["rows"]["threshold"] == 0.5
+            extra = model.model_fields["rows"].json_schema_extra
+            assert extra._threshold_explicit is False
+            assert any("key 'threshold' has no effect" in m for m in no_effect)
+
     def test_any_failure_is_a_value_error_naming_the_field(self, monkeypatch):
         class LevenshteinComparator(BaseComparator):
             def __init__(self, **config):

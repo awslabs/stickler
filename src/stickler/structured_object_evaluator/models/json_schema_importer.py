@@ -766,6 +766,9 @@ class JsonSchemaImporter:
                     UserWarning,
                 )
 
+        # Set when a list of models keeps the comparator built from its full
+        # config, so the threshold it carries is kept off the field below.
+        comparator_threshold_unread = False
         if ignore_comparator_config and "comparator_config" in extensions:
             # A list of models reads no comparator config, as on the Python path,
             # which warns that a comparator threshold there is not consulted. The
@@ -802,19 +805,35 @@ class JsonSchemaImporter:
                 if named
                 else comparator_name
             )
+            # A ValueError naming the field, as `_extract_extensions` raises for
+            # a comparator that cannot be built from its config.
+            what = (
+                f"x-aws-stickler-comparator '{name}'"
+                if named
+                else f"x-aws-stickler-comparator-config for '{name}'"
+            )
+            # Built by `_extract_extensions` from the full config, if named.
+            full = extensions.get("comparator")
             try:
                 extensions["comparator"] = create_comparator(name, kept)
             except Exception as exc:
-                # A ValueError naming the field, as `_extract_extensions` raises
-                # for a comparator that cannot be built from its config.
-                what = (
-                    f"x-aws-stickler-comparator '{name}'"
-                    if named
-                    else f"x-aws-stickler-comparator-config for '{name}'"
-                )
-                raise ValueError(
-                    f"Invalid {what} in field '{field_path}': {exc}"
-                ) from exc
+                if "threshold" not in config:
+                    raise ValueError(
+                        f"Invalid {what} in field '{field_path}': {exc}"
+                    ) from exc
+                # A comparator whose constructor requires `threshold` cannot be
+                # built without it. It loaded before, from the full config, so
+                # it is built that way: it is never called, and its threshold
+                # is kept off the field below.
+                try:
+                    if full is None:
+                        full = create_comparator(name, config)
+                except Exception as full_exc:
+                    raise ValueError(
+                        f"Invalid {what} in field '{field_path}': {full_exc}"
+                    ) from full_exc
+                extensions["comparator"] = full
+                comparator_threshold_unread = True
 
         if annotation is None and extensions.get("infer"):
             # A list of objects is matched element-wise by Hungarian matching, so
@@ -899,6 +918,10 @@ class JsonSchemaImporter:
         # raises.
         declared_threshold = extensions.get("threshold")
         named = _named_comparator_threshold(comparator)
+        if comparator_threshold_unread:
+            # Kept off the field, as the rebuild above does. A number, not
+            # `None`, or `ComparableField` would adopt it.
+            named, threshold = None, _LEGACY_DEFAULT_THRESHOLD
         adopted = declared_threshold is None and _is_valid_threshold(named)
         threshold_defaulted = declared_threshold is None and not adopted
         default_threshold = inferred.threshold if inferred else threshold
