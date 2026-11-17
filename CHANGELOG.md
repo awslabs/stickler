@@ -90,7 +90,10 @@ Each release links to full notes on the
     pair keeps its score, a known defect
     ([#415](https://github.com/awslabs/stickler/issues/415)).
   - `clip_under_threshold` defaults to off, not on, for dict and plain-model
-    fields and lists of them on a `StructuredModel` declared in Python.
+    fields and lists of them on a `StructuredModel` declared in Python. With
+    `x-aws-stickler-infer-unspecified`, an inferred JSON Schema property takes
+    its clip setting from inference, which is off for a free-form object and a
+    free-text string, rather than always `true`.
   - `aggregate` leaves out FN and FA items beside an accepted sibling, and a
     field `threshold` on `List[StructuredModel]` raises `ValueError`.
   - A primitive list element row's `weighted_score` in `field_comparisons` is
