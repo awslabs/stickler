@@ -1917,6 +1917,95 @@ class TestARefIntoADefinition:
             built = _unwrap(built.model_fields[name].annotation)
         assert (built.__name__, built.match_threshold) == ("Renamed", 0.93)
 
+    # What the node holds, and the error each raises once it is built.
+    _INSIDE = (
+        (
+            {"allOf": [{"$ref": "#/$defs/Addr"}]},
+            "on definition '$defs.Addr' is not read when it is reached through "
+            "'allOf' at '{at}.w'",
+        ),
+        (
+            {
+                "type": "array",
+                "items": {
+                    "$ref": "#/$defs/Row",
+                    "x-aws-stickler-match-threshold": 0.93,
+                },
+            },
+            "beside the '$ref' at '{at}.w[]' is not read",
+        ),
+        (
+            {
+                "type": "object",
+                "$ref": "#/$defs/Row",
+                "x-aws-stickler-match-threshold": 0.93,
+            },
+            "beside the '$ref' at '{at}.w' is not read",
+        ),
+    )
+
+    @staticmethod
+    def _holder(where, inner, ref):
+        """`Holder` keeps an object holding `w` under `where`; `t` uses `ref`."""
+        node = {"type": "object", "properties": {"w": inner}}
+        holder = {"type": "object", "properties": {"z": {"type": "string"}}}
+        holder[where] = {"T": node} if where == "x-sub" else node
+        props = {"a": {"type": "string"}}
+        if ref is not None:
+            props["t"] = {"$ref": ref}
+        return {
+            "type": "object",
+            "properties": props,
+            "$defs": {"Holder": holder, "Addr": _KEYED, "Row": _PLAIN},
+        }
+
+    @pytest.mark.parametrize("where", ("not", "then", "additionalProperties", "x-sub"))
+    @pytest.mark.parametrize(
+        "inner, error", _INSIDE, ids=("allOf-arm", "beside-items-ref", "typed-ref")
+    )
+    def test_inside_a_node_a_class_is_built_from_the_checks_apply(
+        self, where, inner, error
+    ):
+        """As inside a `#/components/...` target. Dev builds these at the
+        defaults (`AllOfModel@0.7`, `Row@0.7`), dropping the keys."""
+        pointer = "/x-sub/T" if where == "x-sub" else f"/{where}"
+        at = "$defs.Holder" + pointer.replace("/", ".")
+        with pytest.raises(ValueError, match="x-aws-stickler-match-threshold") as exc:
+            StructuredModel.from_json_schema(
+                self._holder(where, inner, f"#/$defs/Holder{pointer}")
+            )
+        assert error.format(at=at) in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "where, ref",
+        (
+            ("not", None),
+            ("then", None),
+            ("additionalProperties", None),
+            ("x-sub", None),
+            ("not", "#/$defs/Holder"),
+            ("then", "#/$defs/Holder"),
+            ("additionalProperties", "#/$defs/Holder"),
+        ),
+        # The parser fails a `$ref` under an `x-*` key of an entry it builds
+        # (`KeyError`, as on dev), so that case has no whole-entry variant.
+        ids=(
+            "unreferenced-not",
+            "unreferenced-then",
+            "unreferenced-additionalProperties",
+            "unreferenced-x-sub",
+            "whole-entry-not",
+            "whole-entry-then",
+            "whole-entry-additionalProperties",
+        ),
+    )
+    @pytest.mark.parametrize(
+        "inner", [inner for inner, _ in _INSIDE], ids=("allOf", "items", "typed")
+    )
+    def test_where_nothing_builds_the_node_it_imports(self, where, ref, inner):
+        """The entry's walk builds nothing under these keys."""
+        StructuredModel.from_json_schema(self._holder(where, inner, ref))
+
     def test_the_entry_around_the_node_is_still_checked(self):
         with pytest.raises(ValueError, match=r"thresold.*definition '\$defs\.Wrap'"):
             StructuredModel.from_json_schema(
