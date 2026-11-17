@@ -22,7 +22,7 @@ comparator = LevenshteinComparator(threshold=0.8)
 
 **When it applies:** Whenever the field itself is silent. A threshold is only meaningful beside the metric that produced the score (0.85 means one thing on edit distance and another on a semantic embedding), so a threshold you put on the comparator is read as a statement about the field.
 
-A threshold on the field always wins. And only a threshold you *named* is adopted: a comparator's own default is not, because those defaults were never chosen as classification cutoffs. `LevenshteinComparator(threshold=0.8)` gives the field 0.8; a bare `LevenshteinComparator()` leaves it at a `ComparableField` field's default of 0.5, not the comparator's 0.7 (other declaration styles default differently; see [precedence](#precedence-in-one-line)).
+A threshold on the field always wins. And only a threshold you *named* is adopted: a comparator's own default is not, because those defaults were never chosen as classification cutoffs. `LevenshteinComparator(threshold=0.8)` gives the field 0.8; a bare `LevenshteinComparator()` leaves it at a `ComparableField` field's default of 0.5, not the comparator's 0.7. A JSON Schema property that names a comparator keeps its type's default threshold instead; see [Dynamic Model Creation](../Advanced/dynamic-models.md).
 
 ### 2. Field Threshold
 
@@ -74,7 +74,7 @@ result = stickler.evaluate(gt, pred, match_threshold=0.8)
 spec = stickler.eval_for(Invoice, match_threshold=0.8)
 ```
 
-**What it gates:** The document-level `EvalResult.matched` verdict (`overall_score >= match_threshold`). On a `StructuredModel` class that is all it does: field thresholds, list element pairing and every score keep their class values. On a plain pydantic class, the model `evaluate()` builds from it also uses the value for list element pairing and as the field threshold of its `dict` and nested plain-model fields, single or in a list; `spec.explain()` shows it. It never changes a similarity score.
+**What it gates:** The document-level `EvalResult.matched` verdict (`overall_score >= match_threshold`). On a `StructuredModel` class that is all it does: field thresholds, list element pairing and every score keep their class values. On a plain pydantic class, the model `evaluate()` builds from it also uses the value as the field threshold of its `dict`, `List[dict]` and single nested-model fields, and for element pairing in its lists of plain models. A `List[StructuredModel]` field keeps the element class's `match_threshold`. It never changes a similarity score.
 
 **Default:** the class's `match_threshold` on a `StructuredModel`, else `0.7`
 
@@ -90,7 +90,7 @@ When multiple thresholds could apply, here's which one wins:
 | **Score clipping** | Field threshold (when `clip_under_threshold=True`) |
 | **Binary classification (TP/FD)** for primitives | Field threshold |
 | **Binary classification (TP/FD)** for list pairs | The element class's `match_threshold` |
-| **Document `matched` verdict** | Runtime match threshold if provided, else the class's `match_threshold` |
+| **Document `matched` verdict** | Runtime match threshold if provided, else the class's `match_threshold` on a `StructuredModel`, else `0.7` |
 
 ### Key Rules
 
@@ -270,9 +270,9 @@ subject to any threshold, so:
 - 2 against 1 still yields an FN, giving recall `0.5`
 
 **`match_threshold = 0.0` warns on every model, list or not.** Besides pairing
-list elements, it becomes the threshold of every bare-annotated field
-([precedence](#precedence-in-one-line)), so on a model with no list every bare
-field passes. That is why the `Doc` above reports precision, recall and F1 of
+list elements, it becomes the threshold of every bare-annotated field that does
+not hold a `StructuredModel` ([precedence](#precedence-in-one-line)), so on a
+model with no list every such field passes. That is why the `Doc` above reports precision, recall and F1 of
 `1.0`, although `name` scores only `0.125`. A `ComparableField()` field keeps
 its own `0.5` default, which `match_threshold` never reaches: declared that way,
 the same pair is a false discovery with precision `0.0`. That is why the value
