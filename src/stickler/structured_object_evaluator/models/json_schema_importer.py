@@ -973,17 +973,21 @@ class JsonSchemaImporter:
         reaches it. A dereferenced schema keeps the originals beside their
         inlined copies, and an entry nothing references builds nothing, so
         checking its own keys raised for keys that were read on the copies. Such
-        an entry is walked as before, for its contents only. Data keywords and
-        `x-*` payloads are values, not schemas, and are not walked, except for
-        an entry under `$defs` inside one, which was walked before as well.
+        an entry is walked as before, for its contents only, and so are the
+        targets of its `$ref`s. Data keywords and `x-*` payloads are values, not
+        schemas, and are not walked, except where a `$ref` points into one and
+        for an entry under `$defs` inside one, which was walked before as well.
 
         Every `$ref` target is walked from the reference as well, so a class
         built inside it reads model keys wherever it sits: under `not` or an
         `x-*` key inside a definition, or outside `$defs` (`#/components/...`).
         Only a whole definition entry is checked as a definition. Any other
-        target has its own keys checked only where the walk around it checks
-        them (a property, `items`, a combiner arm); elsewhere, such as under
-        `not` or an `x-*` key, only its contents are checked.
+        target has its own keys, model keys beside its `$ref` included, checked
+        only where the walk around it checks them (a property, `items`, a
+        combiner arm). Anywhere else, for example under `not`, `if`,
+        `contains` or an `x-*` key, only its contents are checked. A field key
+        on a property node is valid there, but only the object holding the
+        node reads it: another property that `$ref`s the node does not.
         """
         # Nodes whose model keys some class reads, by identity: every position
         # except an `allOf` arm and the root's own `$ref` target. Over-counting

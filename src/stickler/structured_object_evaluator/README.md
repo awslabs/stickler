@@ -247,14 +247,16 @@ extensions from other tooling are left alone. A nested `["object", "null"]` node
 reads the same keys as an `"object"` one; the root must be `"object"`. A `$defs`
 entry that a `$ref` reaches is checked (one nothing reaches has its nested
 schemas checked, not its own keys): with `properties` it reads only
-object-level keys, otherwise none; field-level keys go on the property that uses
-it, beside the `$ref` or beside the combiner whose arm the `$ref` is (for `items`
-or an arm of them, on the array property, which reads only the weight for an
-array of objects).
+object-level keys, otherwise none. Field-level keys go on the property that
+uses the definition: beside the `$ref`, or beside the `anyOf`/`oneOf` whose arm
+the `$ref` is (and the `allOf`, for an object typed `"object"` or untyped). For
+`items`, or an arm of them, they go on the array property, which reads only the
+weight for an array of objects.
 Object-level keys beside a non-root `$ref` are not read (they go on the target),
 nor on an `allOf` arm or an object reached only through `allOf` or a root
-`$ref`, so they raise there. The same holds inside a `#/components/...` target
-once a position that builds a class references it.
+`$ref`, so they raise there. The same holds inside any `$ref` target that a
+position building a class references, wherever it sits (`#/components/...`, or
+under `not`, `then`, `additionalProperties` or an `x-*` key in a `$defs` entry).
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
