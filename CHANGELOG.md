@@ -62,10 +62,11 @@ Each release links to full notes on the
   anywhere but the root (on `items`, an `anyOf`/`oneOf` arm, or an object
   property), where the class is built from the target and reads the target's
   keys; on an `allOf` arm, inline or through `$ref`, which is merged into one
-  class at the defaults; and on a definition reached through a root `$ref`,
+  class at the defaults; and on an object reached through a root `$ref`,
   where the root reads the keys beside the `$ref` instead. The last two raise
   only when no other position builds the same object from its keys, including
-  a position inside a `$ref` target outside `$defs` (`#/components/...`); a
+  a position inside any `$ref` target, wherever the target sits
+  (`#/components/...`, or under `not` or an `x-*` key in a definition); a
   `$ref` under `not`, `additionalProperties` or `if` builds nothing, so it does
   not count. Each of these resolved the default in silence
   (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`, `items: {"$ref":

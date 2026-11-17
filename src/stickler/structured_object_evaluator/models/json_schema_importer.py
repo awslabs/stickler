@@ -951,11 +951,11 @@ class JsonSchemaImporter:
         raised for keys that were read on the copies. Data keywords and `x-*`
         payloads are values, not schemas, and are not walked.
 
-        A `$ref` target outside `$defs`/`definitions` (`#/components/...`, or
-        under an `x-*` key) is walked from the reference as well, so a class
-        built inside it reads model keys like one built in a definition. Only
-        its contents are checked there: its own keys are not checked as a
-        definition's are.
+        Every `$ref` target is walked from the reference as well, so a class
+        built inside it reads model keys wherever it sits: under `not` or an
+        `x-*` key inside a definition, or outside `$defs` (`#/components/...`).
+        Only a whole definition entry is checked as a definition; any other
+        target has only its contents checked.
         """
         # Nodes whose model keys some class reads, by identity: every position
         # except an `allOf` arm and the root's own `$ref` target. Over-counting
@@ -965,8 +965,9 @@ class JsonSchemaImporter:
         # reader is known.
         merged: List[Tuple[Any, str, str]] = []
         # `$ref` targets, by JSON pointer, and whether a position that builds a
-        # class reached them. A target inside a definition entry is queued as
-        # that whole entry, which is checked as a definition.
+        # class reached them. A target inside a definition entry is queued
+        # itself, and the entry that holds it is queued as built nothing, so the
+        # entry is checked as a definition but its other contents read nothing.
         walked: Dict[Tuple[str, ...], bool] = {}
         pending: List[Tuple[Tuple[str, ...], Any, bool, bool]] = []
 
@@ -999,6 +1000,11 @@ class JsonSchemaImporter:
                 node = node[part]
             return node, parts, entry, entry_body
 
+        def label(target: Tuple[str, ...], entry: Optional[Tuple[str, ...]]) -> str:
+            """A whole entry is a definition; a node inside one is an object."""
+            kind = "definition" if entry is not None and target == entry else "object"
+            return f"{kind} '{'.'.join(target)}'"
+
         def chain(node: Any, where: str):
             """The node, then each alias it `$ref`s: every hop is the same class."""
             seen: set = set()
@@ -1006,7 +1012,7 @@ class JsonSchemaImporter:
                 seen.add(id(node))
                 yield node, where
                 node, target, entry, _ = resolve(node.get("$ref"))
-                where = f"{'definition' if entry else 'object'} '{'.'.join(target)}'"
+                where = label(target, entry)
 
         def walk(
             node: Any,
@@ -1028,8 +1034,15 @@ class JsonSchemaImporter:
             ref = node.get("$ref")
             target, target_parts, entry, entry_body = resolve(ref)
             target_path = ".".join(target_parts)
-            if entry is not None:
+            if entry is not None and target_parts == entry:
                 pending.append((entry, entry_body, built, True))
+            elif entry is not None:
+                # The reference builds the target, not the entry around it. The
+                # entry is still checked, but its other contents build nothing
+                # here, and the target may sit where the entry's walk does not
+                # build it (`not`, `x-*`), so it is walked from here as well.
+                pending.append((entry, entry_body, False, True))
+                pending.append((target_parts, target, built, False))
             elif target is not None and target_parts:
                 # Outside `$defs` the target may sit where the walk does not
                 # build it (`components`) or does not go (`x-*`), so classes
@@ -1182,8 +1195,7 @@ class JsonSchemaImporter:
         if isinstance(root_target, dict):
             check(
                 root_target,
-                f"{'definition' if root_entry else 'object'} "
-                f"'{'.'.join(root_target_parts)}'",
+                label(root_target_parts, root_entry),
                 "the root '$ref'",
                 "The root class reads the root's own keys: put it on the root, "
                 "beside the '$ref'.",

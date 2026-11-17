@@ -1264,6 +1264,114 @@ class TestAllOfRaisesOnlyWhereNothingReadsTheKeys:
             )
 
 
+class TestARefIntoADefinition:
+    """A `$ref` that points inside a `$defs` entry builds that node, not the entry.
+
+    The whole entry was walked with the reference's flag. Where the reference
+    builds a class, every reader in the entry counted, so an `allOf` arm or a
+    root `$ref` to `#/$defs/Wrap/properties/inner` built the default class at
+    `0.7` without raising. Where the target sat under `not` or an `x-*` key in
+    the entry, it was walked as building nothing, so the class it builds did not
+    count and an `allOf` elsewhere raised where the keys were read.
+    """
+
+    DEFS = {
+        "Wrap": {"type": "object", "properties": {"inner": _KEYED}},
+        "List": {"type": "array", "items": _KEYED},
+    }
+
+    @pytest.mark.parametrize(
+        "pointer, target",
+        (
+            ("#/$defs/Wrap/properties/inner", "$defs.Wrap.properties.inner"),
+            ("#/$defs/List/items", "$defs.List.items"),
+        ),
+        ids=("property", "items"),
+    )
+    @pytest.mark.parametrize(
+        "make, reached",
+        (
+            (lambda ref: {"$ref": ref}, "the root '$ref'"),
+            (
+                lambda ref: {
+                    "type": "object",
+                    "properties": {"a": {"allOf": [{"$ref": ref}]}},
+                },
+                "'allOf' at 'a'",
+            ),
+        ),
+        ids=("root-ref", "allOf"),
+    )
+    def test_keys_nothing_reads_raise(self, pointer, target, make, reached):
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                dict(make(pointer), **{"$defs": self.DEFS})
+            )
+        message = str(exc.value)
+        assert f"on object '{target}' is not read" in message
+        assert f"reached through {reached}" in message
+
+    @pytest.mark.parametrize("where", ("not", "x-sub", "additionalProperties", "then"))
+    def test_a_reader_anywhere_in_the_entry_counts(self, where):
+        """`team.lead` builds `Person` from its keys, so the `allOf` drops nothing."""
+        team = {"type": "object", "properties": {"lead": {"$ref": "#/$defs/Person"}}}
+        holder = {"type": "object", "properties": {"z": {"type": "string"}}}
+        if where == "x-sub":
+            holder[where] = {"Team": team}
+            ref = "#/$defs/Holder/x-sub/Team"
+        else:
+            holder[where] = team
+            ref = f"#/$defs/Holder/{where}"
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "team": {"$ref": ref},
+                    "employee": {"allOf": [{"$ref": "#/$defs/Person"}]},
+                },
+                "$defs": {"Person": _KEYED, "Holder": holder},
+            }
+        )
+        team_class = _unwrap(model.model_fields["team"].annotation)
+        lead = _unwrap(team_class.model_fields["lead"].annotation)
+        assert (lead.__name__, lead.match_threshold) == ("Renamed", 0.93)
+
+    @pytest.mark.parametrize(
+        "ref, fields",
+        (("#/$defs/Wrap", ("inner",)), ("#/$defs/Wrap/properties/inner", ())),
+        ids=("the-entry", "the-node"),
+    )
+    def test_a_position_that_builds_the_node_still_reads_it(self, ref, fields):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "w": {"$ref": ref},
+                    "a": {"allOf": [{"$ref": "#/$defs/Wrap/properties/inner"}]},
+                },
+                "$defs": self.DEFS,
+            }
+        )
+        built = _unwrap(model.model_fields["w"].annotation)
+        for name in fields:
+            built = _unwrap(built.model_fields[name].annotation)
+        assert (built.__name__, built.match_threshold) == ("Renamed", 0.93)
+
+    def test_the_entry_around_the_node_is_still_checked(self):
+        with pytest.raises(ValueError, match=r"thresold.*definition '\$defs\.Wrap'"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"a": {"$ref": "#/$defs/Wrap/properties/inner"}},
+                    "$defs": {
+                        "Wrap": dict(
+                            self.DEFS["Wrap"], **{"x-aws-stickler-thresold": 0.9}
+                        )
+                    },
+                }
+            )
+
+
 class TestAListFormTypeBesideARef:
     """`["object", "null"]` beside a `$ref` builds one class, as `"object"` does.
 
