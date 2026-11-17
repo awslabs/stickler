@@ -2843,11 +2843,13 @@ class TestARefIntoADefinition:
 
 
 class TestAListFormTypeBesideARef:
-    """`["object", "null"]` beside a `$ref` builds one class, as `"object"` does.
+    """`["object", "null"]` beside a `$ref` builds one class, as `"object"` does,
+    and `["array", "null"]` builds what `"array"` does.
 
     The list form is rewritten to `anyOf`, and the `$ref` was copied onto the
     null arm too, so the node became a union of two classes compared with
-    ExactComparator: a one-character difference scored 0.0, not 0.9.
+    ExactComparator: a one-character difference scored 0.0, not 0.9. Where
+    the single type fails to import, the list form now fails too.
     """
 
     @staticmethod
@@ -2881,6 +2883,109 @@ class TestAListFormTypeBesideARef:
             self._model(["object", "null"], _KEYED).model_fields["child"].annotation
         )
         assert (child.__name__, child.match_threshold) == ("Renamed", 0.93)
+
+    ROWS = {"type": "array", "items": dict(TestDefinitionsAreChecked.INNER)}
+    LIST_FORMS = pytest.mark.parametrize(
+        "declared",
+        ("object", ["object", "null"], ["null", "object"]),
+        ids=("object", "object-null", "null-object"),
+    )
+
+    @staticmethod
+    def _typed(declared, ref):
+        return {"$ref": ref, "type": declared}
+
+    @classmethod
+    def _failing(cls, shape, declared):
+        """A schema that fails to import with `"object"` beside the `$ref`."""
+        empty = {"type": "array", "items": {"type": "object", "properties": {}}}
+        defs = {"Inner": TestDefinitionsAreChecked.INNER, "L": cls.ROWS, "E": empty}
+        numeric = {"x-aws-stickler-comparator": "NumericComparator"}
+        if shape == "items":
+            node = {"type": "array", "items": cls._typed(declared, "#/$defs/Inner")}
+            node.update(numeric)
+        elif shape == "nullable-array-items":
+            node = {"type": ["array", "null"]}
+            node["items"] = cls._typed(declared, "#/$defs/Inner")
+            node.update(numeric)
+        elif shape == "arm":
+            node = {"anyOf": [cls._typed(declared, "#/$defs/L")], **numeric}
+        else:
+            node = cls._typed(declared, "#/$defs/E")
+        return {"type": "object", "properties": {"p": node}, "$defs": defs}
+
+    @LIST_FORMS
+    @pytest.mark.parametrize(
+        "shape, error",
+        (
+            ("items", "cannot have a 'comparator' parameter"),
+            ("nullable-array-items", "cannot have a 'comparator' parameter"),
+            ("arm", "cannot have a 'comparator' parameter"),
+            ("empty-objects", "field_definitions must contain at least one field"),
+        ),
+    )
+    def test_where_object_fails_the_list_form_fails_too(self, shape, error, declared):
+        """An array of objects takes no comparator, and an object with no
+        properties builds no class. Dev built the list form as a union of
+        two classes, which took one, so it imported."""
+        with pytest.raises(ValueError, match=error):
+            StructuredModel.from_json_schema(self._failing(shape, declared))
+
+    @staticmethod
+    def _field(declared, target):
+        """The model built with `p` typed `declared` beside a `$ref` to
+        `target`, and `p`'s comparison info."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"p": {"$ref": "#/$defs/T", "type": declared}},
+                "$defs": {"T": target},
+            }
+        )
+        return model, model._get_comparison_info("p")
+
+    @pytest.mark.parametrize(
+        "target, comparator, threshold",
+        (
+            (ROWS, "LevenshteinComparator", 0.5),
+            (TestDefinitionsAreChecked.INNER, "LevenshteinComparator", 0.7),
+        ),
+        ids=("array-of-objects", "object"),
+    )
+    @pytest.mark.parametrize(
+        "declared",
+        (["array", "null"], ["null", "array"]),
+        ids=("array-null", "null-array"),
+    )
+    def test_a_nullable_array_builds_what_array_builds(
+        self, declared, target, comparator, threshold
+    ):
+        """Dev built a union of two types compared with ExactComparator at
+        1.0. Now one type, as `"array"` beside the same `$ref` builds."""
+        for typed in (declared, "array"):
+            model, info = self._field(typed, target)
+            annotation = model.model_fields["p"].annotation
+            arms = [a for a in typing.get_args(annotation) if a is not type(None)]
+            assert len(arms) == 1
+            assert issubclass(_unwrap(annotation), StructuredModel)
+            assert (type(info.comparator).__name__, info.threshold) == (
+                comparator,
+                threshold,
+            )
+
+    @pytest.mark.parametrize(
+        "target", (ROWS, TestDefinitionsAreChecked.INNER), ids=("array", "object")
+    )
+    def test_object_and_array_together_still_build_a_union(self, target):
+        """Dev built three arms. The null arm is no longer one."""
+        model, info = self._field(["object", "array", "null"], target)
+        annotation = model.model_fields["p"].annotation
+        arms = [a for a in typing.get_args(annotation) if a is not type(None)]
+        assert len(arms) == 2
+        assert (type(info.comparator).__name__, info.threshold) == (
+            "ExactComparator",
+            1.0,
+        )
 
     @pytest.mark.parametrize("name", ("type", "kind"))
     @pytest.mark.parametrize(
