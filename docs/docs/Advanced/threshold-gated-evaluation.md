@@ -88,64 +88,87 @@ class Order(StructuredModel):
 
 ## Worked Scenarios
 
-Three GT products against three predictions, measured with the model above:
+Given three GT products and three Pred products:
 
-| GT | Pred | Pair similarity | Classification |
-|----|------|-----------------|----------------|
-| `("PROD-001", "Laptop", 999.99)` | `("PROD-001", "Laptop Computer", 999.99)` | `0.7999999999999999` | **FD** |
-| `("PROD-002", "Mouse", 29.99)` | `("PROD-002", "Different Product", 99.99)` | `0.6725` | **FD** |
-| `("PROD-003", "Cable", 14.99)` | `("PROD-004", "New Product", 19.99)` | `0.1333` | **FD** |
+```python
+gt = Order(order_id="ORD-1", products=[
+    Product(product_id="PROD-001", name="Laptop", price=999.99),
+    Product(product_id="PROD-002", name="Mouse", price=29.99),
+    Product(product_id="PROD-003", name="Cable", price=14.99),
+])
+pred = Order(order_id="ORD-1", products=[
+    Product(product_id="PROD-001", name="Laptop Computer", price=999.99),
+    Product(product_id="PROD-002", name="Different Product", price=99.99),
+    Product(product_id="PROD-004", name="New Product", price=19.99),
+])
+result = gt.compare_with(pred, include_confusion_matrix=True, document_non_matches=True)
+```
 
-`products` reads `overall fd=3` with no `fields`, and none of the three is descended into.
+### Good Match (meets 0.8)
 
-- **The Laptop pair misses by a rounding error.** It prints as `0.800` but is just below `0.8`, and the object gate is a bare `>=` ([#417](https://github.com/awslabs/stickler/issues/417)). Its `name` similarity is only `0.4`; `product_id` and `price` carry it.
-- **Equal-length lists cannot produce FN or FA.** Every element gets a partner, so `Cable` is an FD against `New Product`, not an FN plus an FA.
+**GT:** `Product("PROD-001", "Laptop", 999.99)`
+**Pred:** `Product("PROD-001", "Laptop Computer", 999.99)`
 
-Lower `match_threshold` to `0.79` and drop the `PROD-004` prediction. The Laptop pair is now a TP and is descended into, the Mouse pair stays an FD, and `Cable` has no partner, so it is an FN:
+- Similarity: `(3 * 1.0 + 2 * 0.4 + 1 * 1.0) / 6`, which floating point evaluates to `0.7999999999999999`. It meets `0.8` through the [rounding tolerance](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
+- Classification: **TP**
+- Nested field analysis is performed:
+    - `product_id`: TP (exact match)
+    - `name`: FD (Levenshtein similarity 0.4, under its 0.7 threshold)
+    - `price`: TP (exact match)
 
-- `product_id`: TP
-- `name`: FD (`0.4` is below its `threshold=0.7`), a failing leaf inside an accepted item
-- `price`: TP
+### Poor Match (similarity < 0.8)
+
+**GT:** `Product("PROD-002", "Mouse", 29.99)`
+**Pred:** `Product("PROD-002", "Different Product", 99.99)`
+
+- Similarity: `(3 * 1.0 + 2 * 0.118 + 1 * 0.8) / 6`, about `0.6725`
+- Classification: **FD**
+- No nested field analysis -- the objects are too dissimilar for field-level breakdown to be useful.
+
+### Weak Pairing
+
+**GT:** `Product("PROD-003", "Cable", 14.99)`
+**Pred:** `Product("PROD-004", "New Product", 19.99)`
+
+- Similarity: `0.1333`
+- Classification: **FD**, with no nested analysis
+
+Hungarian matching pairs every item when both lists have the same length, so
+these two are paired even though they share almost nothing. An item is left
+unmatched only when one list is longer: without `New Product` in Pred, `Cable`
+would be an **FN**, and without `Cable` in GT, `New Product` would be an **FA**.
+Neither is broken down into fields.
 
 ## Result Structure
 
-That second run, measured:
+The `products` counts and the `non_matches` from the run above, with other keys
+left out and scores rounded to four places:
 
-```python
-cm["fields"]["products"]
+```json
 {
-    "overall":   {"tp": 1, "fd": 1, "fn": 1, "fa": 0, "fp": 1,
-                  "derived": {"cm_precision": 0.5, "cm_recall": 0.5, "cm_f1": 0.5, ...}},
-    "aggregate": {"tp": 2, "fd": 1, "fn": 0, ...},   # leaves of the TP item only
-    "fields": {
-        "product_id": {"overall": {"tp": 1, ...}, ...},
-        "name":       {"overall": {"fd": 1, ...}, ...},
-        "price":      {"overall": {"tp": 1, ...}, ...},
+  "confusion_matrix": { "fields": { "products": {
+    "overall": {
+      "tp": 1, "fd": 2, "fn": 0, "fa": 0,
+      "derived": { "cm_precision": 0.3333, "cm_recall": 1.0, "cm_f1": 0.5 }
     },
+    "fields": {
+      "product_id": { "overall": { "tp": 1 } },
+      "name":       { "overall": { "fd": 1 } },
+      "price":      { "overall": { "tp": 1 } }
+    }
+  } } },
+  "non_matches": [
+    { "field_path": "products[0].name", "non_match_type": "false_discovery", "similarity_score": 0.4 },
+    { "field_path": "products[1]", "non_match_type": "false_discovery", "similarity_score": 0.6725 },
+    { "field_path": "products[2]", "non_match_type": "false_discovery", "similarity_score": 0.1333 }
+  ]
 }
-
-result["non_matches"]
-[
-    {"field_path": "products[0].name", "non_match_type": "false_discovery",
-     "ground_truth_value": "Laptop", "prediction_value": "Laptop Computer",
-     "similarity_score": 0.4, "reason": "field mismatch"},
-    {"field_path": "products[1]", "non_match_type": "false_discovery",
-     "ground_truth_value": {"product_id": "PROD-002", "name": "Mouse", "price": 29.99},
-     "prediction_value": {"product_id": "PROD-002", "name": "Different Product", "price": 99.99},
-     "similarity_score": 0.6725, "similarity": 0.6725,
-     "reason": "below threshold (0.673 < 0.79)"},
-    {"field_path": "products[2]", "non_match_type": "false_negative",
-     "ground_truth_value": {"product_id": "PROD-003", "name": "Cable", "price": 14.99},
-     "prediction_value": None, "reason": "unmatched ground truth"},
-]
 ```
 
-Field-level metrics appear only for the TP pair. The `non_matches` list
-documents each FD and FN item once at object level, and the TP item's failing
-leaf by its own path; `field_comparisons` uses the same boundary. Neither report
-expands a rejected or unmatched object into leaves. The missed `Cable` is on
-`overall` only: next to an accepted sibling, `aggregate` leaves it out
-([Recursion](classification-logic.md#list-contract)).
+Field-level metrics appear only for the single TP pair, and its `name` is the
+only leaf in `non_matches`. That list documents each rejected pair once at
+object level, as it would an FN or FA; `field_comparisons` uses the same
+boundary. Neither report expands a rejected or unmatched object into leaves.
 
 ## Delegation Pattern
 
@@ -166,7 +189,7 @@ The dispatcher uses pattern matching on null states for early exits, then routes
 Scores percolate upward from leaf fields to the top-level result using weighted averaging:
 
 1. Each field comparison produces a raw similarity score (0.0 -- 1.0).
-2. The score is optionally clipped to 0 if below the field threshold (`clip_under_threshold`). A list field applies this per element, not to its score as a whole ([Score](classification-logic.md#list-contract)).
+2. The score is optionally clipped to 0 if below the field threshold (`clip_under_threshold`).
 3. Clipped scores are multiplied by the field weight and summed.
 4. The overall similarity is `total_weighted_score / total_weight`.
 
@@ -201,7 +224,8 @@ field's own `threshold` decides that verdict. See
 
 `overall_score` is the scalar summary, and `EvalResult.matched` from
 `stickler.evaluate()` is the object-level verdict
-(`overall_score >= match_threshold`).
+(`overall_score >= match_threshold`, see
+[Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold)).
 
 For the raw object similarity used by Hungarian matching, fields absent on both sides are omitted from both totals. They remain TNs in the confusion matrix, but do not help a pair clear `match_threshold`. If no fields remain, the similarity is defined as `1.0`, because nothing disagreed.
 
@@ -209,7 +233,7 @@ For the raw object similarity used by Hungarian matching, fields absent on both 
 
 **Empty lists** -- `[] vs []` is TN. `[] vs [items]` generates one FA per item. `[items] vs []` generates one FN per item.
 
-**Threshold boundary** -- `similarity >= threshold` counts as TP and triggers recursion. Values exactly at the boundary are matches. A float that prints as the threshold can sit just below it, as the Laptop pair above does ([#417](https://github.com/awslabs/stickler/issues/417)).
+**Threshold boundary** -- `similarity >= threshold` counts as TP and triggers recursion. Values exactly at the boundary are matches, and so are values less than `1e-10` under it, so a rounding error does not flip the verdict. See [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
 
 **Different thresholds per model** -- Each `StructuredModel` subclass can define its own `match_threshold`. A `Product` with `match_threshold = 0.8` and an `Address` with `match_threshold = 0.6` are each evaluated independently.
 

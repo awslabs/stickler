@@ -37,8 +37,8 @@ import pytest
 from pydantic import BaseModel, RootModel
 
 import stickler
-from stickler import ComparableField, eval_for
-from stickler.auto.builder import structured_model_for
+from stickler import ComparableField, EvalSpec, eval_for
+from stickler.auto.builder import specs_for, structured_model_for
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
@@ -190,3 +190,68 @@ def test_a_structured_model_holding_a_root_model_field_is_untouched():
     # a perfect match. Asserting only `name` would pass even if `pt` returned
     # the false 1.0 this work removes everywhere else.
     assert result.field_scores["pt"] < 1.0
+
+
+class _Holder(BaseModel):
+    name: str
+    pt: RootModel[Point]
+
+
+class _ListHolder(BaseModel):
+    items: List[RootModel[Point]]
+
+
+@pytest.mark.parametrize(
+    "cls, where",
+    [(row[0], row[0].__name__) for row in ROOTS]
+    + [(_Holder, "_Holder.pt"), (_ListHolder, "_ListHolder.items[]")],
+    ids=ROOT_IDS + ["field", "list-element"],
+)
+def test_specs_for_refuses_a_root_model_and_names_where(cls, where):
+    """``specs_for`` reported ``root.*`` paths, such as ``pt.root.x``, that are
+    never scored (#423). It now refuses with the builder's RootModel message,
+    which names the class or the field that holds the root.
+    """
+    with pytest.raises(TypeError, match="a RootModel holds one unnamed value") as exc:
+        specs_for(cls)
+    assert where in str(exc.value)
+
+
+def test_specs_for_refuses_a_recursive_model_too():
+    """The check is the builder's, so it covers more than RootModel: a
+    recursive model, which ``eval_for`` refuses, is refused here as well."""
+
+    class Node(BaseModel):
+        name: str
+        children: List["Node"] = []
+
+    with pytest.raises(TypeError, match="recursive"):
+        specs_for(Node)
+
+
+def test_explain_on_a_hand_written_eval_model_does_not_run_the_builder():
+    """An ``EvalSpec`` given its own ``eval_model`` never uses the builder, so
+    the builder refusing ``source_cls`` must not break ``explain()``. Here the
+    source is recursive, which the builder refuses, and the spec still scores.
+    """
+
+    class Node(BaseModel):
+        name: str
+        children: List["Node"] = []
+
+    class NodeSM(StructuredModel):
+        name: str = ComparableField()
+
+    spec = EvalSpec(Node, NodeSM, weight_hints=False, match_threshold=0.7)
+    assert spec.evaluate(Node(name="a"), Node(name="a")).overall_score == pytest.approx(1.0)
+    assert "name" in spec.explain()
+
+
+def test_explain_on_a_structured_model_holding_a_root_model_field_still_works():
+    """The configured path is never built, so ``specs_for`` does not refuse it."""
+
+    class Configured(StructuredModel):
+        name: str = ComparableField(default="")
+        pt: Optional[RootModel[Point]] = ComparableField(default=None)
+
+    assert "name" in eval_for(Configured).explain()

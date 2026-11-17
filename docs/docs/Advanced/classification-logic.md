@@ -113,7 +113,7 @@ Result: TP=0, FA=0, FN=0, FD=3
 
 ### Nested Objects
 
-Nested objects are evaluated recursively, field by field.
+Nested objects are evaluated recursively, field by field, with `>=` as described in [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
 
 | Condition | Classification |
 |-----------|---------------|
@@ -210,7 +210,7 @@ These are computed at every node of the result tree, from that node's own counts
 
 **TN in object matching** -- A TN is absence of evidence, not evidence of a match. Fields absent on both sides are excluded from the weighted object similarity used by Hungarian matching. If every field is absent, the similarity is defined as `1.0`.
 
-**Threshold boundary** -- A similarity score exactly equal to the threshold counts as a match (TP). Scores are floats, so one that prints as the threshold can sit just below it: the Laptop pair in [How Below-Threshold Pairs Are Classified](threshold-gated-evaluation.md#worked-scenarios) is `0.7999999999999999` against `0.8` and counts FD. The element gate in a primitive list allows a `1e-10` tolerance; the object and field gates do not ([#417](https://github.com/awslabs/stickler/issues/417)).
+**Threshold boundary** -- A similarity score exactly equal to the threshold counts as a match (TP). So does a score less than `1e-10` under it, at every gate listed in [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold), so a rounding error such as `0.7 + 0.1` (`0.7999999999999999`) against `0.8` does not turn a TP into an FD.
 
 **List order** -- Order does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position.
 

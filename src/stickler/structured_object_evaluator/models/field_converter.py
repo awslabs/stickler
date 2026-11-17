@@ -64,6 +64,13 @@ ACCEPTED_FIELD_CONFIG_KEYS = frozenset(
 #: model_from_json, caller.
 _UNKNOWN_KEY_STACKLEVEL = 7
 
+#: The same count for the ``match_threshold``-on-a-primitive warning, from
+#: ``warnings.warn``: warn_once, convert_field_config, the converter's
+#: convert_fields_config, its module-level wrapper, create_model_from_json,
+#: model_from_json, caller. Exact for a root field; a nested field is reached
+#: through more frames, and the message names its dotted path instead.
+_MATCH_THRESHOLD_STACKLEVEL = 7
+
 
 def _infer_spec(
     field_name: str,
@@ -187,10 +194,6 @@ def _wants_inference(field_config: Dict[str, Any], infer_unspecified: bool) -> b
 class FieldConverter:
     """Converter for JSON field configurations to Pydantic fields."""
 
-    def __init__(self):
-        """Initialize the field converter."""
-        pass
-
     def convert_field_config(
         self,
         field_name: str,
@@ -250,15 +253,30 @@ class FieldConverter:
         # `threshold`/`match_threshold` confusion the union set cannot catch. The
         # JSON Schema path already refuses the same misplacement
         # ("x-aws-stickler-match-threshold is not read on field 'amount'. It
-        # belongs on the object"), so refusing here is what makes the two front
-        # doors agree, as it did for `infer_unspecified_fields` below.
+        # belongs on the object").
+        #
+        # 1.0.1 warns and ignores the key, as 1.0.0 ignored it, because 1.0.1
+        # ships no breaking change. 1.1.0 turns this into a `ValueError`, which
+        # is what makes the two front doors agree.
         if "match_threshold" in field_config:
-            raise ValueError(
+            # Names the model: Python's default filter shows a message once per
+            # text and line, so two models built on one line with the same
+            # field name would otherwise show one warning between them.
+            of_model = f" of model {model_id!r}" if model_id else ""
+            warn_once(
+                "field-config-match-threshold-on-primitive",
+                # Keyed on (root model, dotted path), as the unknown-key warning
+                # is, so a second model with the same misplacement still warns.
+                f"{model_id}|{field_path}",
                 f"'match_threshold' is not read on primitive field "
-                f"'{field_path}'; it is the object-level threshold and has no "
-                f"effect here. Use 'threshold' for this field, or set "
-                f"'match_threshold' on the model or on a 'structured_model' "
-                f"field."
+                f"'{field_path}'{of_model}; "
+                f"it is the object-level threshold, so it is "
+                f"ignored and the field scores at its 'threshold'. Use "
+                f"'threshold' for this field, or set 'match_threshold' on the "
+                f"model or on a 'structured_model' field. This becomes a "
+                f"ValueError in 1.1.0.",
+                category=UserWarning,
+                stacklevel=_MATCH_THRESHOLD_STACKLEVEL,
             )
 
         # `infer_unspecified_fields` scopes a SUBTREE, so it is meaningful only on
@@ -490,6 +508,13 @@ class FieldConverter:
             default = ...
         elif not required and default == ...:
             default = None
+
+        # Widen a list of models to Optional when its default is None, as the
+        # primitive path above does (#149). Otherwise an exported
+        # `Optional[List[Model]]` rebuilt as `List[Model]` and rejected the
+        # None the original accepts, which scores the same as [].
+        if type_string == "list_structured_model" and default is None:
+            field_type = Optional[field_type]
 
         # CRITICAL FIX: Create ComparableField for nested models to enable proper comparison
         # Extract threshold and weight from field configuration

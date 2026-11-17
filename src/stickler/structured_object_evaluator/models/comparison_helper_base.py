@@ -11,6 +11,7 @@ from .comparison_helper import ComparisonHelper, _match_non_structured_lists
 from .hungarian_helper import HungarianHelper
 from .null_helper import NullHelper
 from .reporting_context import ReportingContext
+from .threshold_helper import ThresholdHelper
 
 DEFAULT_MATCH_THRESHOLD = 0.7
 
@@ -162,7 +163,11 @@ class ComparisonHelperBase(ABC):
                 is_match = (
                     bool(verdicts[pair_index])
                     if verdicts is not None
-                    else bool(similarity_score >= match_threshold)
+                    else bool(
+                        ThresholdHelper.is_above_threshold(
+                            similarity_score, match_threshold
+                        )
+                    )
                 )
                 
                 # Create reason

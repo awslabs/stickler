@@ -35,6 +35,15 @@ def _join_path(prefix: str, name: str) -> str:
     return f"{prefix}.{name}" if prefix else name
 
 
+def _error_record(doc_id: str, exc: Exception, **extra: Any) -> Dict[str, Any]:
+    return {
+        "doc_id": doc_id,
+        "error": str(exc),
+        "error_type": type(exc).__name__,
+        **extra,
+    }
+
+
 def _migrate_legacy_acc_states(state: Dict[str, Any]) -> Dict[str, Any]:
     """Lift pre-accumulator confidence keys into the new ``accumulators`` shape.
 
@@ -244,18 +253,7 @@ class BulkStructuredModelEvaluator:
                 self._jsonl_handle.flush()
 
         except Exception as e:
-            error_record = {
-                "doc_id": doc_id,
-                "error": str(e),
-                "error_type": type(e).__name__,
-            }
-
-            if not self.elide_errors:
-                self._errors.append(error_record)
-                self._confusion_matrix["overall"]["fn"] += 1
-
-            if self.verbose:
-                print(f"Error processing document {doc_id}: {str(e)}")
+            self._record_document_failure(doc_id, e)
 
     def update_from_comparison_result(
         self,
@@ -304,12 +302,9 @@ class BulkStructuredModelEvaluator:
                     acc.accumulate(comparison_result, prediction_raw)
                 except Exception as acc_err:
                     self._accumulator_errors[acc.name] += 1
-                    acc_error_record = {
-                        "doc_id": doc_id,
-                        "error": str(acc_err),
-                        "error_type": type(acc_err).__name__,
-                        "accumulator": acc.name,
-                    }
+                    acc_error_record = _error_record(
+                        doc_id, acc_err, accumulator=acc.name
+                    )
                     if not self.elide_errors:
                         self._errors.append(acc_error_record)
                     if self.verbose:
@@ -325,18 +320,16 @@ class BulkStructuredModelEvaluator:
                 print(f"Processed {self._processed_count} documents ({elapsed:.2f}s)")
 
         except Exception as e:
-            error_record = {
-                "doc_id": doc_id,
-                "error": str(e),
-                "error_type": type(e).__name__,
-            }
+            self._record_document_failure(doc_id, e)
 
-            if not self.elide_errors:
-                self._errors.append(error_record)
-                self._confusion_matrix["overall"]["fn"] += 1
+    def _record_document_failure(self, doc_id: str, exc: Exception) -> None:
+        error_record = _error_record(doc_id, exc)
+        if not self.elide_errors:
+            self._errors.append(error_record)
+            self._confusion_matrix["overall"]["fn"] += 1
 
-            if self.verbose:
-                print(f"Error processing document {doc_id}: {str(e)}")
+        if self.verbose:
+            print(f"Error processing document {doc_id}: {str(exc)}")
 
     def update_batch(
         self, batch_data: List[Tuple[StructuredModel, StructuredModel, Optional[str]]]
@@ -456,10 +449,19 @@ class BulkStructuredModelEvaluator:
     ) -> None:
         """Recursively accumulate field-level CM counts and threshold_applied_score.
 
-        Walks both ``fields`` (object subtrees) and ``nested_fields``
-        (list-of-StructuredModel) so per-field ``mean_score`` is recorded
-        at every node compare_with emits, including leaves under list
-        parents.
+        Walks ``fields``, which holds both object subtrees and the element
+        fields of a list of StructuredModel, so CM counts are recorded at
+        every node compare_with emits. Score sums (for ``mean_score``) are
+        recorded only where a node carries a finite
+        ``threshold_applied_score``. Inside a list element, only the
+        element's own StructuredModel and list-of-StructuredModel fields
+        (``items.addr``, ``items.parts``) carry one, copied from the first
+        matched element pair. Every other path inside an element (leaves,
+        primitive lists, ``items.addr.geo``) carries CM counts only, so it
+        gets no ``mean_score`` (see #249). An element pair below the match
+        threshold emits no element fields, so every path inside an element
+        counts matched pairs only.
+        ``nested_fields`` is also walked, but compare_with no longer emits it.
         """
         for field_name, field_data in fields_dict.items():
             if not isinstance(field_data, dict):

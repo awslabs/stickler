@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from .field_comparison_helper import FieldComparisonHelper
 from .null_helper import NullHelper
 from .reporting_context import ReportingContext
+from .threshold_helper import ThresholdHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -146,7 +147,9 @@ class FieldComparisonCollector:
                     
                     # Determine if this is a match based on threshold
                     info = self.model._get_comparison_info(field_name)
-                    is_match = bool(raw_score >= info.threshold)
+                    is_match = bool(
+                        ThresholdHelper.is_above_threshold(raw_score, info.threshold)
+                    )
                     
                     # Determine reason
                     if is_match:

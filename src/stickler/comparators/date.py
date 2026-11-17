@@ -424,12 +424,12 @@ class DateComparator(BaseComparator):
         # allow_partial_year=True) the year on the year-less side is a
         # fictional 1900 placeholder, so we compare on (month, day) only.
         if year_match:
-            # Normalize all three to comparable naive days: endpoints and
-            # the single may differ in tz-awareness.
-            s = self._normalize_day(single.dt)
-            lo = self._normalize_day(rng.start.dt)
-            hi = self._normalize_day(rng.end.dt)
-            inside = lo <= s <= hi
+            # Align the single against each endpoint separately: it and the
+            # endpoints may differ in tz-awareness, so it is normalized once
+            # per endpoint.
+            s_lo, lo = self._normalize_day_pair(single.dt, rng.start.dt)
+            s_hi, hi = self._normalize_day_pair(single.dt, rng.end.dt)
+            inside = lo <= s_lo and s_hi <= hi
         else:
             inside = self._md_in_md_range(
                 (single.dt.month, single.dt.day),
@@ -563,10 +563,10 @@ class DateComparator(BaseComparator):
         """Jaccard overlap between two date ranges, day-level."""
         # Normalize to comparable naive days so endpoints from different
         # ranges (possibly mixed tz-awareness) can be min/max'd together.
-        a_lo = self._normalize_day(a.start.dt)
-        a_hi = self._normalize_day(a.end.dt)
-        b_lo = self._normalize_day(b.start.dt)
-        b_hi = self._normalize_day(b.end.dt)
+        # Each cross pair is aligned like the single-date path (a naive side
+        # borrows the aware side's tzinfo) before collapsing to days.
+        a_lo, b_lo = self._normalize_day_pair(a.start.dt, b.start.dt)
+        a_hi, b_hi = self._normalize_day_pair(a.end.dt, b.end.dt)
 
         # Inclusive day count.
         intersect_lo = max(a_lo, b_lo)
@@ -781,17 +781,20 @@ class DateComparator(BaseComparator):
     def _truncate_day(dt: datetime) -> datetime:
         return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    @staticmethod
-    def _normalize_day(dt: datetime) -> datetime:
-        """Collapse to a tz-naive midnight so any two dates are comparable.
+    @classmethod
+    def _normalize_day_pair(
+        cls, dt1: datetime, dt2: datetime
+    ) -> tuple[datetime, datetime]:
+        """Align two datetimes like the single-date path, then collapse to days.
 
-        Aware datetimes are converted to UTC first; the result is always
-        naive, so values that started with differing tz-awareness can be
-        ordered against each other without raising ``TypeError``.
+        Both aware: normalized to UTC. One naive: it borrows the aware side's
+        tzinfo. The results are tz-naive midnights, comparable to each other.
         """
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        a, b = cls._align_timezones(dt1, dt2)
+        return (
+            cls._truncate_day(a).replace(tzinfo=None),
+            cls._truncate_day(b).replace(tzinfo=None),
+        )
 
     @classmethod
     def _dates_equal_day(cls, dt1: datetime, dt2: datetime) -> bool:

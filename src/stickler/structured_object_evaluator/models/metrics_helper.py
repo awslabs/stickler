@@ -3,6 +3,8 @@
 from collections import OrderedDict
 from typing import Any, Dict
 
+from .threshold_helper import ThresholdHelper
+
 
 class MetricsHelper:
     """Helper class for calculating and aggregating confusion matrix metrics."""
@@ -142,7 +144,7 @@ class MetricsHelper:
             Dictionary with TP, FP, FN, TN counts converted to metrics
         """
         # For single field comparison: if score >= threshold, it's TP, otherwise FP/FN
-        if score >= threshold:
+        if ThresholdHelper.is_above_threshold(score, threshold):
             tp = score  # Proportional TP credit
             fp = 1 - score if score < 1.0 else 0  # Small FP for imperfect matches
             fn = 0
