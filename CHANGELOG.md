@@ -69,6 +69,33 @@ Each release links to full notes on the
   `html.escape`, and reads the same
   ([#449](https://github.com/awslabs/stickler/issues/449))
 
+### Documentation
+
+- The list contract is stated once, as a table in `classification-logic.md`
+  (pairing, bar, counts, recursion, score, reports), and other pages link to
+  it instead of restating it. Scoring is unchanged. Claims corrected against
+  measured output:
+  - A list declared without `ComparableField` pairs against the class
+    `match_threshold` (`0.7` unless set), not `0.5`.
+  - A list's element order does not matter, but a nested list element is
+    compared as one value, and on the zero-config path it must match exactly,
+    order included.
+  - The runtime `match_threshold` of `evaluate()` and `eval_for()` sets only
+    `matched` on a `StructuredModel` class
+    ([#416](https://github.com/awslabs/stickler/issues/416)). On a plain
+    pydantic class it also sets list pairing and the threshold of nested
+    plain-model and `dict` fields. The docstrings now say TP/FD, not TP/FN/FA.
+  - `clip_under_threshold` has no effect on `List[StructuredModel]`, so an FD
+    pair keeps its score
+    ([#415](https://github.com/awslabs/stickler/issues/415)).
+  - `aggregate` leaves out FN and FA items beside an accepted sibling, and a
+    field `threshold` on `List[StructuredModel]` raises `ValueError`.
+  - A primitive list element row's `weighted_score` in `field_comparisons` is
+    its raw similarity, unweighted. Rows inside list items are described as
+    they are today ([#418](https://github.com/awslabs/stickler/issues/418)).
+  - The Hungarian matching example shows measured counts and the list score,
+    and its result block is runnable.
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed
