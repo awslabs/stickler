@@ -63,7 +63,13 @@ Each release links to full notes on the
   subclass's fields. A ground-truth list whose first element is a model still
   raises `AttributeError` when a matched ground-truth element has no
   `compare_with()`, such as `[Inner(a="x"), "b"]` against itself.
-  Nested-model and list-annotated sub-fields otherwise count as before.
+  Nested-model and list-annotated sub-fields otherwise count as before,
+  except in a union of models whose classes declare one field with different
+  annotations. That field follows the first matched ground-truth element that
+  declares it. So with `AStr(x: Optional[str])` listed before
+  `BList(x: Optional[List[str]])`, `BList(x=["a", "b"])` against
+  `BList(x=["a", "c"])` now counts `x` as 1 TP and 1 FD, not 1 TP, as it does
+  with `BList` first.
 
   When a list element's class overrides `compare_with()` to return a score
   without recursing, a list of models in its `Any` or `object` sub-field did
