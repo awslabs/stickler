@@ -22,7 +22,7 @@ spellings in ``test_object_property_threshold.TestTheComparatorOnTheSameNodeWarn
 """
 
 import warnings
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import pytest
 
@@ -615,6 +615,10 @@ class TestANamedComparatorOnANestedModelWarnsOnBothImporters:
             "inside it, and this field's threshold with 'threshold'."
         ]
         assert _info(paths["config"][0]).threshold == 0.7
+        assert {
+            name: stickler.eval_for(model).explain()["f"]["comparator"]
+            for name, (model, _) in paths.items()
+        } == {name: "ExactComparator" for name in paths}
 
     def test_explain_reports_it_as_the_python_path_does(self, paths):
         """Not the placeholder: that is a comparator the author never wrote."""
@@ -826,6 +830,22 @@ class TestAComparatorThresholdOutOfRangeIsIgnored:
             "field keeps its default threshold of 0.7. To gate the field, set "
             "'threshold' to a value from 0.0 to 1.0."
         ]
+        _, caught = _recorded(
+            lambda: _schema(
+                {
+                    "type": "object",
+                    "properties": {"a": _SLEAF},
+                    "x-aws-stickler-comparator-config": {"threshold": value},
+                }
+            )
+        )
+        assert [str(w.message) for w in caught] == [
+            f"'x-aws-stickler-comparator-config' threshold {value!r} on field "
+            "'f' of model 'DynamicModel(fields: f)' is not a number from 0.0 to "
+            "1.0, so it is ignored and the field keeps its default threshold of "
+            "0.7. To gate the field, set 'x-aws-stickler-threshold' to a value "
+            "from 0.0 to 1.0."
+        ]
 
 
 class _Strict95(BaseComparator):
@@ -868,6 +888,109 @@ class TestANestedModelAsksANamedComparatorForItsThreshold:
         }
         assert {_nested_verdict(m) for m, _ in paths.values()} == {(0, 1)}
         assert "set 'threshold' to 0.95 to keep this gate" in paths["config"][1][0]
+
+
+class _Counting(BaseComparator):
+    """Counts its calls, to show it is installed and never called."""
+
+    calls = 0
+
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold=threshold)
+
+    def _compare(self, a, b):
+        type(self).calls += 1
+        return 1.0 if a == b else 0.0
+
+
+_UNION_KEYS = [f"k{i}" for i in range(20)]
+_UNION_ARM = {
+    "type": "object",
+    "properties": {k: _SLEAF for k in _UNION_KEYS},
+    "required": _UNION_KEYS,
+}
+_UNION_OTHER = {"type": "object", "properties": {"c": _SLEAF}, "required": ["c"]}
+
+
+@pytest.mark.parametrize(
+    "union",
+    [
+        {"anyOf": [_UNION_ARM, _UNION_OTHER]},
+        {"oneOf": [_UNION_ARM, _UNION_OTHER]},
+        {"anyOf": [_UNION_ARM, _UNION_OTHER, {"type": "null"}]},
+    ],
+    ids=["anyOf", "oneOf", "anyOf-null"],
+)
+class TestAUnionOfObjectsReadsItsKeysAsPythonDoes:
+    """A union of objects is not a nested model, so neither path warns.
+
+    A comparator-config threshold gates it, and a named comparator is installed
+    and never called, as for a Python `Union` field.
+    """
+
+    @staticmethod
+    def _verdict(model):
+        """One of twenty fields differs: 0.95, a TP at 0.95, an FD at 1.0."""
+        gt = {k: "x" for k in _UNION_KEYS}
+        result = model(f=gt).compare_with(
+            model(f={**gt, "k0": "y"}), include_confusion_matrix=True
+        )
+        overall = result["confusion_matrix"]["fields"]["f"]["overall"]
+        return overall["tp"], overall["fd"]
+
+    def test_a_comparator_config_threshold_gates_it(self, union):
+        model, no_effect = _imported(
+            lambda: _schema(
+                {**union, "x-aws-stickler-comparator-config": {"threshold": 0.95}}
+            )
+        )
+        assert no_effect == []
+        assert _info(model).threshold == 0.95
+        assert self._verdict(model) == (1, 0)
+
+    def test_a_named_comparator_is_installed_and_never_called(self, union, monkeypatch):
+        monkeypatch.setitem(
+            comparator_registry._global_registry._registry,
+            "_CountingForUnionTests",
+            _Counting,
+        )
+        monkeypatch.setattr(_Counting, "calls", 0)
+        model, no_effect = _imported(
+            lambda: _schema(
+                {**union, "x-aws-stickler-comparator": "_CountingForUnionTests"}
+            )
+        )
+        assert no_effect == []
+        assert isinstance(_info(model).comparator, _Counting)
+        self._verdict(model)
+        assert _Counting.calls == 0
+
+
+def _python_arm(keys):
+    return type(
+        "Arm",
+        (StructuredModel,),
+        {
+            "__annotations__": {k: str for k in keys},
+            **{
+                k: ComparableField(comparator=ExactComparator(), threshold=1.0)
+                for k in keys
+            },
+        },
+    )
+
+
+def test_a_python_union_field_reads_its_comparator_the_same_way(monkeypatch):
+    """The Python side of `TestAUnionOfObjectsReadsItsKeysAsPythonDoes`."""
+    monkeypatch.setattr(_Counting, "calls", 0)
+    union = Union[_python_arm(_UNION_KEYS), _python_arm(["c"])]
+    model, no_effect = _imported(
+        lambda: _python(union, ComparableField(comparator=_Counting(threshold=0.95)))
+    )
+    assert no_effect == []
+    assert _info(model).threshold == 0.95
+    assert TestAUnionOfObjectsReadsItsKeysAsPythonDoes._verdict(model) == (1, 0)
+    assert _Counting.calls == 0
 
 
 class TestAListOfModelsRebuildsItsComparatorWithTheRestOfItsConfig:
@@ -1052,3 +1175,23 @@ class TestNestedModelWarningsReachEveryModel:
         )
         assert [w.filename for w in caught] == [__file__]
         assert "field 'f.addr' of model 'Cfg'" in str(caught[0].message)
+
+    def test_two_levels_down_on_the_schema_path_too(self):
+        _, caught = _recorded(
+            lambda: _schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "addr": {
+                            "type": "object",
+                            "x-aws-stickler-comparator": "ExactComparator",
+                            "properties": {"a": _SLEAF},
+                        }
+                    },
+                }
+            )
+        )
+        assert [w.filename for w in caught] == [__file__]
+        assert "field 'f.addr' of model 'DynamicModel(fields: f)'" in str(
+            caught[0].message
+        )

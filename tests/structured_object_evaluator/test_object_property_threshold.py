@@ -81,8 +81,8 @@ class TestTheDeclaredThresholdIsRead:
         """The asymmetry that identified this as a defect, pinned.
 
         One node, and the threshold was the only one of these three dropped.
-        `x-aws-stickler-comparator` on the same node warns and is not
-        installed; see `TestTheComparatorOnTheSameNodeWarns`.
+        `x-aws-stickler-comparator` on the same node warns, and is installed
+        but never called; see `TestTheComparatorOnTheSameNodeWarns`.
         """
         model = StructuredModel.from_json_schema(
             _schema(
