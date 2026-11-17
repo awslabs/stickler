@@ -286,6 +286,52 @@ def _reject_unknown_extensions(
         )
 
 
+def _resolve_local_ref(
+    schema: Any, ref: Any
+) -> Tuple[Any, Tuple[str, ...], Optional[Tuple[str, ...]], Any]:
+    """Resolve a local `$ref`: its node, its pointer, and the innermost
+    definition entry that contains it, with that entry's body."""
+    if not isinstance(ref, str) or not ref.startswith("#"):
+        return None, (), None, None
+    pointer = ref[1:]
+    if pointer and not pointer.startswith("/"):
+        return None, (), None, None
+    parts = (
+        tuple(
+            part.replace("~1", "/").replace("~0", "~")
+            for part in pointer[1:].split("/")
+        )
+        if pointer
+        else ()
+    )
+    node: Any = schema
+    entry: Optional[Tuple[str, ...]] = None
+    entry_body: Any = None
+    for index, part in enumerate(parts):
+        if not isinstance(node, dict) or part not in node:
+            return None, (), None, None
+        if index > 0 and parts[index - 1] in ("$defs", "definitions"):
+            entry, entry_body = parts[: index + 1], node[part]
+        node = node[part]
+    return node, parts, entry, entry_body
+
+
+def _ref_label(target: Tuple[str, ...], entry: Optional[Tuple[str, ...]]) -> str:
+    """A whole entry is a definition; a node inside one is an object."""
+    kind = "definition" if entry is not None and target == entry else "object"
+    return f"{kind} '{'.'.join(target)}'"
+
+
+def _ref_chain(schema: Any, node: Any, where: str):
+    """The node, then each alias it `$ref`s: every hop is the same class."""
+    seen: set = set()
+    while isinstance(node, dict) and id(node) not in seen:
+        seen.add(id(node))
+        yield node, where
+        node, target, entry, _ = _resolve_local_ref(schema, node.get("$ref"))
+        where = _ref_label(target, entry)
+
+
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})
 # Keywords whose values are instance data, not schemas.
 _DATA_KEYWORDS = frozenset({"const", "default", "enum", "examples"})
@@ -1019,45 +1065,12 @@ class JsonSchemaImporter:
         def resolve(
             ref: Any,
         ) -> Tuple[Any, Tuple[str, ...], Optional[Tuple[str, ...]], Any]:
-            """Resolve a local `$ref`: its node, its pointer, and the innermost
-            definition entry that contains it, with that entry's body."""
-            if not isinstance(ref, str) or not ref.startswith("#"):
-                return None, (), None, None
-            pointer = ref[1:]
-            if pointer and not pointer.startswith("/"):
-                return None, (), None, None
-            parts = (
-                tuple(
-                    part.replace("~1", "/").replace("~0", "~")
-                    for part in pointer[1:].split("/")
-                )
-                if pointer
-                else ()
-            )
-            node: Any = schema
-            entry: Optional[Tuple[str, ...]] = None
-            entry_body: Any = None
-            for index, part in enumerate(parts):
-                if not isinstance(node, dict) or part not in node:
-                    return None, (), None, None
-                if index > 0 and parts[index - 1] in ("$defs", "definitions"):
-                    entry, entry_body = parts[: index + 1], node[part]
-                node = node[part]
-            return node, parts, entry, entry_body
+            return _resolve_local_ref(schema, ref)
 
-        def label(target: Tuple[str, ...], entry: Optional[Tuple[str, ...]]) -> str:
-            """A whole entry is a definition; a node inside one is an object."""
-            kind = "definition" if entry is not None and target == entry else "object"
-            return f"{kind} '{'.'.join(target)}'"
+        label = _ref_label
 
         def chain(node: Any, where: str):
-            """The node, then each alias it `$ref`s: every hop is the same class."""
-            seen: set = set()
-            while isinstance(node, dict) and id(node) not in seen:
-                seen.add(id(node))
-                yield node, where
-                node, target, entry, _ = resolve(node.get("$ref"))
-                where = label(target, entry)
+            return _ref_chain(schema, node, where)
 
         def collect(value: Any, path: str) -> None:
             """The `$defs`/`definitions` mappings inside a value not walked."""
