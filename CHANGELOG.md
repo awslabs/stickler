@@ -34,7 +34,10 @@ Each release links to full notes on the
     constructor passes to `super().__init__()`, which
     `ComparableField(comparator=...)` already adopted: a field that names that
     comparator and no threshold moves from the importer's default, 0.5 or a
-    schema type default such as 1.0 for an enum, to that value. No built-in
+    schema type default such as 1.0 for an enum, to that value. For a
+    registered comparator whose constructor passes `threshold=0.95`, a string
+    pair it scores 0.9 was a TP at 0.5 and is an FD at 0.95 now, as in
+    Python. No built-in
     comparator passes one when built without a threshold, so fields naming
     one do not move. A field threshold still wins, and a comparator threshold
     outranks an inferred one. This includes a `structured_model` or
