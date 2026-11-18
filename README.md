@@ -25,7 +25,7 @@ That installs the comparison engine and confidence calibration, which is everyth
 | `[llm]` | strands-agents, jinja2 | `LLMComparator` (LLM-as-judge comparison) |
 | `[bert]` | evaluate, torch, bert-score | `BERTComparator` (BERTScore similarity) |
 | `[docsplit]` | pandas | Document packet splitting metrics |
-| `[reporting]` | pandas | Confusion-matrix tables in HTML reports |
+| `[reporting]` | pandas | Passing a DataFrame as `ProcessEvaluation.matrix` (HTML reports need no extra) |
 | `[all]` | all of the above except the ML stack | Convenience |
 
 Importing a feature without its extra raises an error naming the extra to install.

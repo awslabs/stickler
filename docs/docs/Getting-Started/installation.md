@@ -39,7 +39,7 @@ pip install stickler-eval[semantic]
 
 ### BERTComparator
 
-Uses BERTScore for contextual similarity. Runs locally, but downloads `distilbert-base-uncased` from Hugging Face on first use.
+Uses BERTScore for contextual similarity. Runs locally, but downloads `roberta-large` (about 1.4 GB) from Hugging Face on first use.
 
 ```bash
 pip install stickler-eval[bert]
