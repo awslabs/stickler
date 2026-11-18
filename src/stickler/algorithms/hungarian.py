@@ -244,14 +244,26 @@ class HungarianMatcher:
             # to, so the solver picks one only when no allowed pairing is left,
             # and it is dropped below. Dropping it alone after an unconstrained
             # solve would give up the allowed pairing the exclusion makes room for.
+            # The sentinel is derived from the allowed costs, not assumed from
+            # scores in [0, 1], because a comparator may score outside it.
             excluded_pairs = set()
             if self.is_pair_excluded is not None:
-                excluded_cost = float(max(len(list1), len(list2)) + 1)
                 for i, item1 in enumerate(list1):
                     for j, item2 in enumerate(list2):
                         if self.is_pair_excluded(item1, item2):
-                            cost_matrix[i][j] = excluded_cost
                             excluded_pairs.add((i, j))
+                if excluded_pairs:
+                    allowed = [
+                        cost_matrix[i][j]
+                        for i in range(len(list1))
+                        for j in range(len(list2))
+                        if (i, j) not in excluded_pairs
+                    ]
+                    highest = max(allowed, default=0.0)
+                    spread = highest - min(allowed, default=0.0)
+                    excluded_cost = highest + min(len(list1), len(list2)) * spread + 1.0
+                    for i, j in excluded_pairs:
+                        cost_matrix[i][j] = excluded_cost
 
             # Compute the optimal assignment
             matched_indices = [
@@ -350,10 +362,11 @@ class HungarianMatcher:
                 (i, j, similarity_matrix[i, j]) for i, j in matched_indices
             ]
 
-        # match() assigns exactly min(m, n) pairs unless pairs are excluded, so
-        # the four counts below cover max(m, n) items once each. The threshold
-        # splits the pairs into tp and fd. It does not un-match them, which is
-        # why a paired item never reaches fn or fa.
+        # match() assigns exactly min(m, n) pairs unless pairs are excluded. The
+        # four counts below cover m + n - k items, so a vetoed pair leaves one
+        # item in fn and one in fa. The threshold splits the pairs into tp and
+        # fd. It does not un-match them, which is why a paired item never
+        # reaches fn or fa.
         tp = sum(
             1
             for _, _, score in matched_pairs
