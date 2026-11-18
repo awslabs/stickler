@@ -27,6 +27,7 @@ so both dump modes agree for a ``Dict[date, X]``.
 
 Results are cached in a ``WeakKeyDictionary`` keyed on
 ``(cls, weight_hints, match_threshold)`` so repeated ``evaluate`` calls in a loop are cheap without pinning user classes in memory.
+``match_threshold`` is keyed as the ``float`` it is converted to, so equal values share an entry.
 """
 
 from __future__ import annotations
@@ -60,6 +61,7 @@ from ..structured_object_evaluator.models.comparator_registry import (
 from ..structured_object_evaluator.models.model_factory import ModelFactory
 from ..structured_object_evaluator.models.structured_model import StructuredModel
 from ..structured_object_evaluator.models.threshold_helper import threshold_from_a_bool
+from ..structured_object_evaluator.models.threshold_rule import as_threshold
 from ..utils.canonical import (
     canonicalize_json,
     canonicalize_json_sorted,
@@ -318,32 +320,37 @@ def _collect_specs(
 # --- internals --------------------------------------------------------------
 
 
-def _runtime_match_threshold(match_threshold: Any) -> Any:
-    """Check the ``match_threshold`` given at evaluation time, as this builder always has.
+def _runtime_match_threshold(match_threshold: Any) -> float:
+    """The ``match_threshold`` given at evaluation time, checked and as a ``float``.
 
     ``evaluate()``, ``eval_for()`` and ``from_pydantic()`` reach this for a plain
     pydantic model. The shared threshold rule (``threshold_rule``) covers the
     class, config and schema paths only, so this keeps the older check and its
-    message, and lets through what it let through: a ``bool`` as 1 or 0.
-    Without this, the shadow classes built below would apply the shared rule
-    to the runtime value, under the name of a generated class the caller never
-    wrote.
+    message. Without it, the shadow classes built below would apply the shared
+    rule to the runtime value, under the name of a generated class the caller
+    never wrote.
 
-    A ``bool`` is passed on as the ``float`` it counted as, which the shadow
-    classes accept and which scores the same. ``structured_model_for`` builds
-    them under ``threshold_from_a_bool``, so ``False`` does not warn that the
-    threshold is 0.0, as it did not before.
+    It accepts what that rule accepts, converted as class and field thresholds
+    are (``as_threshold``): an ``int`` or ``float``, a ``Decimal``, a
+    ``Fraction``, a numpy number or a 0-d numpy array, from 0.0 to 1.0. The
+    older check took only ``int`` and ``float``, so another type raised on a
+    class's first call and scored on a later one with an equal value, which
+    hit the cache. A string, a numpy boolean, NaN, infinity or a number out of
+    range raises. A Python ``bool`` is let through as 1.0 or 0.0, as before,
+    and ``structured_model_for`` builds under ``threshold_from_a_bool`` so
+    ``False`` does not warn that the threshold is 0.0.
+
+    Always a ``float``, so equal values share one cache entry and build alike.
     """
-    if not isinstance(match_threshold, (int, float)) or not (
-        0.0 <= match_threshold <= 1.0
-    ):
+    if isinstance(match_threshold, bool):
+        return float(match_threshold)
+    number = as_threshold(match_threshold)
+    if number is None:
         raise ValueError(
             "match_threshold must be a number between 0.0 and 1.0, "
             f"got: {match_threshold}"
         )
-    if isinstance(match_threshold, bool):
-        return float(match_threshold)
-    return match_threshold
+    return float(number)
 
 
 def _build(

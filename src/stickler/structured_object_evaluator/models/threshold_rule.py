@@ -12,7 +12,8 @@ differ only in how they quote keys and values (:data:`PYTHON`, :data:`CONFIG`,
 
 The ``match_threshold`` passed to ``evaluate()`` or ``eval_for()`` is outside
 this rule: for a plain pydantic model ``stickler.auto.builder`` keeps its own
-check, and for a ``StructuredModel`` it is not checked.
+check and message, converting an in-range value with :func:`as_threshold` but
+keeping ``bool`` as 1.0 or 0.0, and for a ``StructuredModel`` it is not checked.
 
 Only a value that becomes a threshold is checked. A comparator's constructor is
 not: a custom comparator may use ``threshold`` for something else, and the

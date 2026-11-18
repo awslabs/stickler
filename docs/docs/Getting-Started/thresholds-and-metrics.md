@@ -84,7 +84,7 @@ spec = stickler.eval_for(Invoice, match_threshold=0.8)
 
 **Default:** the class's `match_threshold` on a `StructuredModel`, else `0.7`
 
-**Valid values:** a number from 0.0 to 1.0. This value is outside the rule in [Valid Threshold Values](#valid-threshold-values). For a `StructuredModel` it is not checked, so pass one in range. For a plain pydantic model, an `int` or `float` outside 0.0 to 1.0, or a value of another type such as a string or a `Decimal`, raises `ValueError: match_threshold must be a number between 0.0 and 1.0`.
+**Valid values:** a number from 0.0 to 1.0. This value is outside the rule in [Valid Threshold Values](#valid-threshold-values). For a `StructuredModel` it is not checked, so pass one in range. For a plain pydantic model, a number in range of any real type, including a `Decimal`, a `Fraction` or a numpy number, is converted with `float()`, and `True` and `False` count as 1.0 and 0.0. A string, a numpy boolean, NaN, infinity or a number outside 0.0 to 1.0 raises `ValueError: match_threshold must be a number between 0.0 and 1.0`.
 
 ## Threshold Precedence
 

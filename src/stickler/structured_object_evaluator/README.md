@@ -337,7 +337,8 @@ The importers check the same rule on load, with the shared message from `thresho
 comparator threshold the field overrides, or one on a resolved `List[StructuredModel]` field, is not
 checked. The runtime `match_threshold` is outside the rule: for a plain pydantic model
 `stickler.auto.builder` keeps its own check (`match_threshold must be a number between 0.0 and
-1.0`), and for a `StructuredModel` it is not checked.
+1.0`), which converts an in-range value to `float` with `as_threshold` and keeps `bool` as 1.0 or
+0.0, and for a `StructuredModel` it is not checked.
 
 `default_factory` is honored, for a mutable default such as `default_factory=list`. Combining
 it with a `default` value raises `TypeError`, as in Pydantic, `None` included. `default=...` and

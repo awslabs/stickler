@@ -1965,13 +1965,44 @@ class TestExportAndReloadAreUnchanged:
         assert model.to_stickler_config()["fields"]["items"]["threshold"] == 0.9
 
 
+def _runtime_refused():
+    """Runtime ``match_threshold`` values a plain model refuses."""
+    values = [
+        85,
+        -1,
+        "0.9",
+        float("nan"),
+        float("inf"),
+        Decimal("85"),
+        Decimal("NaN"),
+        Fraction(3, 2),
+    ]
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover - numpy is a dependency
+        return values
+    return values + [np.True_, np.float32(1.5), np.float64("inf")]
+
+
+def _runtime_equal_values():
+    """Pairs of equal runtime ``match_threshold`` values of different types."""
+    values = [(0.5, Decimal("0.5")), (0.5, Fraction(1, 2)), (1, 1.0)]
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover - numpy is a dependency
+        return values
+    return values + [(1, np.int64(1)), (0.5, np.float32(0.5)), (np.int64(1), 1)]
+
+
 class TestTheRuntimeMatchThresholdIsOutsideTheRule:
     """``evaluate()``, ``eval_for()`` and ``from_pydantic()`` keep their own check.
 
     For a plain pydantic model they build shadow classes, which the rule would
     check under a generated name (``FlatEval``) the caller never wrote. So the
     runtime value gets the check it always had, with its message, and a
-    ``bool`` still counts as 1 or 0. For a ``StructuredModel`` it is not checked.
+    ``bool`` still counts as 1 or 0. Any other in-range real number is
+    accepted as a ``float``, as a class or field threshold is. For a
+    ``StructuredModel`` it is not checked.
     """
 
     @staticmethod
@@ -2001,7 +2032,7 @@ class TestTheRuntimeMatchThresholdIsOutsideTheRule:
             "list": Lines(items=[Line(sku="a")]),
         }
 
-    @pytest.mark.parametrize("value", [85, -1, "0.9", float("nan"), Decimal("0.9")])
+    @pytest.mark.parametrize("value", _runtime_refused())
     @pytest.mark.parametrize("shape", ["flat", "nested", "list"])
     def test_a_plain_model_raises_the_older_message(self, shape, value):
         import stickler
@@ -2027,6 +2058,58 @@ class TestTheRuntimeMatchThresholdIsOutsideTheRule:
             stickler.eval_for(type(model), match_threshold=value)
         assert result.overall_score == 1.0
         assert result.matched is True
+
+    @staticmethod
+    def _differing(gt):
+        """A prediction that differs from ``gt`` in one leaf."""
+        if hasattr(gt, "items"):
+            return gt.model_copy(update={"items": [type(gt.items[0])(sku="ab")]})
+        return gt.model_copy(update={"vendor": "ACME Inc"})
+
+    @pytest.mark.parametrize("value", _other_reals(), ids=repr)
+    @pytest.mark.parametrize("shape", ["flat", "nested", "list"])
+    def test_another_real_number_scores_as_its_float(self, shape, value):
+        """A ``Decimal``, ``Fraction`` or numpy number, on a class's first call.
+
+        The older check took only ``int`` and ``float``, so this raised unless an
+        equal value had reached the class first. Now it is converted as a class
+        or field threshold is, and scores as its ``float`` on a fresh class.
+        """
+        import stickler
+
+        gt = self._models()[shape]
+        fresh = self._models()[shape]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            got = stickler.evaluate(gt, self._differing(gt), match_threshold=value)
+            spec = stickler.eval_for(type(gt), match_threshold=value)
+            want = stickler.evaluate(
+                fresh, self._differing(fresh), match_threshold=float(value)
+            )
+        assert (got.overall_score, got.matched) == (want.overall_score, want.matched)
+        assert got.field_scores == want.field_scores
+        assert type(spec._match_threshold) is float
+        assert type(spec.eval_model.match_threshold) is float
+        assert spec._match_threshold == float(value)
+        if shape == "nested":
+            assert type(spec.explain()["addr"]["threshold"]) is float
+
+    @pytest.mark.parametrize("first, then", _runtime_equal_values(), ids=repr)
+    def test_an_equal_value_scores_and_caches_as_the_first(self, first, then):
+        """``match_threshold=1`` then ``np.int64(1)`` scores 1.0, matched, as on dev.
+
+        The cache is keyed on the converted ``float``, so the two share one model.
+        """
+        import stickler
+
+        model = self._models()["flat"]
+        before = stickler.evaluate(model, model, match_threshold=first)
+        after = stickler.evaluate(model, model, match_threshold=then)
+        assert (after.overall_score, after.matched) == (1.0, True)
+        assert (before.overall_score, before.matched) == (1.0, True)
+        first_model = stickler.eval_for(type(model), match_threshold=first).eval_model
+        then_model = stickler.eval_for(type(model), match_threshold=then).eval_model
+        assert then_model is first_model
 
     @pytest.mark.parametrize("value, warns", [(False, False), (0.0, True)])
     def test_false_does_not_warn_that_the_threshold_is_zero(self, value, warns):

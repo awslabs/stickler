@@ -76,11 +76,16 @@ Each release links to full notes on the
     scoring below it. The importers refused it, except a numpy float64, which
     is a `float` subclass and loaded unconverted. The `match_threshold`
     passed to `evaluate()` or `eval_for()` is outside this rule: for a plain
-    pydantic model it keeps its own check, now on every call, and for a
-    `StructuredModel` it is not checked. Every path gives one message. It
-    quotes the value as written, names the model and the field, says why the
-    value fails and gives the fix in full; on the Python path it ends with
-    where the value was set. The refusal of `ComparableField(threshold=...)`
+    pydantic model it keeps its own check and message, now on every call, and
+    for a `StructuredModel` it is not checked. On a plain model it now also
+    takes any other real number from 0.0 to 1.0, such as a `Decimal`, a
+    `Fraction` or a numpy `int64` or `float32`, converted with `float()`;
+    before, one raised unless an equal value had reached the class first.
+    `True` and `False` still count as 1.0 and 0.0. Every path gives one
+    message. It quotes the value as written, names the model and the field,
+    says why the value fails and gives the fix in full; on the Python path it
+    ends with where the value was set.
+    The refusal of `ComparableField(threshold=...)`
     on a `List[StructuredModel]` field uses the same template, says to remove
     it and names the element class, and is headed `Unused threshold` whatever
     its value. The warning for a comparator threshold there names the model
