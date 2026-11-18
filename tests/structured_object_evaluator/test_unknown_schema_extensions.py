@@ -2100,6 +2100,102 @@ class TestAMemberNamedLikeAMapKeywordIsASchema:
         assert set(model.model_fields) - {"extra_fields"} == {"a"}
 
 
+class TestAKeywordIsReadOnlyWhereASchemaHoldsIt:
+    """A member of `components` or an `x-*` payload named like a list or map
+    keyword (`anyOf`, `prefixItems`, `definitions`) is a schema, so a `$ref`
+    through it reads the `properties` under it as names.
+
+    Read as the keyword, the segment after it was taken for an index or an
+    entry name, so a property named `properties` or `items` under it was read
+    as that keyword. A field key there raised as not read, and a property
+    named `anyOf` or `patternProperties` raised a shape error, where dev
+    imports and reads the key. A typo on a property there imported, where dev
+    raises.
+    """
+
+    MEMBERS = pytest.mark.parametrize(
+        "holder, name",
+        (
+            ("x-models", "anyOf"),
+            ("x-models", "oneOf"),
+            ("x-models", "allOf"),
+            ("x-models", "prefixItems"),
+            ("components/schemas", "anyOf"),
+            ("components/schemas", "allOf"),
+            ("x-models", "definitions"),
+            ("x-models", "$defs"),
+            ("x-models", "dependentSchemas"),
+        ),
+    )
+
+    @staticmethod
+    def _under(holder, name, member, tail):
+        """`member` at `holder/name`, and a property `r` that `$ref`s
+        `holder/name/tail`."""
+        schema = {
+            "type": "object",
+            "properties": {"r": {"$ref": f"#/{holder}/{name}/{tail}"}},
+        }
+        node = schema
+        for part in holder.split("/"):
+            node = node.setdefault(part, {})
+        node[name] = member
+        return schema
+
+    @MEMBERS
+    @pytest.mark.parametrize(
+        "key, reads",
+        (
+            (("x-aws-stickler-threshold", 0.9), (0.9, 1.0)),
+            (("x-aws-stickler-weight", 2.0), (0.5, 2.0)),
+        ),
+        ids=("threshold", "weight"),
+    )
+    def test_a_field_key_on_a_property_named_items_is_read(
+        self, holder, name, key, reads
+    ):
+        """The target is a property named `properties`, and its own property
+        `items` reads the key, as on dev."""
+        items = {"type": "string", key[0]: key[1]}
+        member = {"properties": {"properties": {"properties": {"items": items}}}}
+        schema = self._under(holder, name, member, "properties/properties")
+        model = StructuredModel.from_json_schema(schema)
+        info = _unwrap(model.model_fields["r"].annotation)._get_comparison_info("items")
+        assert (info.threshold, info.weight) == reads
+
+    @MEMBERS
+    @pytest.mark.parametrize("keyword", ("anyOf", "allOf", "patternProperties"))
+    def test_a_property_named_like_a_keyword_under_it_is_a_name(
+        self, holder, name, keyword
+    ):
+        target = {
+            "type": "object",
+            "properties": {keyword: {"type": "string"}, "a": {"type": "string"}},
+        }
+        member = {"properties": {"properties": target}}
+        schema = self._under(holder, name, member, "properties/properties")
+        model = StructuredModel.from_json_schema(schema)
+        r = _unwrap(model.model_fields["r"].annotation)
+        assert {keyword, "a"} <= set(r.model_fields)
+
+    @MEMBERS
+    def test_a_property_named_items_under_it_is_a_property(self, holder, name):
+        """A field key is valid on a property. Read as `items`, it raised."""
+        items = {"type": "string", "x-aws-stickler-threshold": 0.9}
+        member = {"type": "object", "properties": {"items": items}}
+        schema = self._under(holder, name, member, "properties/items")
+        model = StructuredModel.from_json_schema(schema)
+        assert "r" in model.model_fields
+
+    @MEMBERS
+    def test_a_typo_on_a_property_under_it_raises(self, holder, name):
+        """As on dev, which walked the payload in place."""
+        member = {"type": "object", "properties": {"p": _TYPO}}
+        schema = self._under(holder, name, member, "properties/p")
+        with pytest.raises(ValueError, match=r"thresold.*on field '"):
+            StructuredModel.from_json_schema(schema)
+
+
 class TestAllOfRaisesOnlyWhereNothingReadsTheKeys:
     """An `allOf` arm drops its model keys, but the object it names may not.
 
@@ -3112,7 +3208,6 @@ class TestAListFormTypeBesideARef:
         }
         with pytest.raises(ValueError, match=r"Recursive .* at 't\[\]\.e'"):
             StructuredModel.from_json_schema(schema)
-
 
 class TestModelKeysBesideANonRootRef:
     """Model keys beside a `$ref` are read at the root and nowhere else.

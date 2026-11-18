@@ -361,17 +361,54 @@ _SINGLE_SCHEMA_KEYWORDS = frozenset(
 )
 
 
+def _map_holders(pointer: Tuple[str, ...]) -> List[Optional[str]]:
+    """How the walk reads each node along a JSON pointer, as if it entered
+    every key: for the root and then for the node after each segment, the
+    keyword whose map of schemas by name that node is, or None where it is
+    read as a schema. So `pointer[i]` is a name in the map `holders[i]`, or a
+    key of a schema where that is None.
+
+    One rule: a key is a keyword only where the node holding it is read as a
+    schema. The walk reads a `properties` key of every node it enters as a
+    map by name. The other map keywords (`$defs`, `definitions`,
+    `dependentSchemas`, `patternProperties`) hold names only as a keyword of
+    a schema reached from the root through schema keywords (see
+    `_position_after`), so a member named so under `components`, an `x-*`
+    payload or a data value is a schema, and so is a property named so. A
+    pointer passes only through objects (see `_resolve_local_ref`), so a list
+    keyword (`anyOf`, `allOf`, `oneOf`, `prefixItems`) before another segment
+    holds an object, which the walk reads as a schema, never as a list."""
+    holders: List[Optional[str]] = [None]
+    position = "schema"
+    for part in pointer:
+        holders.append(
+            part
+            if holders[-1] is None
+            and (
+                part == "properties"
+                or (position == "schema" and part in _NAMED_SCHEMA_KEYWORDS)
+            )
+            else None
+        )
+        position = _position_after(position, part)
+    return holders
+
+
 def _is_property_pointer(pointer: Optional[Tuple[str, ...]]) -> bool:
     """Whether a JSON pointer ends at a property: a schema under some node's
     `properties`. Read from the root, so a property NAMED `properties` is a
     name, not the keyword.
 
-    Under a key no schema has, such as `components` or an `x-*` payload, the
-    value may be a schema or a map of them, and a member of that map may be
-    named like a keyword (`#/components/schemas/properties/...`). There both
-    readings are kept, and the pointer is a property if either ends at one."""
+    It decides whether model keys there warn or raise, so it errs toward a
+    property. A property in the walk's reading (`_map_holders`) is one. So is
+    a node that ends at a property where a key no schema has, such as
+    `components` or an `x-*` payload, holds a map whose members are schemas
+    named like keywords (`#/components/schemas/properties/properties/inner`,
+    a property of the schema named `properties`)."""
     if not pointer:
         return False
+    if _map_holders(pointer)[-2] == "properties":
+        return True
     # What the next segment can be in each reading: a key of a schema
     # ("schema"), a member of a map this reader does not know ("member"), an
     # index ("index"), or a name under the keyword held.
@@ -386,50 +423,29 @@ def _walk_position(pointer: Tuple[str, ...]) -> Tuple[str, Optional[str], bool]:
     key: the path it would name, "property" or "items" when the node is one,
     and whether the pointer passes an `x-*` key of a schema.
 
-    Each segment is read as the walk reads it, a keyword wherever a schema
-    holds it, so a property NAMED `items` or `x-a` is a name."""
-    path, kind, under_x, reading = "", None, False, "schema"
-    for part in pointer:
+    Each segment is read as `_map_holders` reads it, so a property NAMED
+    `items` or `x-a` is a name, and so is a member named `definitions` or
+    `anyOf` of an `x-*` payload, whose own `properties` hold names."""
+    path, kind, under_x = "", None, False
+    for part, holder in zip(pointer, _map_holders(pointer)):
         kind = None
-        if reading == "index":
-            path = f"{path}[{part}]"
-        elif reading == "schema" and part in ("properties", *_COMBINERS):
-            pass
-        elif reading == "schema" and part == "items":
+        if holder is not None:
+            kind = "property" if holder == "properties" else None
+            path = f"{path}.{part}" if path else part
+        elif part == "properties" or part in _COMBINERS:
+            pass  # the walk keeps the path for both
+        elif part == "items":
             path, kind = f"{path}[]", "items"
         else:
-            if reading == "properties":
-                kind = "property"
-            elif reading == "schema" and part.startswith("x-"):
-                under_x = True
+            under_x = under_x or part.startswith("x-")
             path = f"{path}.{part}" if path else part
-        # The walk reads every value as a schema, never as a map of them.
-        reading = min(_next_readings({reading}, part) - {"member"})
     return path, kind, under_x
 
 
 def _is_named_map(pointer: Tuple[str, ...]) -> bool:
     """Whether the walk would meet the node at `pointer` as a map of schemas
-    by name, reading each segment as it does.
-
-    The walk reads every node it enters as a schema, so a `properties` key
-    of any of them is a map by name. The other such keywords (`$defs`,
-    `definitions`, `dependentSchemas`, `patternProperties`) are one only as a
-    keyword of a schema, as `_position_after` reads it. A member so named
-    under `components`, an `x-*` payload or a data value is a schema, and its
-    `properties` map holds names, not keywords."""
-    reading, position = "schema", "schema"
-    for part in pointer:
-        if reading != "schema":
-            reading = "schema"  # a name in a map or an index in a list
-        elif part == "properties" or (
-            position == "schema" and part in _NAMED_SCHEMA_KEYWORDS
-        ):
-            reading = "names"
-        elif part in _LISTED_SCHEMA_KEYWORDS:
-            reading = "list"
-        position = _position_after(position, part)
-    return reading == "names"
+    by name, reading each segment as `_map_holders` does."""
+    return _map_holders(pointer)[-1] is not None
 
 
 def _position_after(position: str, key: Any) -> str:
