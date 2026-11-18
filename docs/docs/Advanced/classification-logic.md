@@ -41,7 +41,8 @@ Lists use the [Hungarian algorithm](hungarian-matching.md) for optimal element p
 1. **Empty lists**: `[] vs []` is TN; `[] vs [items]` produces one FA per item; `[items] vs []` produces one FN per item.
 2. **Matched elements**: similarity >= threshold is TP; below threshold is FD. See [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
 3. **Unmatched elements**: leftover GT elements are FN; leftover EST elements are FA.
-4. **`None` elements**: absent, so they are not matched or counted. A list of only `None` is an empty list. See [`None` elements in a list](#none-elements-in-a-list).
+4. **Vetoed pairs**: a pair a `required_match` field vetoes is never matched, so its two elements are one FN and one FA, not an FD. Neither object appears in `aggregate`, as with any unmatched element.
+5. **`None` elements**: absent, so they are not matched or counted. A list of only `None` is an empty list. See [`None` elements in a list](#none-elements-in-a-list).
 
 #### `None` elements in a list {: #none-elements-in-a-list }
 

@@ -15,7 +15,14 @@ Each release links to full notes on the
   objects are paired in a list: a pair whose required field is not at or above
   its threshold is excluded before the assignment and counts as one false
   negative and one false alarm, never a false discovery. Off by default; scores
-  and counts do not change unless a field sets it.
+  and counts do not change unless a field sets it. Only `str`, `int`, `float`
+  and `bool` fields may be required, and a class may not hold a single nested
+  model that has required fields (`ValueError` when the class is defined). When
+  the two objects have different classes, a field required by either one vetoes
+  the pair. The vetoed objects are not counted in `aggregate`; read the list's
+  `overall` for them. Python only: `to_json_schema()` and `to_stickler_config()`
+  do not write it, and `model_from_json()` and `from_json_schema()` do not read
+  it.
 
 ## [1.0.1] - 2026-11-02
 

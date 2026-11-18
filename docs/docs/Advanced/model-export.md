@@ -266,8 +266,10 @@ assert r1["overall_score"] == r2["overall_score"]
 config = Product.to_stickler_config()
 Reconstructed = StructuredModel.model_from_json(config)
 
-# Comparison behavior is identical
+# Comparison behavior is identical, except for `required_match`
 ```
+
+`required_match` is not exported. `to_json_schema()` and `to_stickler_config()` drop it, and the reconstructed model pairs list objects without the veto, so scores and counts can differ from the original.
 
 ## Saving and Loading
 
