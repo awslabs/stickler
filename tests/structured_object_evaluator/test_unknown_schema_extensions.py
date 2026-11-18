@@ -3243,6 +3243,66 @@ class TestAListFormTypeBesideARef:
         with pytest.raises(ValueError, match=r"Recursive .* at 't\[\]\.e'"):
             StructuredModel.from_json_schema(schema)
 
+    SCALAR_LIST_FORMS = pytest.mark.parametrize(
+        "declared",
+        (["array", "null"], ["null", "array"], ["object", "null"], ["null", "object"]),
+        ids=("array-null", "null-array", "object-null", "null-object"),
+    )
+
+    @SCALAR_LIST_FORMS
+    @pytest.mark.parametrize(
+        "target, built",
+        (
+            ({"type": "string"}, str),
+            ({"type": "number"}, float),
+            ({"enum": ["a", "b"]}, str),
+        ),
+        ids=("string", "number", "enum"),
+    )
+    @pytest.mark.parametrize("hops", (1, 2), ids=("direct", "through-an-alias"))
+    def test_beside_a_ref_to_a_scalar_a_required_one_stays_required(
+        self, declared, target, built, hops
+    ):
+        """The scalar is built from every arm, as from the single type, so
+        the null arm does not make a required field accept null."""
+        defs = {"S": target, "A": {"$ref": "#/$defs/S"}}
+        ref = "#/$defs/S" if hops == 1 else "#/$defs/A"
+        single = next(value for value in declared if value != "null")
+        for typed in (declared, single):
+            model = StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"p": {"$ref": ref, "type": typed}},
+                    "required": ["p"],
+                    "$defs": defs,
+                }
+            )
+            assert model.model_fields["p"].annotation is built
+
+    @SCALAR_LIST_FORMS
+    def test_beside_a_ref_to_a_scalar_items_build_a_list_of_it(self, declared):
+        """`items` built `list[Optional[str]]`, where `"array"` and dev build
+        `list[str]`."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "tags": {
+                        "type": "array",
+                        "items": {"$ref": "#/$defs/Tag"},
+                    }
+                },
+                "$defs": {
+                    "Tag": {"$ref": "#/$defs/S", "type": declared},
+                    "S": {"type": "string"},
+                },
+            }
+        )
+        assert (
+            model.model_fields["tags"].annotation == typing.Optional[typing.List[str]]
+        )
+
+
 class TestModelKeysBesideANonRootRef:
     """Model keys beside a `$ref` are read at the root and nowhere else.
 

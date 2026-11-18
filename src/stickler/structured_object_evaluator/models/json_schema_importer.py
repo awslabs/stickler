@@ -338,6 +338,33 @@ def _ref_chain(
         where = _ref_label(pointer, entry)
 
 
+def _ref_end(schema: Any, ref: Any) -> Any:
+    """The node a `$ref` leads to through every alias hop, or None."""
+    hops = [hop for hop, _, _ in _ref_chain(schema, {"$ref": ref}, "")]
+    return hops[-1] if len(hops) > 1 else None
+
+
+_SCALAR_TYPES = frozenset({"boolean", "integer", "null", "number", "string"})
+
+
+def _is_scalar_schema(node: Any) -> bool:
+    """Whether a schema builds a scalar: it declares only scalar types, or
+    none with an `enum` or `const`, and no keyword that builds an object, an
+    array or a union."""
+    structural = ("$ref", "additionalProperties", "items", "prefixItems")
+    if not isinstance(node, dict) or any(
+        key in node for key in (*structural, "properties", *_COMBINERS)
+    ):
+        return False
+    declared = node.get("type")
+    if declared is None:
+        return "enum" in node or "const" in node
+    types = declared if isinstance(declared, list) else [declared]
+    return bool(types) and all(
+        isinstance(value, str) and value in _SCALAR_TYPES for value in types
+    )
+
+
 # Keywords whose value maps names to schemas, and those whose value lists them.
 _NAMED_SCHEMA_KEYWORDS = frozenset(
     {"$defs", "definitions", "dependentSchemas", "patternProperties", "properties"}
@@ -1206,11 +1233,18 @@ class JsonSchemaImporter:
                     if key in _KNOWN_MODEL_EXTENSIONS
                 }
 
+                # Beside a `$ref` to a scalar, every arm parses as that scalar,
+                # the null arm too, so the node builds what the single type
+                # builds: `str`, required where the property is.
+                scalar = "$ref" in non_metadata and _is_scalar_schema(
+                    _ref_end(schema, non_metadata["$ref"])
+                )
+
                 def arm(value: Any) -> Dict[str, Any]:
                     # The null arm takes no structural keywords: a `$ref` copied
                     # onto it parsed as a second object arm, so the node became
                     # a union of two classes scored with ExactComparator.
-                    if value == "null":
+                    if value == "null" and not scalar:
                         return {"type": "null"}
                     if value != "object":
                         return {**deepcopy(non_metadata), "type": value}
