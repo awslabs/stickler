@@ -98,7 +98,8 @@ Each release links to full notes on the
   Four cases still differ from top level. The first two apply to every
   sub-field, and the last two to a sub-field not routed as a nested model or
   a list, such as `Any`, `object`, `Union[A, B]` or `Sequence[str]`:
-  - a field the predicted element's class does not declare is not counted;
+  - an extra field on the prediction, one its class does not declare, is not
+    counted, where top level adds an FA to the root `overall`;
   - when the sub-field holds models in some pairs and `None` or a primitive
     in others, `aggregate` keeps one shape. In a sub-field not routed as a
     nested model or a list, every pair stays one leaf, so all pairs count but
