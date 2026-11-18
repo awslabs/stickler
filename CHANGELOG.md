@@ -101,6 +101,12 @@ Each release links to full notes on the
 
 ### Documentation
 
+- Documented that a bare `int` or `float` field on a `StructuredModel` is compared as
+  text by `LevenshteinComparator`, not as a number. `inf` against `-inf` scores 0.75
+  and `1000` against `-1000` scores 0.857 for a `float`, both above the 0.7 default
+  threshold. `ComparableField(comparator=NumericComparator())` compares numbers.
+  Scoring is unchanged ([#579](https://github.com/awslabs/stickler/issues/579))
+
 - Corrected the default field threshold on Thresholds and Metrics. The page
   gave `0.5` for every field, which holds only for `ComparableField()`. A bare
   annotation on a `StructuredModel` (`name: str`) takes the class
