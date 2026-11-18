@@ -128,7 +128,7 @@ pytest tests/
 ### Static Model Definition
 
 ```python
-from stickler import StructuredModel, ComparableField, LevenshteinComparator
+from stickler import StructuredModel, ComparableField, LevenshteinComparator, NumericComparator
 
 # Define your data structure
 class Invoice(StructuredModel):
@@ -136,7 +136,7 @@ class Invoice(StructuredModel):
         comparator=LevenshteinComparator(),
         threshold=0.9
     )
-    total: float = ComparableField(threshold=0.95)
+    total: float = ComparableField(comparator=NumericComparator(absolute_tolerance=0.01))
 
 # Compare objects
 result = ground_truth.compare_with(
@@ -364,10 +364,12 @@ Minimum similarity score required for binary match classification.
 | Threshold Range | Use Case | Example Fields |
 |-----------------|----------|----------------|
 | **1.0** | Must be perfect | IDs, codes, critical identifiers |
-| **0.9 - 0.95** | Very important, minimal tolerance | Amounts, dates, status codes |
+| **0.9 - 0.95** | Very important, minimal tolerance | Dates, status codes |
 | **0.8 - 0.85** | Important, some tolerance | Names, addresses, product codes |
 | **0.7 - 0.75** | Moderate tolerance | Descriptions, categories |
 | **0.5 - 0.6** | Flexible, variations OK | Notes, comments, metadata |
+
+Amounts are not in this table: `NumericComparator` scores 1.0 or 0.0, so set `absolute_tolerance` or `relative_tolerance` in `x-aws-stickler-comparator-config` (as in the example below) instead of a threshold.
 
 **Example:**
 
@@ -385,7 +387,7 @@ Minimum similarity score required for binary match classification.
       "type": "number",
       "description": "Very important: affects billing",
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01}
     },
     "customer_name": {
       "type": "string",
@@ -443,7 +445,7 @@ Relative importance of this field in aggregate scoring and weighted averages.
       "type": "number",
       "description": "Very important: affects billing",
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95,
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
       "x-aws-stickler-weight": 2.5
     },
     "customer_name": {
@@ -580,7 +582,7 @@ Here's a production-ready invoice schema with all extensions:
       "description": "Total invoice amount in USD - critical for billing",
       "examples": [1234.56, 99.99],
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95,
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
       "x-aws-stickler-weight": 2.5,
       "x-aws-stickler-clip-under-threshold": false
     },
@@ -608,7 +610,7 @@ Here's a production-ready invoice schema with all extensions:
             "type": "number",
             "description": "Price per unit",
             "x-aws-stickler-comparator": "NumericComparator",
-            "x-aws-stickler-threshold": 0.95,
+            "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
             "x-aws-stickler-weight": 1.5
           }
         },
