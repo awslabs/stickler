@@ -104,8 +104,7 @@ class Invoice(StructuredModel):
     )
 
     total_amount: float = ComparableField(
-        comparator=NumericComparator(),  # Tolerance-based numeric comparison
-        threshold=0.95,
+        comparator=NumericComparator(absolute_tolerance=0.01),  # Equal within 0.01
         weight=2.5,
     )
 
@@ -236,7 +235,7 @@ overrides the default in every position that reads it.
     "total_amount": {
       "type": ["number", "null"],
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95,
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
       "x-aws-stickler-weight": 2.5
     }
   },
