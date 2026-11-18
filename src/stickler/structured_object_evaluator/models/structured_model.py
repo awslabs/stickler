@@ -35,7 +35,7 @@ from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
-from .threshold_helper import THRESHOLD_DOCS_URL
+from .threshold_helper import THRESHOLD_DOCS_URL, ThresholdHelper
 from .threshold_helper import model_identity as _model_identity
 from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
 
@@ -420,6 +420,61 @@ class StructuredModel(BaseModel):
     # Default match threshold - can be overridden in subclasses
     match_threshold: ClassVar[float] = 0.7
 
+    # read per cell of a Hungarian cost matrix, so it is resolved once per class
+    _required_match_fields: ClassVar[tuple] = ()
+
+    @classmethod
+    def _collect_required_match_fields(cls) -> None:
+        """Record the fields marked ``required_match`` and refuse non-primitives.
+
+        Refused here, when the class is defined, because a required field is
+        scored by its comparator against a threshold, which has no meaning for
+        a list or an object whose score is an aggregate.
+        """
+        required = []
+        for field_name, field_info in cls.model_fields.items():
+            extra = getattr(field_info, "json_schema_extra", None)
+            if not getattr(extra, "_required_match", False):
+                continue
+            # unwrap until stable: Optional[Annotated[T, ...]] needs both,
+            # in the order optional then annotated
+            annotation = field_info.annotation
+            while True:
+                inner = unwrap_optional(unwrap_annotated(annotation))[0]
+                if inner is annotation:
+                    break
+                annotation = inner
+            if annotation not in (str, int, float, bool):
+                raise ValueError(
+                    f"Field '{field_name}' sets required_match=True but is "
+                    f"annotated {field_info.annotation}. Only str, int, float and "
+                    f"bool fields (optionally Optional) may be required."
+                )
+            required.append(field_name)
+        cls._required_match_fields = tuple(required)
+
+    def fails_required_match(self, other: Any) -> bool:
+        """Whether a required field of this object is not matched by ``other``.
+
+        A value null on one side fails and null on both passes. Otherwise the
+        field fails when its raw score is not at or above its resolved threshold,
+        by the same test every other classification gate uses.
+        """
+        for field_name in self.__class__._required_match_fields:
+            mine = getattr(self, field_name)
+            theirs = getattr(other, field_name, None)
+            mine_is_null = NullHelper.is_effectively_null_for_primitives(mine)
+            theirs_is_null = NullHelper.is_effectively_null_for_primitives(theirs)
+            if mine_is_null or theirs_is_null:
+                if mine_is_null != theirs_is_null:
+                    return True
+                continue
+            threshold = self.__class__._get_comparison_info(field_name).threshold
+            score = self.compare_field_raw(field_name, theirs)
+            if not ThresholdHelper.is_above_threshold(score, threshold):
+                return True
+        return False
+
     @classmethod
     def _install_object_grade_comparators(cls) -> None:
         """Give object-grade fields a comparator that can score a whole object.
@@ -570,6 +625,7 @@ class StructuredModel(BaseModel):
         """
         super().__pydantic_init_subclass__(**kwargs)
         cls._install_object_grade_comparators()
+        cls._collect_required_match_fields()
 
     def __init_subclass__(cls, **kwargs):
         """Validate field configurations when a StructuredModel subclass is defined."""
