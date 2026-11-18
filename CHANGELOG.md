@@ -30,7 +30,13 @@ Each release links to full notes on the
     `x-aws-stickler-comparator-config`) with no field `threshold` gated at the
     importer's own default instead (0.5 for a string), so a pair scoring 0.78
     was a TP there and an FD in Python. It is 0.9 on all
-    three paths now. A field threshold still wins, and a comparator threshold
+    three paths now. The same goes for a threshold a custom comparator's
+    constructor passes to `super().__init__()`, which
+    `ComparableField(comparator=...)` already adopted: a field that names that
+    comparator and no threshold moves from the importer's default, 0.5 or a
+    schema type default such as 1.0 for an enum, to that value. No built-in
+    comparator passes one when built without a threshold, so fields naming
+    one do not move. A field threshold still wins, and a comparator threshold
     outranks an inferred one. This includes a `structured_model` or
     `optional_structured_model` field and an object with `properties`, where
     `ComparableField(comparator=X(threshold=0.9))` also gates at 0.9; the

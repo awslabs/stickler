@@ -149,6 +149,19 @@ class TestAComparatorThresholdReachesTheFieldOnEveryPath:
         )
         assert _info(sch).threshold == 0.9
 
+    def test_one_a_custom_comparators_constructor_sets_reaches_it(self, strict95):
+        """As in Python, over the importer's 0.5 and a schema type default."""
+        enum = {"type": "string", "enum": ["a", "b"]}
+        models = {
+            "python": _python(str, ComparableField(comparator=_Strict95())),
+            "config": _config({"type": "str", "comparator": strict95}),
+            "schema": _schema({"type": "string", "x-aws-stickler-comparator": strict95}),
+            "schema enum": _schema({**enum, "x-aws-stickler-comparator": strict95}),
+        }
+        assert {n: _info(m).threshold for n, m in models.items()} == dict.fromkeys(
+            models, 0.95
+        )
+
     def test_it_outranks_an_inferred_threshold(self):
         """Field, then comparator, then inference: the author wrote it."""
         cfg = _config(

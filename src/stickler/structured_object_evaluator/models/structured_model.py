@@ -1298,7 +1298,7 @@ class StructuredModel(BaseModel):
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
                        "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be a number from 0.0 to 1.0, else ValueError
-                       "threshold": 0.8,  # Optional; default: comparator_config's threshold, else 0.5
+                       "threshold": 0.8,  # Optional; default: a threshold named on the comparator (comparator_config or a custom constructor), else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
                        "default": "value", # Optional
@@ -1362,8 +1362,10 @@ class StructuredModel(BaseModel):
         - x-aws-stickler-comparator: Comparator algorithm name (built-in or registered custom)
         - x-aws-stickler-comparator-config: Keyword arguments for that comparator
         - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0,
-          default: a threshold in x-aws-stickler-comparator-config, else the
-          type default, such as 0.5 for a string and 0.7 for a nested object).
+          default: a threshold named on the comparator, in
+          x-aws-stickler-comparator-config or by a custom comparator's
+          constructor, else the type default, such as 0.5 for a string and 0.7
+          for a nested object).
           Whichever threshold the field uses must be a number from 0.0 to 1.0;
           any other value raises ValueError naming the model and the field.
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)

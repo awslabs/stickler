@@ -215,9 +215,10 @@ on the position, because different positions fall back to different defaults:
 
 A scalar is plain when it has none of the keywords in the last row. Any other
 `format` (`email`, `hostname`, ...) leaves it plain. Declaring the key explicitly
-overrides the default in every position that reads it. Without it, a `threshold`
-in `x-aws-stickler-comparator-config` overrides the default instead, as it does
-on the Python path. Whichever the field uses must be a number from 0.0 to 1.0;
+overrides the default in every position that reads it. Without it, a threshold
+named on the comparator, in `x-aws-stickler-comparator-config` or by a custom
+comparator's constructor, overrides the default instead, as it does on the
+Python path. Whichever the field uses must be a number from 0.0 to 1.0;
 any other value raises `ValueError` on import, quoting the key as written:
 
 ```text

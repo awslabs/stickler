@@ -346,8 +346,8 @@ even though the field on the built class ends up a plain `str` — read the choi
 
 **Type:** `number` (0.0 to 1.0, inclusive)  
 **Required:** No  
-**Default:** a `threshold` in `x-aws-stickler-comparator-config`, unless the property is an
-array of models. Otherwise position-dependent, not one number. `0.5` for a plain scalar, an array of plain
+**Default:** a threshold named on the comparator, in `x-aws-stickler-comparator-config` or by a
+custom comparator's constructor, unless the property is an array of models. Otherwise position-dependent, not one number. `0.5` for a plain scalar, an array of plain
 scalars, and an array of models; `0.7` for an object with `properties`; `1.0` for a free-form
 `{"type": "object"}` (or an array of them) and for any property or array `items` with `enum`,
 `const`, or a string `format` of `date`/`date-time`/`uri`/`uuid`/`time`, whether or not a
