@@ -27,8 +27,180 @@ Each release links to full notes on the
   `ConfusionMatrixCalculator.classify_field_for_confusion_matrix` classifies a
   field as it did in 1.0.1. Nothing in Stickler uses it any more, and it will be
   removed in 1.1.0 ([#406](https://github.com/awslabs/stickler/pull/406))
+- `from_json_schema()` now warns for `x-aws-stickler-model-name`,
+  `x-aws-stickler-match-threshold` or `x-aws-stickler-infer-unspecified` on an
+  object-typed property where no class reads them. The keys are still dropped.
+  One position is beside a `$ref` on a property typed
+  `"object"` or a list form that includes it (`["object", "null"]`), such as
+  `{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold":
+  0.93}`: the class is built from the target, which reads only its own keys, so
+  it builds `Row` at `0.7`. The other is an object-typed property that no
+  position builds, reached only through the root `$ref` or an `allOf` arm, such
+  as `{"$ref": "#/$defs/Wrap/properties/inner"}`: the root reads the keys beside
+  its `$ref`, and `allOf` merges its arms into one class at the defaults, so it
+  builds `DynamicModel` or `AllOfModel` at `0.7`. Both hold wherever the property
+  sits, for example in a `$defs` entry, under `not`, `then` or an `x-*` key in
+  one, under `#/components/...`, or in an `x-*` payload such as `#/x-models/T`.
+  One exception: where a property of the first kind is itself the target of a
+  `$ref` from a property, `items` or an `anyOf`/`oneOf` arm, the keys beside its
+  own `$ref` warn only on a property node of a `$defs` entry outside an `x-*`
+  key, and elsewhere are still dropped with no warning (see Fixed). An import
+  that fails anyway, such as a root `$ref` to a property typed
+  `["object", "null"]`, still fails, with no warning. The warning names the
+  key, its position and where it is read. It becomes a `ValueError` in 1.1.0, as
+  at the positions no doc names for these keys (see Fixed)
+  ([#340](https://github.com/awslabs/stickler/issues/340))
 
 ### Fixed
+
+- `from_json_schema()` now reads `x-aws-stickler-model-name`,
+  `x-aws-stickler-match-threshold` and `x-aws-stickler-infer-unspecified` on a
+  node typed `["object", "null"]`, as it does on `"object"`, and so on one
+  typed `["object"]`. The list form is rewritten to `anyOf` before parsing,
+  and the keys stayed beside the `anyOf` instead of on the object arm that
+  becomes the class, so the node built
+  `DynamicModel` at `0.7` while its field keys were honoured. A regression in
+  1.0.0 for the name and match threshold, which `0.7.0` read. Results move for
+  any such schema that declared one: an `items` element scoring `0.9` against a
+  declared `0.93` was a true positive (`tp 1, fd 0, fp 0`) and is now a false
+  discovery (`tp 0, fd 1, fp 1`), and inference inside the node now uses its
+  tuned thresholds (`number` at `0.95` rather than `0.5`). An invalid value
+  there (a match threshold of `1.5`, a name that is not an identifier) was
+  ignored and now raises, as it does on `"object"`. Beside a `$ref`, the
+  rewrite also copied the `$ref` onto the null arm, so a node typed
+  `["object", "null"]` or `["array", "null"]` built a union of two types
+  compared with `ExactComparator` at `1.0` (a one-character difference scored
+  `0.0`). It now builds what the single type builds, and scores as it does:
+  `["object", "null"]` as `"object"` (`0.9`), and `["array", "null"]` as
+  `"array"`, so an array of objects is paired by Hungarian matching at field
+  threshold `0.5`, and a `$ref` to an object builds that class with
+  `LevenshteinComparator` at `0.7`. Beside a `$ref` to a scalar, every arm
+  still builds that scalar, as before, so the node builds what the single type
+  builds and a required property stays required. A list form holding both
+  `"object"` and `"array"` still builds a union compared with
+  `ExactComparator`, of two arms
+  where it built three. Where the single type fails to import, the list form
+  now fails too, with the same error, where the union imported: a comparator
+  on an array whose `items` are such a node, or on an `anyOf` whose arm is one
+  that leads to an array of objects (an array of objects takes no comparator),
+  and a `$ref` to an array of objects with no properties. Part A of
+  [#349](https://github.com/awslabs/stickler/issues/349)
+
+- A recursive `$ref` that no model is named after, such as one back to
+  `#/properties/kind` or to an array definition, now raises the `ValueError`
+  for a recursive model, naming the field, where it raised `PydanticUserError`.
+  Back to a property named `type`, it raised `PydanticInvalidForJsonSchema`, or
+  imported as a union of two types when that property is typed
+  `["object", "null"]` beside its `$ref`, and now raises too
+
+- `from_json_schema()` now checks an `x-aws-stickler-*` key on a `$defs` or
+  `definitions` entry that a `$ref` reaches, as it does inline. The walk entered
+  a definition without checking its own keys, so `x-aws-stickler-thresold` there
+  imported silently where inline it raises. A definition with `properties` reads
+  only the object-level keys, which configure the class it generates for every
+  property, `items` or `anyOf`/`oneOf` arm that `$ref`s it. A field-level key
+  (`comparator`, `comparator-config`, `threshold`, `weight`,
+  `clip-under-threshold`) inside one now raises and names where it belongs: on
+  the property that uses it, beside the `$ref`, or beside the
+  `anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms (for `allOf`, only
+  an object with `properties`, directly or through an alias, where it and each
+  alias hop to it are typed `"object"` or untyped, since a one-arm `allOf` of
+  anything else fails to import); for `items`, or an arm of them, on the array
+  property, which for an array of objects reads only the weight. A definition
+  used as the root reads no field keys. Honouring it instead would make one key
+  work on a property `$ref` and
+  vanish on an `items` `$ref`, which does not read field keys. Any other
+  definition (a scalar, an array, a combiner, an alias `$ref`, a mapping)
+  generates no class and reads neither set, so an object-level key there raises
+  too. `x-aws-stickler-aggregate` is still accepted and ignored on a definition
+  entry, as on a field. A `$ref` to a node inside an entry also checks the
+  entry, but checks the node's own keys only on a property or `items` node
+  anywhere in the entry, under `not` or `then` too. At the top of another node
+  (`#/$defs/W/not`, `#/$defs/W/x-sub/T`), a typo or a misplaced key on the node
+  still imports, as before. A property or `items` target is checked as before,
+  under an `x-*` key or `#/components/...` too, and a typo at the top of a
+  target outside `$defs` (`#/x-models/T`) still imports. Only the node is
+  built: the rest of the entry around it builds nothing, as an unused
+  definition, so its contents are checked, but object-level keys there that no
+  class reads import, as before. A field key on a property node is valid
+  there, but another property that `$ref`s the node does not read it:
+  `{"$ref": "#/$defs/W/properties/s"}` keeps the default threshold whatever `s`
+  declares. An entry no `$ref` reaches builds nothing, so its own keys are not
+  checked and a dereferenced schema, which keeps the originals beside their
+  inlined copies, imports as before. Its contents are checked, and so are the
+  contents of its `$ref` targets, so a typo in one of its properties, or inside
+  an `x-*` node that only it references, still raises. A target that is a
+  `properties` map, such as `#/$defs/W/properties`, is read one property at a
+  time, so a property named like a keyword is a name there, as before. An
+  entry named like a keyword is now read as an entry, where it was read as that
+  keyword: a typo in a property of an entry named `properties` now raises, and
+  an unused entry named `items`, `anyOf`, `allOf` or `patternProperties` no
+  longer has its own keys checked or its name rejected. The shape of an entry
+  named `properties` is still not checked, so `patternProperties` or a keyword
+  beside a combiner at its top imports, as before. Only a `$defs` or
+  `definitions` keyword of the root, or of a node reached from it through schema
+  keywords, holds entries. One under `#/components/...`, inside an `x-*` payload
+  or a data value, or a property named so, holds none, so a `$ref` into it
+  checks no definition, as before. Every key that
+  now raises was dropped in silence
+  (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`). `to_json_schema()`
+  never writes `$defs`, so its exports are unaffected. Closes the known gap
+  recorded for this key in 1.0.0
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
+- `from_json_schema()` now raises for an object-level key at a position where no
+  class is built from it, where it was dropped: beside a `$ref` on `items` or an
+  `anyOf`/`oneOf` arm, where the class is built from the target and reads the
+  target's keys; on an `allOf` arm, inline or through `$ref`, which is merged
+  into one class at the defaults; and on an object reached through a root
+  `$ref`, where the root reads the keys beside the `$ref` instead. No doc names
+  these positions for the keys. On an object-typed property, which the docs
+  accept them on, they warn instead (see Changed). Beside a `$ref`, this
+  includes an `items` node anywhere in a `$defs` entry outside an `x-*` key,
+  such as `#/$defs/List/items` or `#/$defs/W/not/items`, that a property,
+  `items` or arm `$ref`s. At the top of another node of an entry
+  (`#/$defs/W/not`), under an `x-*` key, or outside `$defs` (`#/components/R`),
+  the keys beside the target's `$ref` are still dropped, as before. The last two
+  raise only when no other position builds the same object from its keys,
+  counting positions inside any `$ref` target; a `$ref` under `not`,
+  `additionalProperties` or `if` builds nothing, so it does not count. All three
+  also apply inside any `$ref` target that a position building a class
+  references, wherever it sits, for example under `#/components/...`, or under
+  `not`, `then`, `additionalProperties` or an `x-*` key in a `$defs` entry. Each
+  of these resolved the default in silence: `items: {"$ref": ...,
+  "x-aws-stickler-match-threshold": 0.93}` built at `0.7`, and an `allOf` arm
+  reaching a keyed definition built `AllOfModel` at `0.7`. The warning for
+  `x-aws-stickler-threshold` on an array of models now names the definition
+  that `items` `$ref`s, inside an `allOf` arm and under a property name that
+  holds a `.` too, where it said to declare the match threshold inside `items`,
+  which beside the `$ref` now raises. Where it cannot find the property, it says
+  what holds for inline `items` and for a `$ref`
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
+- An import error under `not`, `then`, `contains`, `additionalProperties` or
+  another keyword that builds no class now names that keyword in its path
+  (`'$defs.W.not[]'`, `'not.p'`), where it left the keyword out and so named a
+  node that does not exist (`'[]'`, `'p'`)
+
+- `from_json_schema()` no longer checks, as a schema, a value under an `x-*` key
+  that no `$ref` reaches, or a schema-shaped value under `default`, `examples`,
+  `enum` or `const`. Such a value is another tool's data or instance data, so a
+  typo, a misplaced key, `patternProperties` or a keyword beside a combiner
+  there no longer raises. Where a `$ref` from the schema or from a definition,
+  used or not, points into an `x-*` payload, the node it points at is walked
+  for its contents, and a property or `items` node's own keys are checked too
+  (the payload's other members are not). A member of such a value named like a
+  keyword, such as `anyOf` or `definitions`, is a schema, so a `$ref` through it
+  reads the `properties` under it as names, as before. A `$defs` or
+  `definitions` inside such a value is part of it, so its entries are not
+  walked either. A `$ref` held in such a value is not followed, so a payload
+  that only such a `$ref` names is not checked either
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
+- A root schema typed `["object", "null"]`, a root `anyOf`/`oneOf`, or a root
+  `$ref` to either, now raises `ValueError` saying the root must be a single
+  object, rather than `AttributeError: model_fields`. A nested
+  `["object", "null"]` node is supported.
 
 - A sub-field of a `List[StructuredModel]` element is now classified by the
   same dispatcher as a top-level field, so its counts match top level, apart
@@ -249,6 +421,38 @@ Each release links to full notes on the
   `match_threshold` overrides the element class's for list pairing; on a
   `StructuredModel` it sets only `EvalResult.matched`. Scoring is unchanged
   ([#484](https://github.com/awslabs/stickler/issues/484))
+- The list contract is stated once, as a table in `classification-logic.md`
+  (pairing, bar, counts, recursion, score, reports), and other pages link to
+  it instead of restating it. Scoring is unchanged. Claims corrected against
+  measured output:
+  - A list declared without `ComparableField` pairs against the class
+    `match_threshold` (`0.7` unless set), not `0.5`.
+  - A list field's element order does not matter, but a nested list element
+    is compared as one value, and on the zero-config path it must match
+    exactly, order included.
+  - On a plain pydantic class, the runtime `match_threshold` of `evaluate()`
+    and `eval_for()` also sets `List[Model]` and `List[dict]` pairing and the
+    threshold of nested plain-model and `dict` fields, while a primitive list
+    keeps its inferred threshold. On a `StructuredModel` class it sets only
+    `matched`, and a `List[StructuredModel]` field pairs at the element
+    class's own `match_threshold` on either path
+    ([#416](https://github.com/awslabs/stickler/issues/416)). The docstrings
+    now say TP/FD, not TP/FN/FA.
+  - `clip_under_threshold` has no effect on `List[StructuredModel]`, so an FD
+    pair keeps its score, a known defect
+    ([#415](https://github.com/awslabs/stickler/issues/415)).
+  - `clip_under_threshold` defaults to off, not on, for dict and plain-model
+    fields and lists of them on a `StructuredModel` declared in Python. With
+    `x-aws-stickler-infer-unspecified`, an inferred JSON Schema property takes
+    its clip setting from inference, which is off for a free-form object and a
+    free-text string, rather than always `true`.
+  - `aggregate` leaves out FN and FA items beside an accepted sibling, and a
+    field `threshold` on `List[StructuredModel]` raises `ValueError`.
+  - A primitive list element row's `weighted_score` in `field_comparisons` is
+    its raw similarity, unweighted. Rows inside list items are described as
+    they are today ([#418](https://github.com/awslabs/stickler/issues/418)).
+  - The Hungarian matching example shows measured counts and the list score,
+    and its result block is checkable.
 - Amount examples no longer present a field threshold as rounding tolerance for
   `NumericComparator`. It scores 1.0 or 0.0, so the README, Best Practices,
   Evaluation and IDP Accelerator examples now set `absolute_tolerance=0.01` (or
