@@ -139,7 +139,11 @@ def ComparableField(
                   ``float``. Anything else (85, -1, "0.9", True, NaN) raises
                   ``ValueError`` when the ``StructuredModel`` class is
                   defined, naming the model, the field, the value and the
-                  line of this call. See ``threshold_rule``.
+                  line of this call. See ``threshold_rule``. Not yet
+                  checked then: an ``Annotated`` field that names something
+                  defined further down, its type or a value in this call,
+                  when its annotation is a string, as every annotation is
+                  under ``from __future__ import annotations``.
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: unset, which means
                  None, or what ``default_factory`` returns if one is given).

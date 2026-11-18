@@ -73,7 +73,8 @@ Each release links to full notes on the
     then compared as a Python float, not in its own dtype, so a score within
     its rounding below the threshold is an FD where it was a TP. Python kept
     such a value unconverted, so a `Decimal` raised `TypeError` on a pair
-    scoring below it, and the importers refused it. The `match_threshold`
+    scoring below it. The importers refused it, except a numpy float64, which
+    is a `float` subclass and loaded unconverted. The `match_threshold`
     passed to `evaluate()` or `eval_for()` is outside this rule: for a plain
     pydantic model it keeps its own check, now on every call, and for a
     `StructuredModel` it is not checked. Every path gives one message. It
