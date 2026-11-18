@@ -264,10 +264,11 @@ def _class_location(cls: type) -> Optional[str]:
 def location(filename: str, line: int) -> Optional[str]:
     """``models/invoice.py:14``, relative to the working directory, for a message.
 
-    The full path when the file is outside it. A notebook cell reads ``line 4
-    of the notebook cell``, since its file name means nothing to the author.
-    ``None`` for generated code (``<string>``, which is how pydantic evaluates
-    a string annotation).
+    The full path when the file is outside it, or when there is no working
+    directory to be relative to. A notebook cell reads ``line 4 of the
+    notebook cell``, since its file name means nothing to the author. ``None``
+    for generated code (``<string>``, which is how pydantic evaluates a string
+    annotation).
     """
     if filename.startswith("<ipython-input-"):
         return f"line {line} of the notebook cell"
@@ -277,7 +278,7 @@ def location(filename: str, line: int) -> Optional[str]:
         return f"line {line} of the notebook cell"
     try:
         relative = os.path.relpath(filename)
-    except ValueError:  # another drive, on Windows
+    except (ValueError, OSError):  # another drive on Windows, or no working directory
         relative = filename
     shown = filename if relative.startswith(os.pardir) else relative
     return f"{shown}:{line}"

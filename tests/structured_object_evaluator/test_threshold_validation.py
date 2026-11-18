@@ -499,6 +499,22 @@ class TestWhereTheMessageSaysItWasSet:
         outside = os.path.join(os.path.dirname(os.path.abspath(os.curdir)), "x.py")
         assert location(outside, 4) == f"{outside}:4"
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows cannot remove the working directory"
+    )
+    def test_a_deleted_working_directory_gives_the_full_path(self, tmp_path, monkeypatch):
+        """A class still loads, and its error still says where, with no working directory."""
+        gone = tmp_path / "gone"
+        gone.mkdir()
+        monkeypatch.chdir(gone)
+        gone.rmdir()
+        model = _python(str, ComparableField(threshold=0.8))
+        assert model(vendor="a").compare(model(vendor="a")) == 1.0
+        line = inspect.currentframe().f_lineno + 2
+        with pytest.raises(ValueError) as caught:
+            _python(str, ComparableField(threshold=85))
+        assert str(caught.value).endswith(f"(Set at {os.path.abspath(__file__)}:{line}.)")
+
     def test_a_class_match_threshold_names_the_class_line(self):
         source = (
             "import os\n"
