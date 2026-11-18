@@ -1249,6 +1249,7 @@ class FixedScoreMappingHolder(StructuredModel):
     items: List[FixedScoreMappingElement] = ComparableField()
 
 
+@pytest.mark.parametrize("as_error", [False, True], ids=["warns", "raises"])
 @pytest.mark.parametrize(
     "holder, element, gt, pred, message",
     [
@@ -1279,17 +1280,19 @@ class FixedScoreMappingHolder(StructuredModel):
     ],
 )
 def test_a_fixed_score_element_sub_field_warns_as_without_it(
-    holder, element, gt, pred, message
+    holder, element, gt, pred, message, as_error
 ):
     # This element's compare_with() never scores its fields, so before #400
     # nothing warned here. The dispatcher now classifies the sub-field and
     # warns as it does without the override and at top level, so a run that
-    # turns warnings into errors raises here too. The raise comes first:
-    # warn_once records a warning only once it is emitted.
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        with pytest.raises(UserWarning, match=message):
-            _in_list(gt, pred, holder=holder, element=element)
+    # turns warnings into errors raises here too. One call per test, since
+    # warn_once fires once per process and the conftest resets it per test.
+    if as_error:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(UserWarning, match=message):
+                _in_list(gt, pred, holder=holder, element=element)
+        return
 
     with pytest.warns(UserWarning, match=message):
         result = _in_list(gt, pred, holder=holder, element=element)
