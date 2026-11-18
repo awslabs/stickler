@@ -194,6 +194,130 @@ Each release links to full notes on the
   object, rather than `AttributeError: model_fields`. A nested
   `["object", "null"]` node is supported.
 
+- A sub-field of a `List[StructuredModel]` element is now classified by the
+  same dispatcher as a top-level field, so its counts match top level, apart
+  from the four cases below. Scores do not change. A sub-field the list path
+  did not route as a nested model or a list took its counts from the field's
+  comparator directly, skipping the dispatcher's guards. That covers `Any`,
+  `object`, `Union[A, B]`, `Dict` and `str`, and also spellings such as
+  `Sequence[str]`, `Sequence[Inner]` and
+  `Optional[Annotated[Inner, Field(...)]]`. Where their counts differed from
+  top level, they now match it. For example:
+  - a dict its comparator cannot score (in an `Any` or `Union[A, B]`
+    sub-field, or a `Dict` one with an explicit `LevenshteinComparator`)
+    raised `TypeError` out of `compare_with()`. It now warns and counts an FD;
+  - a pair that top level does not give the field's comparator, inferred or
+    explicit, is an FD, not a TP the item's score did not credit. Examples
+    are a tuple, a `Decimal` or `UUID` against its string, members of two
+    `Enum` classes, and `Inner(a="x")` against `[Inner(a="x")]`;
+  - a value top level does not read as null, such as `()`, `frozenset()`,
+    `b" "` or `"  "`, is no longer a TN against a null one: `"  "` vs `None`
+    is an FN (the reverse an FA), and `"  "` vs `"  "` a TP;
+  - two lists count one per element, not one in total, and a list of models
+    now keeps its fields under `aggregate`, so `["a", "b"]` vs `[]` in an `Any`
+    or `Sequence[str]` sub-field is 2 FN, not 1;
+  - a model of the ground truth's class takes its verdict from the item's
+    score for that field, not from its own `compare_with()`, so it can move
+    from FD to TP or back. Its fields now appear under `aggregate` when every
+    pair of that sub-field has them. For example, `Inner(a="hotel")` against
+    `Inner(a="hotels")` at a field threshold of 0.9 is now an FD, not a TP, in
+    `Any` or `Optional[Annotated[Inner, Field(...)]]`, as it already was in
+    `Optional[Inner]`;
+  - a field that the classes of a union declare with different annotations
+    is read by the first matched ground-truth element that declares it, or
+    by each pair's own class when the list's first element is not matched.
+    With `AStr(x: Optional[str])` listed before
+    `BList(x: Optional[List[str]])`, `BList(x=["a", "b"])` against
+    `BList(x=["a", "c"])` now counts `x` as 1 TP and 1 FD, not 1 TP, as it
+    does with `BList` first.
+
+  In a list of models, whatever the sub-field's type, a matched prediction
+  that lacked a field of the first ground-truth element's class raised
+  `AttributeError`: a subclass listed before its base, `List[Union[A, B]]`, or
+  a list of models in an `Any`, `object` or `List[Any]` field, at top level or
+  in a list element, against a list holding a dict, string, number, list or
+  model of another class. The field now reads as missing, and each pair is
+  classified on its ground-truth element's own fields. Such a pair still takes
+  its object-level verdict from `compare()`, which skips the fields the
+  prediction lacks, so `[Search(query="hotels")]` against
+  `[Browse(url="x.com")]` now counts a TP, with `query` an FN under
+  `aggregate`, while the field scores 0.0. A model against a non-model
+  element, such as `[Inner(a="x")]` against `["a"]`, is a TP the same way. A
+  plain pydantic prediction element is the exception: scoring a model against
+  it still raises `TypeError`, as before. A list with the base class first did
+  not raise, and now also counts the subclass's fields. A ground-truth list
+  whose first element is a model still raises `AttributeError` when a matched
+  ground-truth element has no `compare_with()`, such as `[Inner(a="x"), "b"]`
+  against itself. A matched ground-truth element that is not a model but has
+  its own `compare_with()`, such as a plain pydantic model, raised as well
+  and now runs.
+
+  When a list element's class overrides `compare_with()` to return a score
+  without recursing, scoring the element never reaches its sub-fields. So a
+  list of models in its `Any` or `object` sub-field did not raise against a
+  list of non-models or of models of another class, and counted one TP or FD
+  from the comparator, with no subtree. Where the dispatcher can score such a
+  pair, it now counts what the same pair does without the override and at top
+  level. `[Inner(a="x")]` against `["a"]`, `[1]`, `[["a"]]` or `[{"a": "x"}]`
+  was an FD, and against `[Other(c="z")]` an FD at a field threshold of 0.9
+  and a TP at the default. Each now counts a TP, with `a` an FN and `b` a TN
+  under `aggregate`. Like the other pairs above, they follow the
+  field-by-field scoring `StructuredModel` still uses for objects of
+  different classes. Where the dispatcher raises, as it does at top level and
+  without the override, a sub-field not routed as a nested model or a list
+  counts the pair as before. Two lists count one TP or FD from the
+  comparator. That covers a ground-truth list holding a value without
+  `compare_with()`, such as `[Inner(a="x"), "b"]` against `["a", "b"]`, and a
+  list of models against plain pydantic models, such as `[Inner(a="x")]`
+  against `[Point(x=1)]`. Two models of one class count one TP or FD from the
+  ground truth's own `compare_with()`, which runs when that too returns a
+  fixed score. For such a `Leaf` with an `Any` field `d`,
+  `Leaf(d=[Inner(a="x")])` against `Leaf(d=[Point(x=1)])` is a TP. The score
+  is 1.0 before and after in each of these cases. A sub-field routed as a
+  nested model or a list, such as `Optional[Leaf]` or `List[Any]`, still
+  raises on them, as before, if the list's first element's class declares it
+  that way too. If that class does not, the pair counts the same way, since
+  only that class's fields were read before. So a fixed-score subclass's
+  `List[Any]` field, listed after its base, which lacks the field, counts one
+  FD for `[Inner(a="x"), "b"]` against `["a", "b"]`, where it was not
+  counted. A union class's `Optional[List[Any]]` field counts one FD there,
+  as before, when the list's first element is of a class that declares the
+  field as `Optional[str]` or `Any`.
+  Every sub-field of such an element now also gets the dispatcher's
+  warnings, as it does without the override and at top level. A dict or a
+  plain pydantic model its comparator cannot score, or two models of
+  different classes where one is a plain pydantic model, now warns where it
+  was silent, so a run that turns warnings into errors, such as pytest's
+  `filterwarnings = error`, raises there.
+
+  Four cases still differ from top level. The first two apply to every
+  sub-field, and the last two to a sub-field not routed as a nested model or
+  a list, such as `Any`, `object`, `Union[A, B]` or `Sequence[str]`:
+  - an extra field on the prediction, one its class does not declare, is not
+    counted, where top level adds an FA to the root `overall`;
+  - when the sub-field holds models in some pairs and `None` or a primitive
+    in others, `aggregate` keeps one shape. In a sub-field not routed as a
+    nested model or a list, every pair stays one leaf, so all pairs count but
+    the models' fields do not, and a model of another class has the same
+    effect. In one that is, such as `Optional[Inner]` or
+    `Optional[List[Inner]]`, the models' fields count and the other pairs
+    are left out, as before. So `[Inner(a="x"), Inner(a="y")]` against
+    `[Inner(a="x"), None]` gives `aggregate` 1 TP and 1 FN in `Any` and
+    1 TP and 1 TN in `Optional[Inner]`, where the same pairs at top level
+    give 1 TP, 1 TN and 1 FN;
+  - a model of another class still takes its verdict from `compare_with()`
+    against the field's threshold. That reads a field the prediction lacks as
+    `None`, so a `Search` against a `Browse` scores 0.0 and stays an FD,
+    while `Inner(a="x", b=None)` against `Other(c="z")` scores 0.5, from `b`,
+    and stays a TP at the default threshold. It scores only the ground
+    truth's own fields, so a `Pet` against its subclass `Cat` stays a TP. In
+    an `Optional` union of models or a union with a list arm, such a pair
+    counts as at top level;
+  - an empty list counts as null, as the classification docs say, so in an
+    `Any` sub-field `None` vs `[]` is a TN and `"x"` vs `[]` an FN, where top
+    level and `non_matches` give an FA and an FD
+    ([#400](https://github.com/awslabs/stickler/issues/400))
+
 - **`LLMComparator` scores a reply as a match only when it is exactly `true`**
   ([#506](https://github.com/awslabs/stickler/issues/506)). Scores change:
   verbose replies such as `True, they are equivalent.` previously scored 1.0
@@ -274,6 +398,12 @@ Each release links to full notes on the
 
 ### Documentation
 
+- Documented that a bare `int` or `float` field on a `StructuredModel` is compared as
+  text by `LevenshteinComparator`, not as a number. `inf` against `-inf` scores 0.75
+  and `1000` against `-1000` scores 0.857 for a `float`, both above the 0.7 default
+  threshold. `ComparableField(comparator=NumericComparator())` compares numbers.
+  Scoring is unchanged ([#579](https://github.com/awslabs/stickler/issues/579))
+
 - Corrected the default field threshold on Thresholds and Metrics. The page
   gave `0.5` for every field, which holds only for `ComparableField()`. A bare
   annotation on a `StructuredModel` (`name: str`) takes the class
@@ -283,6 +413,44 @@ Each release links to full notes on the
   `match_threshold` overrides the element class's for list pairing; on a
   `StructuredModel` it sets only `EvalResult.matched`. Scoring is unchanged
   ([#484](https://github.com/awslabs/stickler/issues/484))
+- The list contract is stated once, as a table in `classification-logic.md`
+  (pairing, bar, counts, recursion, score, reports), and other pages link to
+  it instead of restating it. Scoring is unchanged. Claims corrected against
+  measured output:
+  - A list declared without `ComparableField` pairs against the class
+    `match_threshold` (`0.7` unless set), not `0.5`.
+  - A list field's element order does not matter, but a nested list element
+    is compared as one value, and on the zero-config path it must match
+    exactly, order included.
+  - On a plain pydantic class, the runtime `match_threshold` of `evaluate()`
+    and `eval_for()` also sets `List[Model]` and `List[dict]` pairing and the
+    threshold of nested plain-model and `dict` fields, while a primitive list
+    keeps its inferred threshold. On a `StructuredModel` class it sets only
+    `matched`, and a `List[StructuredModel]` field pairs at the element
+    class's own `match_threshold` on either path
+    ([#416](https://github.com/awslabs/stickler/issues/416)). The docstrings
+    now say TP/FD, not TP/FN/FA.
+  - `clip_under_threshold` has no effect on `List[StructuredModel]`, so an FD
+    pair keeps its score, a known defect
+    ([#415](https://github.com/awslabs/stickler/issues/415)).
+  - `clip_under_threshold` defaults to off, not on, for dict and plain-model
+    fields and lists of them on a `StructuredModel` declared in Python. With
+    `x-aws-stickler-infer-unspecified`, an inferred JSON Schema property takes
+    its clip setting from inference, which is off for a free-form object and a
+    free-text string, rather than always `true`.
+  - `aggregate` leaves out FN and FA items beside an accepted sibling, and a
+    field `threshold` on `List[StructuredModel]` raises `ValueError`.
+  - A primitive list element row's `weighted_score` in `field_comparisons` is
+    its raw similarity, unweighted. Rows inside list items are described as
+    they are today ([#418](https://github.com/awslabs/stickler/issues/418)).
+  - The Hungarian matching example shows measured counts and the list score,
+    and its result block is checkable.
+- Amount examples no longer present a field threshold as rounding tolerance for
+  `NumericComparator`. It scores 1.0 or 0.0, so the README, Best Practices,
+  Evaluation and IDP Accelerator examples now set `absolute_tolerance=0.01` (or
+  `x-aws-stickler-comparator-config`) instead of `threshold=0.95`, and amounts
+  are out of the threshold tables
+  ([#479](https://github.com/awslabs/stickler/issues/479))
 
 ## [1.0.1] - 2026-11-02
 
