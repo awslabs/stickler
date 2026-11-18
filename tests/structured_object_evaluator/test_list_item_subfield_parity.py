@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 
 from stickler import (
     ComparableField,
+    FuzzyComparator,
     LevenshteinComparator,
     NonMatchType,
     StructuredModel,
@@ -1231,6 +1232,70 @@ def test_a_fixed_score_element_counts_a_list_of_models_against_plain_pydantic_as
     _assert_one_comparator_fd(
         _in_list([Inner(a="x")], pred, holder=holder, element=element)
     )
+
+
+class FixedScoreMappingElement(StructuredModel):
+    """`FixedScoreElement` with a `Dict` sub-field under `FuzzyComparator`."""
+
+    key: str = ComparableField(threshold=1.0)
+    value: Dict[str, str] = ComparableField(comparator=FuzzyComparator())
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreMappingHolder(StructuredModel):
+    items: List[FixedScoreMappingElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, message",
+    [
+        pytest.param(
+            FixedScoreMappingHolder,
+            FixedScoreMappingElement,
+            {"text": "p"},
+            {"text": "p"},
+            "holds a mapping",
+            id="mapping",
+        ),
+        pytest.param(
+            FixedScoreDefaultHolder,
+            FixedScoreDefaultElement,
+            Point(x=1),
+            Point(x=1),
+            "holds a pydantic model",
+            id="pydantic",
+        ),
+        pytest.param(
+            FixedScoreDefaultHolder,
+            FixedScoreDefaultElement,
+            Point(x=1),
+            Inner(a="x"),
+            "compared a Point against a Inner",
+            id="other-class",
+        ),
+    ],
+)
+def test_a_fixed_score_element_sub_field_warns_as_without_it(
+    holder, element, gt, pred, message
+):
+    # This element's compare_with() never scores its fields, so before #400
+    # nothing warned here. The dispatcher now classifies the sub-field and
+    # warns as it does without the override and at top level, so a run that
+    # turns warnings into errors raises here too. The raise comes first:
+    # warn_once records a warning only once it is emitted.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(UserWarning, match=message):
+            _in_list(gt, pred, holder=holder, element=element)
+
+    with pytest.warns(UserWarning, match=message):
+        result = _in_list(gt, pred, holder=holder, element=element)
+
+    assert result["overall_score"] == 1.0
+    assert _counts(_value_node(result)) == _expect(fd=1)
 
 
 @pytest.mark.parametrize(
