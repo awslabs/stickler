@@ -776,6 +776,41 @@ def test_a_dispatched_sub_field_of_mixed_shapes_leaves_the_other_pairs_out(
     assert top == _expect(tp=1, tn=1, fn=1)
 
 
+class ExtraElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: str = ComparableField()
+    match_threshold = 0.4
+
+
+class ExtraHolder(StructuredModel):
+    items: List[ExtraElement] = ComparableField()
+
+
+def _false_alarms(node):
+    yield node["overall"]["fa"]
+    for child in node.get("fields", {}).values():
+        yield from _false_alarms(child)
+
+
+def test_an_extra_field_on_a_predicted_element_is_not_counted():
+    # An extra field is one the prediction carries but its class does not
+    # declare. At top level it adds an FA to the root `overall`. In a list
+    # element nothing counts it. A field the ground truth's class declares
+    # and the prediction's lacks is counted, as an FN (see the union tests).
+    gt = ExtraElement(key="k", value="p")
+    pred = ExtraElement(key="k", value="p", color="red")
+
+    alone = gt.compare_with(pred, include_confusion_matrix=True)
+    assert _counts(alone["confusion_matrix"]) == _expect(tp=2, fa=1)
+
+    listed = ExtraHolder(items=[gt]).compare_with(
+        ExtraHolder(items=[pred]), include_confusion_matrix=True
+    )
+    assert listed["overall_score"] == alone["overall_score"] == 1.0
+    assert _counts(listed["confusion_matrix"]) == _expect(tp=1)
+    assert set(_false_alarms(listed["confusion_matrix"])) == {0}
+
+
 class Pets(StructuredModel):
     pets: List[Pet] = ComparableField()
 
