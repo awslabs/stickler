@@ -328,6 +328,12 @@ Each release links to full notes on the
   ignored, so `**True**.` scores 1.0 and `"false"` scores 0.0. Any other reply
   scores 0.0 and warns, showing the start of the reply, rather than raising.
 
+- The Postal Codes guide now says postal codes are compared exactly only when
+  `stickler.evaluate` gets a plain Pydantic `BaseModel`, and by edit distance on
+  a `StructuredModel` field without a comparator (even one passed to
+  `stickler.evaluate`) or a JSON Schema `string`
+  ([#492](https://github.com/awslabs/stickler/issues/492)).
+
 - Corrected introductory example scores, the default text comparator description,
   and the sample amount in the documentation and README
   ([#478](https://github.com/awslabs/stickler/issues/478)).
