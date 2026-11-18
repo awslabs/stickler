@@ -17,13 +17,13 @@ The threshold determines the minimum similarity score required for a field compa
 | Field Category | Threshold Range | Examples |
 |---|---|---|
 | Critical identifiers | 0.95 -- 1.0 | Invoice IDs, PO numbers, account codes |
-| Important operational fields | 0.8 -- 0.9 | Names, dates, addresses, amounts |
+| Important operational fields | 0.8 -- 0.9 | Names, dates, addresses |
 | Flexible text fields | 0.5 -- 0.7 | Descriptions, notes, comments, metadata |
 
 **Guidelines:**
 
 - **IDs and codes** should use `threshold=1.0` with `ExactComparator`. A partial match on an ID is effectively a mismatch.
-- **Monetary amounts** benefit from `threshold=0.95` with `NumericComparator`. Small rounding differences are acceptable; large discrepancies are not.
+- **Monetary amounts**: use `NumericComparator(absolute_tolerance=0.01)` (or `relative_tolerance`). It scores 1.0 or 0.0, so the tolerance decides a match, not the threshold.
 - **Names and addresses** work well at `threshold=0.8` with `LevenshteinComparator`. This tolerates minor typos while catching significant errors.
 - **Free-form text** can use `threshold=0.5-0.7` with `FuzzyComparator`. Variations in phrasing are expected and acceptable.
 

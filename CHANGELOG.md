@@ -21,9 +21,21 @@ Each release links to full notes on the
 
 ### Fixed
 
-- The Postal Codes guide now says postal codes are compared exactly only with
-  `stickler.evaluate`, and by edit distance on a hand-authored `StructuredModel`
-  or a JSON Schema `string` ([#492](https://github.com/awslabs/stickler/issues/492)).
+- **`LLMComparator` scores a reply as a match only when it is exactly `true`**
+  ([#506](https://github.com/awslabs/stickler/issues/506)). Scores change:
+  verbose replies such as `True, they are equivalent.` previously scored 1.0
+  and now score 0.0 with a `UserWarning`, and replies that only contained
+  "true" as a substring (`untrue`, `Not true`) no longer match. Formatted
+  replies still match: surrounding whitespace, quotes, backticks, markdown
+  emphasis and trailing `.` `,` `;` `:` `!` `?` are stripped and case is
+  ignored, so `**True**.` scores 1.0 and `"false"` scores 0.0. Any other reply
+  scores 0.0 and warns, showing the start of the reply, rather than raising.
+
+- The Postal Codes guide now says postal codes are compared exactly only when
+  `stickler.evaluate` gets a plain Pydantic `BaseModel`, and by edit distance on
+  a `StructuredModel` field without a comparator (even one passed to
+  `stickler.evaluate`) or a JSON Schema `string`
+  ([#492](https://github.com/awslabs/stickler/issues/492)).
 
 - Corrected introductory example scores, the default text comparator description,
   and the sample amount in the documentation and README
@@ -63,6 +75,26 @@ Each release links to full notes on the
 
 - `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
   raising `decimal.InvalidOperation`, including in uncoerced model fields.
+- **`NumericComparator` reads digits in other scripts.** Digits outside ASCII
+  (Arabic-Indic, Persian, Devanagari, Thai, fullwidth, ...) were deleted before
+  parsing, so `"١٢٥٠"` never matched `"1250"` and `"١٢٥٠.50"` read as `0.50`. A
+  string written in such digits now reads as its number when it holds one
+  unambiguous number, and otherwise as no number, as before. A number whose
+  digits switch script reads as no number, unless it is the same amount
+  written twice (`"1250١٢٥٠"`). A compact form such as `"١٫٣ ألف"` reads the
+  number shown, as `"1.3K"` does. String values only: a `float`, `int` or
+  `Decimal` field rejects `"١٬٢٥٠٫٥٠"` before the comparator runs
+  ([#559](https://github.com/awslabs/stickler/issues/559))
+- `NumericComparator` reads as negative some ASCII-digit values that it read
+  as positive: U+2212 and other minus signs that open the value, before the
+  number, a currency or a parenthesis (`"−1250"`, `"−AED 1250"`,
+  `"−(1250)"`, `"−.75"`), or come right after a currency symbol (`"$−1250"`);
+  fullwidth accounting parentheses (`"（1250）"`); accounting parentheses with
+  spaces or invisible format characters around them (`" (1250) "`); and a
+  negative inside accounting parentheses, which was negated twice
+  (`"(-1250)"`). A minus sign after a word keeps its old reading
+  (`"Total – 1250"` reads 1250)
+  ([#559](https://github.com/awslabs/stickler/issues/559))
 
 ### Security
 
@@ -72,6 +104,24 @@ Each release links to full notes on the
   result, rendered as live HTML in a notebook. The text is now passed through
   `html.escape`, and reads the same
   ([#449](https://github.com/awslabs/stickler/issues/449))
+
+### Documentation
+
+- Corrected the default field threshold on Thresholds and Metrics. The page
+  gave `0.5` for every field, which holds only for `ComparableField()`. A bare
+  annotation on a `StructuredModel` (`name: str`) takes the class
+  `match_threshold`, `0.7` unless set, and a bare `StructuredModel` field takes
+  `0.9`. At a raw similarity of `0.6`, `name: str` scores `0.0` and
+  `name: str = ComparableField()` scores `0.6`. The page also said a runtime
+  `match_threshold` overrides the element class's for list pairing; on a
+  `StructuredModel` it sets only `EvalResult.matched`. Scoring is unchanged
+  ([#484](https://github.com/awslabs/stickler/issues/484))
+- Amount examples no longer present a field threshold as rounding tolerance for
+  `NumericComparator`. It scores 1.0 or 0.0, so the README, Best Practices,
+  Evaluation and IDP Accelerator examples now set `absolute_tolerance=0.01` (or
+  `x-aws-stickler-comparator-config`) instead of `threshold=0.95`, and amounts
+  are out of the threshold tables
+  ([#479](https://github.com/awslabs/stickler/issues/479))
 
 ## [1.0.1] - 2026-11-02
 
