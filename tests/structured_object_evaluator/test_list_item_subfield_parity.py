@@ -689,6 +689,93 @@ def test_a_sub_field_of_mixed_shapes_counts_every_pair(
     assert _counts(matrix, "aggregate") == root
 
 
+class PipeModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Inner | None = ComparableField(default=None)
+    match_threshold = 0.4
+
+
+class PipeModelHolder(StructuredModel):
+    items: List[PipeModelElement] = ComparableField()
+
+
+class AnnotatedOuterElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Annotated[Optional[Inner], Field(description="A nested model.")] = (
+        ComparableField(default=None)
+    )
+    match_threshold = 0.4
+
+
+class AnnotatedOuterHolder(StructuredModel):
+    items: List[AnnotatedOuterElement] = ComparableField()
+
+
+class ModelListElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[List[Inner]] = ComparableField(default=None)
+    match_threshold = 0.4
+
+
+class ModelListHolder(StructuredModel):
+    items: List[ModelListElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gts, preds",
+    [
+        pytest.param(
+            OptionalModelHolder,
+            OptionalModelElement,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            id="optional",
+        ),
+        pytest.param(
+            PipeModelHolder,
+            PipeModelElement,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            id="pipe",
+        ),
+        pytest.param(
+            AnnotatedOuterHolder,
+            AnnotatedOuterElement,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            id="annotated-optional",
+        ),
+        pytest.param(
+            ModelListHolder,
+            ModelListElement,
+            [[Inner(a="x")], [Inner(a="y")]],
+            [[Inner(a="x")], None],
+            id="optional-list",
+        ),
+    ],
+)
+def test_a_dispatched_sub_field_of_mixed_shapes_leaves_the_other_pairs_out(
+    holder, element, gts, preds
+):
+    # A sub-field that goes to the dispatcher directly keeps the model pair's
+    # fields, so the `None` pair's FN drops out of `aggregate`, as before #400.
+    # The same pairs at top level sum to 1 TP, 1 TN and 1 FN.
+    matrix = _pairs_in_list(gts, preds, holder=holder, element=element)
+    node = matrix["fields"]["items"]["fields"]["value"]
+    assert _counts(node) == _expect(tp=1, fn=1)
+    assert _counts(node, "aggregate") == _expect(tp=1, tn=1)
+
+    top = {k: 0 for k in COUNTS}
+    for gt, pred in zip(gts, preds):
+        alone = element(key="k", value=gt).compare_with(
+            element(key="k", value=pred), include_confusion_matrix=True
+        )
+        pair = alone["confusion_matrix"]["fields"]["value"]
+        for k, n in _counts(pair, "aggregate").items():
+            top[k] += n
+    assert top == _expect(tp=1, tn=1, fn=1)
+
+
 class Pets(StructuredModel):
     pets: List[Pet] = ComparableField()
 
