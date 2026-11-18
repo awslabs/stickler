@@ -95,7 +95,7 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hung
 ```
 
 ### Requirements
-- Python 3.12+
+- Python 3.10 or later
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended)
 
 ### Quick Install

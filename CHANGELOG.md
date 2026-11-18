@@ -111,6 +111,13 @@ Each release links to full notes on the
   `StructuredModel` it sets only `EvalResult.matched`. Scoring is unchanged
   ([#484](https://github.com/awslabs/stickler/issues/484))
 
+- Corrected the install docs. They said Python 3.12+, but `requires-python` is
+  `>=3.10` and CI tests 3.10 to 3.14. The Installation page now lists the
+  `docsplit`, `reporting` and `all` extras, says `BERTComparator` downloads a
+  model on first use, names every core comparator, and keeps only the import
+  check under Verify, since `examples/` and `tests/` are not in the wheel
+  ([#483](https://github.com/awslabs/stickler/issues/483))
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed

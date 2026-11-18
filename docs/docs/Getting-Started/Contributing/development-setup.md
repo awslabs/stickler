@@ -6,7 +6,7 @@ This guide walks you through setting up a complete development environment for c
 
 ### Required
 
-- **Python 3.12+** - Stickler requires Python 3.12 or higher
+- **Python 3.10+** - Stickler requires Python 3.10 or later. `uv sync` uses 3.12 by default (`.python-version`)
 - **Git** - For version control
 
 ### Recommended
@@ -18,7 +18,7 @@ This guide walks you through setting up a complete development environment for c
 
 ```bash
 # Check Python version
-python --version  # Should be 3.12.x or higher
+python --version  # Should be 3.10.x or higher
 
 # Check Git
 git --version
@@ -48,7 +48,7 @@ Use Python's built-in virtual environment:
 git clone https://github.com/awslabs/stickler.git
 cd stickler
 
-# Create virtual environment (requires Python 3.12+ already installed)
+# Create virtual environment (requires Python 3.10+ already installed)
 python -m venv .venv
 
 # Activate the environment
@@ -229,7 +229,7 @@ python examples/scripts/json_schema_demo.py
 #### Python Version Mismatch
 
 ```
-ERROR: Package requires Python >=3.12
+ERROR: Package requires Python >=3.10
 ```
 
 **Solution:** If using uv, it automatically installs the correct Python version:
@@ -237,7 +237,7 @@ ERROR: Package requires Python >=3.12
 uv sync
 ```
 
-If using pip, ensure you have Python 3.12+:
+If using pip, ensure you have Python 3.10 or later:
 ```bash
 python --version
 ```
