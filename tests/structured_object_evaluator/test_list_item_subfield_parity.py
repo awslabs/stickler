@@ -22,8 +22,9 @@ are classified by `compare_with()`, as before. Such a sub-field keeps its
 nested `fields` only when every pair has them, so every pair counts under
 `aggregate`. Two lists in it that the dispatcher cannot score, which only an
 element whose `compare_with()` does not recurse reaches, count from the
-comparator, as before. Every expected count below is a literal, so a change
-to the dispatcher shows up here. See https://github.com/awslabs/stickler/issues/400
+comparator, as before, and two models of one class from their own
+`compare_with()`. Every expected count below is a literal, so a change to
+the dispatcher shows up here. See https://github.com/awslabs/stickler/issues/400
 """
 
 import datetime
@@ -39,6 +40,9 @@ from stickler import (
     LevenshteinComparator,
     NonMatchType,
     StructuredModel,
+)
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    BulkStructuredModelEvaluator,
 )
 
 COUNTS = ("tp", "fa", "fd", "fp", "tn", "fn")
@@ -1232,6 +1236,175 @@ def test_a_fixed_score_element_counts_a_list_of_models_against_plain_pydantic_as
     _assert_one_comparator_fd(
         _in_list([Inner(a="x")], pred, holder=holder, element=element)
     )
+
+
+class FixedScoreLeaf(StructuredModel):
+    """A nested model that also scores without recursing."""
+
+    d: Any = ComparableField()
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreLeafUnionElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Union[FixedScoreLeaf, Inner] = ComparableField()
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreLeafUnionHolder(StructuredModel):
+    items: List[FixedScoreLeafUnionElement] = ComparableField()
+
+
+class FixedScoreLeafAnnotatedElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Annotated[FixedScoreLeaf, Field(description="d")]] = (
+        ComparableField()
+    )
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreLeafAnnotatedHolder(StructuredModel):
+    items: List[FixedScoreLeafAnnotatedElement] = ComparableField()
+
+
+class FixedScoreLeafOptionalElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[FixedScoreLeaf] = ComparableField()
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreLeafOptionalHolder(StructuredModel):
+    items: List[FixedScoreLeafOptionalElement] = ComparableField()
+
+
+# Two models of one class whose own fields the dispatcher raises on: the
+# first raises TypeError (a plain pydantic prediction), the second
+# AttributeError (a GT value without compare_with()).
+UNSCORABLE_LEAVES = [
+    pytest.param(
+        FixedScoreLeaf(d=[Inner(a="x")]),
+        FixedScoreLeaf(d=[Point(x=1)]),
+        id="plain-pydantic",
+    ),
+    pytest.param(
+        FixedScoreLeaf(d=[Inner(a="x"), "b"]),
+        FixedScoreLeaf(d=[Inner(a="x"), "b"]),
+        id="no-compare-with",
+    ),
+]
+
+FIXED_SCORE_BY_VALUE = FIXED_SCORE + [
+    pytest.param(FixedScoreLeafUnionHolder, FixedScoreLeafUnionElement, id="union"),
+    pytest.param(
+        FixedScoreLeafAnnotatedHolder, FixedScoreLeafAnnotatedElement, id="annotated"
+    ),
+]
+
+
+@pytest.mark.parametrize("include_confusion_matrix", [False, True])
+@pytest.mark.parametrize("holder, element", FIXED_SCORE_BY_VALUE)
+@pytest.mark.parametrize("gt, pred", UNSCORABLE_LEAVES)
+def test_a_fixed_score_element_counts_a_fixed_score_model_it_cannot_score_as_before(
+    holder, element, gt, pred, include_confusion_matrix
+):
+    # Neither compare_with() recurses, so scoring never reaches the lists in
+    # `d`. The dispatcher does, and raises as at top level. The pair counts
+    # as it did before #400: one TP from the GT model's compare_with().
+    result = holder(items=[element(key="k", value=gt)]).compare_with(
+        holder(items=[element(key="k", value=pred)]),
+        include_confusion_matrix=include_confusion_matrix,
+    )
+
+    assert result["overall_score"] == 1.0
+    assert result["field_scores"] == {"items": 1.0}
+    if include_confusion_matrix:
+        node = _value_node(result)
+        assert _counts(node) == _expect(tp=1)
+        assert _counts(node, "aggregate") == _expect(tp=1)
+        assert not node.get("fields")
+
+
+@pytest.mark.parametrize(
+    "gt, pred, error",
+    [
+        pytest.param(
+            FixedScoreLeaf(d=[Inner(a="x")]),
+            FixedScoreLeaf(d=[Point(x=1)]),
+            TypeError,
+            id="plain-pydantic",
+        ),
+        pytest.param(
+            FixedScoreLeaf(d=[Inner(a="x"), "b"]),
+            FixedScoreLeaf(d=[Inner(a="x"), "b"]),
+            AttributeError,
+            id="no-compare-with",
+        ),
+    ],
+)
+def test_a_fixed_score_model_in_a_nested_model_sub_field_still_raises(gt, pred, error):
+    # An Optional[FixedScoreLeaf] sub-field goes to the dispatcher directly,
+    # not read by value, so it raised before #400 too.
+    with pytest.raises(error):
+        _in_list(
+            gt,
+            pred,
+            holder=FixedScoreLeafOptionalHolder,
+            element=FixedScoreLeafOptionalElement,
+        )
+
+
+class FixedScoreWrap(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    mids: List[FixedScoreDefaultElement] = ComparableField()
+    match_threshold = 0.4
+
+
+class FixedScoreWrapHolder(StructuredModel):
+    items: List[FixedScoreWrap] = ComparableField()
+
+
+@pytest.mark.parametrize("gt, pred", UNSCORABLE_LEAVES)
+def test_a_fixed_score_model_one_list_level_down_scores_as_before(gt, pred):
+    # FixedScoreWrap recurses, so scoring its `mids` list classifies the
+    # sub-field, and plain compare() reached the raise too.
+    def wrap(value):
+        mid = FixedScoreDefaultElement(key="k", value=value)
+        return FixedScoreWrapHolder(items=[FixedScoreWrap(key="w", mids=[mid])])
+
+    gt_model, pred_model = wrap(gt), wrap(pred)
+
+    assert gt_model.compare(pred_model) == 1.0
+    result = gt_model.compare_with(pred_model, include_confusion_matrix=True)
+    assert result["overall_score"] == 1.0
+    mids = result["confusion_matrix"]["fields"]["items"]["fields"]["mids"]
+    assert _counts(mids["fields"]["value"]) == _expect(tp=1)
+
+
+@pytest.mark.parametrize("gt, pred", UNSCORABLE_LEAVES)
+def test_a_fixed_score_model_counts_in_the_bulk_evaluator_as_before(gt, pred):
+    evaluator = BulkStructuredModelEvaluator(target_schema=FixedScoreDefaultHolder)
+    evaluator.update(
+        FixedScoreDefaultHolder(items=[FixedScoreDefaultElement(key="k", value=gt)]),
+        FixedScoreDefaultHolder(items=[FixedScoreDefaultElement(key="k", value=pred)]),
+        doc_id="doc",
+    )
+    evaluation = evaluator.compute()
+
+    # A raise would record an error and add one FN to the overall counts.
+    assert evaluation.errors == []
+    assert {k: evaluation.metrics[k] for k in ("tp", "fn")} == {"tp": 1, "fn": 0}
+    assert evaluation.field_metrics["items.value"]["tp"] == 1
 
 
 class FixedScoreMappingElement(StructuredModel):
