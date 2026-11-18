@@ -84,13 +84,15 @@ Each release links to full notes on the
     `True` and `False` still count as 1.0 and 0.0. Every path gives one
     message. It quotes the value as written, names the model and the field,
     says why the value fails and gives the fix in full; on the Python path it
-    ends with where the value was set.
-    The refusal of `ComparableField(threshold=...)`
+    ends with where the value was set, though a base class that overrides
+    `__init_subclass__` can make a `match_threshold` point at the line of
+    that override. The refusal of `ComparableField(threshold=...)`
     on a `List[StructuredModel]` field uses the same template, says to remove
     it and names the element class, and is headed `Unused threshold` whatever
     its value. The warning for a comparator threshold there names the model
     and the element class, and points at the class rather than at
-    `<frozen abc>`. On the config path it is no longer prefixed
+    `<frozen abc>`, or at a base class's `__init_subclass__` if it overrides
+    one. On the config path it is no longer prefixed
     `Invalid field configuration:` or
     `Error converting field configurations:`, and a field inside a
     `list_structured_model` is named `items[].sku` there and in warnings, as
@@ -134,9 +136,12 @@ Each release links to full notes on the
   `-comparator-config` on an object with `properties` were dropped, and on an
   array of objects the config's `threshold` was reported by `explain()` as the
   field's explicit threshold though nothing read it. Every such key that is
-  not read now emits a `UserWarning` naming it, the model, and where the
-  effective setting goes (`threshold` / `x-aws-stickler-threshold` on an object,
-  `match_threshold` / `x-aws-stickler-match-threshold` on a list). A threshold
+  written on a field or a property and not read now emits a `UserWarning`
+  naming it, the model, and where the effective setting goes (`threshold` /
+  `x-aws-stickler-threshold` on an object, `match_threshold` /
+  `x-aws-stickler-match-threshold` on a list). On a `$defs` definition that
+  a property references, they are still ignored without a warning; beside
+  the `$ref`, they are treated as on any property. A threshold
   the comparator names on a single nested model, in its config or its own
   constructor, is read (see Changed), and the warning gives its value. A named
   comparator stays on the field, as on the Python path, so `explain()` reports

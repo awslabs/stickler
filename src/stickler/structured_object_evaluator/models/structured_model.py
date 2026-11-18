@@ -988,8 +988,11 @@ class StructuredModel(BaseModel):
                     )
 
         # `match_threshold` is a plain class attribute rather than a field, so
-        # it is not covered by the loop above. `None` reads as unset, and a
-        # property or method is not a value to check.
+        # it is not covered by the loop above. `None` is not checked, as it was
+        # not before, but it does not read as unset as a field's
+        # `threshold=None` does: the class keeps `None`, and a comparison that
+        # reads it (a list of the class, a bare-annotated field, `evaluate()`)
+        # raises `TypeError`. A property or method is not a value to check.
         if "match_threshold" in cls.__dict__:
             value = cls.__dict__["match_threshold"]
             if not (

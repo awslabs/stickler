@@ -67,7 +67,7 @@ class LineItem(StructuredModel):
 
 **Default:** `0.7`
 
-**Valid values:** a number from 0.0 to 1.0, checked when the class is defined. See [Valid Threshold Values](#valid-threshold-values).
+**Valid values:** a number from 0.0 to 1.0, checked when the class is defined. `None` is not checked and does not read as unset: the class keeps it, and a comparison that reads it, such as of a list of the class, a bare-annotated field or `evaluate()`, raises `TypeError`. Leave `match_threshold` out instead. See [Valid Threshold Values](#valid-threshold-values).
 
 ### 4. Runtime Match Threshold
 
@@ -161,7 +161,7 @@ A threshold is a number from 0.0 to 1.0, inclusive: the minimum similarity score
 | Stickler config | `"threshold"` | `"comparator_config": {"threshold": ...}` | `"match_threshold"` |
 | JSON Schema | `"x-aws-stickler-threshold"` | `"x-aws-stickler-comparator-config": {"threshold": ...}` | `"x-aws-stickler-match-threshold"` |
 
-Anything else, such as `85`, `1.5`, `-1`, `"0.9"`, `true`, NaN or infinity, raises `ValueError` when the class is defined or the config or schema is loaded. Each path gives the same message, quoting the value as you wrote it. It names the model, the field, why the value fails, and the fix, and on the Python path where it was set:
+Anything else, such as `85`, `1.5`, `-1`, `"0.9"`, `true`, NaN or infinity, raises `ValueError` when the class is defined or the config or schema is loaded. On the Python path `None` is not checked: `ComparableField(threshold=None)` reads as unset, and a class `match_threshold = None` loads, then raises `TypeError` where it is read (see [Model Match Threshold](#3-model-match-threshold)). Each path gives the same message, quoting the value as you wrote it. It names the model, the field, why the value fails, and the fix, and on the Python path where it was set (for a class `match_threshold` under a base class that overrides `__init_subclass__`, the line of that override):
 
 ```text
 ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField sets no threshold, so the field adopts its comparator's: LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or ComparableField(threshold=0.85), which wins over the comparator's. (Set at invoice_models.py:6.)
