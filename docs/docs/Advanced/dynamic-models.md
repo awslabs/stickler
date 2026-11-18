@@ -110,7 +110,8 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 | `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
 
-A nested object typed `["object", "null"]` reads the same keys as one typed `"object"`.
+A nested object typed `["object", "null"]` or `["object"]` reads the same keys as one
+typed `"object"`.
 Beside a `$ref`, `["object", "null"]` or `["array", "null"]` builds what `"object"` or
 `"array"` builds there, and fails to import where that does. The root must be
 `"object"`: it is the document being scored, so a nullable root (or a root

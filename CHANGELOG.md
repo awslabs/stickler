@@ -47,9 +47,10 @@ Each release links to full notes on the
 
 - `from_json_schema()` now reads `x-aws-stickler-model-name`,
   `x-aws-stickler-match-threshold` and `x-aws-stickler-infer-unspecified` on a
-  node typed `["object", "null"]`, as it does on `"object"`. The list form is
-  rewritten to `anyOf` before parsing, and the keys stayed beside the `anyOf`
-  instead of on the object arm that becomes the class, so the node built
+  node typed `["object", "null"]`, as it does on `"object"`, and so on one
+  typed `["object"]`. The list form is rewritten to `anyOf` before parsing,
+  and the keys stayed beside the `anyOf` instead of on the object arm that
+  becomes the class, so the node built
   `DynamicModel` at `0.7` while its field keys were honoured. A regression in
   1.0.0 for the name and match threshold, which `0.7.0` read. Results move for
   any such schema that declared one: an `items` element scoring `0.9` against a
@@ -65,8 +66,11 @@ Each release links to full notes on the
   `["object", "null"]` as `"object"` (`0.9`), and `["array", "null"]` as
   `"array"`, so an array of objects is paired by Hungarian matching at field
   threshold `0.5`, and a `$ref` to an object builds that class with
-  `LevenshteinComparator` at `0.7`. A list form holding both `"object"` and
-  `"array"` still builds a union compared with `ExactComparator`, of two arms
+  `LevenshteinComparator` at `0.7`. Beside a `$ref` to a scalar, every arm
+  still builds that scalar, as before, so the node builds what the single type
+  builds and a required property stays required. A list form holding both
+  `"object"` and `"array"` still builds a union compared with
+  `ExactComparator`, of two arms
   where it built three. Where the single type fails to import, the list form
   now fails too, with the same error, where the union imported: a comparator
   on an array whose `items` are such a node, or on an `anyOf` whose arm is one
@@ -123,7 +127,9 @@ Each release links to full notes on the
   entry named like a keyword is now read as an entry, where it was read as that
   keyword: a typo in a property of an entry named `properties` now raises, and
   an unused entry named `items`, `anyOf`, `allOf` or `patternProperties` no
-  longer has its own keys checked or its name rejected. Only a `$defs` or
+  longer has its own keys checked or its name rejected. The shape of an entry
+  named `properties` is still not checked, so `patternProperties` or a keyword
+  beside a combiner at its top imports, as before. Only a `$defs` or
   `definitions` keyword of the root, or of a node reached from it through schema
   keywords, holds entries. One under `#/components/...`, inside an `x-*` payload
   or a data value, or a property named so, holds none, so a `$ref` into it
@@ -175,10 +181,12 @@ Each release links to full notes on the
   there no longer raises. Where a `$ref` from the schema or from a definition,
   used or not, points into an `x-*` payload, the node it points at is walked
   for its contents, and a property or `items` node's own keys are checked too
-  (the payload's other members are not). A `$defs` or `definitions` inside such
-  a value is part of it, so its entries are not walked either. A `$ref` held in
-  such a value is not followed, so a payload that only such a `$ref` names is
-  not checked either
+  (the payload's other members are not). A member of such a value named like a
+  keyword, such as `anyOf` or `definitions`, is a schema, so a `$ref` through it
+  reads the `properties` under it as names, as before. A `$defs` or
+  `definitions` inside such a value is part of it, so its entries are not
+  walked either. A `$ref` held in such a value is not followed, so a payload
+  that only such a `$ref` names is not checked either
   ([#340](https://github.com/awslabs/stickler/issues/340))
 
 - A root schema typed `["object", "null"]`, a root `anyOf`/`oneOf`, or a root

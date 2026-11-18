@@ -243,8 +243,9 @@ The two sets are not interchangeable, and position matters. A field-level key on
 the root, or an object-level key on a scalar field, is not read, so it is
 rejected rather than dropped. An unrecognized or misspelled `x-aws-stickler-*`
 key raises and names the closest valid key for that position; unrelated `x-*`
-extensions from other tooling are left alone. A nested `["object", "null"]` node
-reads the same keys as an `"object"` one; the root must be `"object"`. A `$defs`
+extensions from other tooling are left alone. A nested `["object", "null"]` or
+`["object"]` node reads the same keys as an `"object"` one; the root must be
+`"object"`. A `$defs`
 entry that a `$ref` reaches is checked (one nothing reaches has its nested
 schemas checked, not its own keys): with `properties` it reads only
 object-level keys, otherwise none. Field-level keys go on the property that
