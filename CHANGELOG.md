@@ -19,6 +19,10 @@ Each release links to full notes on the
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
 
+- `LevenshteinComparator` uses RapidFuzz's edit distance, accelerating string
+  comparisons and ANLS* leaf scoring while preserving public similarity scores.
+  [#510](https://github.com/awslabs/stickler/issues/510)
+
 ### Fixed
 
 - **`LLMComparator` scores a reply as a match only when it is exactly `true`**
