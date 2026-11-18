@@ -193,3 +193,9 @@ addopts = ["-v", "--tb=short"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
+
+[tool.coverage.run]
+# test_threshold_validation.py compiles model source under the made-up name
+# order_models.py, so its "Set at" messages show a stable relative path. There
+# is no such file for the coverage report to read.
+omit = ["order_models.py"]
