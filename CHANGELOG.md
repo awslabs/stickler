@@ -95,10 +95,20 @@ Each release links to full notes on the
   list of models against plain pydantic models, such as `[Inner(a="x")]`
   against `[Point(x=1)]`. The score is 1.0 before and after in every case.
 
-  Four cases still differ from top level. The last three apply to a
-  sub-field not routed as a nested model or a list, such as `Any`, `object`,
-  `Union[A, B]` or `Sequence[str]`:
+  Four cases still differ from top level. The first two apply to every
+  sub-field, and the last two to a sub-field not routed as a nested model or
+  a list, such as `Any`, `object`, `Union[A, B]` or `Sequence[str]`:
   - a field the predicted element's class does not declare is not counted;
+  - when the sub-field holds models in some pairs and `None` or a primitive
+    in others, `aggregate` keeps one shape. In a sub-field not routed as a
+    nested model or a list, every pair stays one leaf, so all pairs count but
+    the models' fields do not, and a model of another class has the same
+    effect. In one that is, such as `Optional[Inner]` or
+    `Optional[List[Inner]]`, the models' fields count and the other pairs
+    are left out, as before. So `[Inner(a="x"), Inner(a="y")]` against
+    `[Inner(a="x"), None]` gives `aggregate` 1 TP and 1 FN in `Any` and
+    1 TP and 1 TN in `Optional[Inner]`, where the same pairs at top level
+    give 1 TP, 1 TN and 1 FN;
   - a model of another class still takes its verdict from `compare_with()`
     against the field's threshold. That reads a field the prediction lacks as
     `None`, so a `Search` against a `Browse` scores 0.0 and stays an FD,
@@ -107,9 +117,6 @@ Each release links to full notes on the
     truth's own fields, so a `Pet` against its subclass `Cat` stays a TP. In
     an `Optional` union of models or a union with a list arm, such a pair
     counts as at top level;
-  - when the sub-field holds models in some pairs and `None`, a primitive or
-    a model of another class in others, every pair stays one leaf under
-    `aggregate`, so all pairs count but the models' fields do not;
   - an empty list counts as null, as the classification docs say, so in an
     `Any` sub-field `None` vs `[]` is a TN and `"x"` vs `[]` an FN, where top
     level and `non_matches` give an FA and an FD
