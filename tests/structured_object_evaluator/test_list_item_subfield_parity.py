@@ -23,8 +23,12 @@ nested `fields` only when every pair has them, so every pair counts under
 `aggregate`. Two lists in it that the dispatcher cannot score, which only an
 element whose `compare_with()` does not recurse reaches, count from the
 comparator, as before, and two models of one class from their own
-`compare_with()`. Every expected count below is a literal, so a change to
-the dispatcher shows up here. See https://github.com/awslabs/stickler/issues/400
+`compare_with()`. So do they in a nested or list-annotated sub-field that the
+list's first element's class does not declare that way, since only that
+class's fields were read before. When the first element's pair is not a
+match, each pair is read by its own class's annotation. Every expected count
+below is a literal, so a change to the dispatcher shows up here. See
+https://github.com/awslabs/stickler/issues/400
 """
 
 import datetime
@@ -1405,6 +1409,265 @@ def test_a_fixed_score_model_counts_in_the_bulk_evaluator_as_before(gt, pred):
     assert evaluation.errors == []
     assert {k: evaluation.metrics[k] for k in ("tp", "fn")} == {"tp": 1, "fn": 0}
     assert evaluation.field_metrics["items.value"]["tp"] == 1
+
+
+class TaggedBase(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    name: str = ComparableField()
+    match_threshold = 0.4
+
+
+class FixedScoreTagged(TaggedBase):
+    """A fixed-score subclass with a list field its base does not declare."""
+
+    tags: List[Any] = ComparableField()
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreOptionalTagged(TaggedBase):
+    tags: Optional[List[Any]] = ComparableField(default=None)
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class TaggedHolder(StructuredModel):
+    items: List[TaggedBase] = ComparableField()
+
+
+TAGGED = [
+    pytest.param(FixedScoreTagged, id="list"),
+    pytest.param(FixedScoreOptionalTagged, id="optional-list"),
+]
+
+# Two lists the dispatcher raises on, as in UNSCORABLE_LEAVES: a GT value
+# without compare_with() (AttributeError), and a plain pydantic prediction
+# (TypeError).
+UNSCORABLE_LISTS = [
+    pytest.param([Inner(a="x"), "b"], ["a", "b"], AttributeError, id="no-compare-with"),
+    pytest.param([Inner(a="x")], [Point(x=1)], TypeError, id="plain-pydantic"),
+]
+
+
+def _tagged(sub, tags, base_first=True):
+    items = [TaggedBase(key="a", name="n"), sub(key="b", name="n", tags=tags)]
+    return TaggedHolder(items=items if base_first else items[::-1])
+
+
+@pytest.mark.parametrize("include_confusion_matrix", [False, True])
+@pytest.mark.parametrize("sub", TAGGED)
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_fixed_score_subclass_list_field_after_its_base_counts_from_the_comparator(
+    sub, gt, pred, error, include_confusion_matrix
+):
+    # Before #400 only the first element's class was read, so `tags`, which
+    # TaggedBase does not declare, was never classified. It now is, and the
+    # dispatcher raises on these lists. The subclass's compare_with() never
+    # scores the field, so the pair counts one FD from the comparator.
+    result = _tagged(sub, gt).compare_with(
+        _tagged(sub, pred), include_confusion_matrix=include_confusion_matrix
+    )
+
+    assert result["overall_score"] == 1.0
+    assert result["field_scores"] == {"items": 1.0}
+    if include_confusion_matrix:
+        node = result["confusion_matrix"]["fields"]["items"]["fields"]["tags"]
+        assert _counts(node) == _expect(fd=1)
+        assert _counts(node, "aggregate") == _expect(fd=1)
+        assert not node.get("fields")
+        assert _list_fields(result, "items")["key"] == _expect(tp=2)
+
+
+@pytest.mark.parametrize("sub", TAGGED)
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_fixed_score_subclass_list_field_before_its_base_still_raises(
+    sub, gt, pred, error
+):
+    # The first element's class declares `tags` as a list, so it went to the
+    # dispatcher before #400 too.
+    with pytest.raises(error):
+        _tagged(sub, gt, base_first=False).compare_with(
+            _tagged(sub, pred, base_first=False)
+        )
+
+
+class TaggedWrap(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    docs: List[TaggedBase] = ComparableField()
+
+
+class TaggedWrapHolder(StructuredModel):
+    items: List[TaggedWrap] = ComparableField()
+
+
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_fixed_score_subclass_list_field_one_list_level_down_counts_too(
+    gt, pred, error
+):
+    # TaggedWrap recurses, so scoring its `docs` list classifies `tags`, and
+    # plain compare() reached the raise too.
+    def wrap(tags):
+        docs = _tagged(FixedScoreTagged, tags).items
+        return TaggedWrapHolder(items=[TaggedWrap(key="w", docs=docs)])
+
+    gt_model, pred_model = wrap(gt), wrap(pred)
+
+    assert gt_model.compare(pred_model) == 1.0
+    result = gt_model.compare_with(pred_model, include_confusion_matrix=True)
+    assert result["overall_score"] == 1.0
+    docs = result["confusion_matrix"]["fields"]["items"]["fields"]["docs"]
+    assert _counts(docs["fields"]["tags"]) == _expect(fd=1)
+
+
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_fixed_score_subclass_list_field_counts_in_the_bulk_evaluator(
+    gt, pred, error
+):
+    evaluator = BulkStructuredModelEvaluator(target_schema=TaggedHolder)
+    evaluator.update(
+        _tagged(FixedScoreTagged, gt), _tagged(FixedScoreTagged, pred), doc_id="doc"
+    )
+    evaluation = evaluator.compute()
+
+    assert evaluation.errors == []
+    assert {k: evaluation.metrics[k] for k in ("tp", "fn")} == {"tp": 2, "fn": 0}
+    assert evaluation.field_metrics["items.tags"]["fd"] == 1
+
+
+class Note(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    name: str = ComparableField()
+    v: Optional[str] = ComparableField(default=None)
+    match_threshold = 0.4
+
+
+class AnyNote(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    name: str = ComparableField()
+    v: Any = ComparableField(default=None)
+    match_threshold = 0.4
+
+
+class FixedScoreNote(Note):
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreTags(StructuredModel):
+    """Declares `v` as a list where the union's other class does not."""
+
+    key: str = ComparableField(threshold=1.0)
+    name: str = ComparableField()
+    v: Optional[List[Any]] = ComparableField(default=None)
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class NoteOrTags(StructuredModel):
+    items: List[Union[Note, FixedScoreTags]] = ComparableField()
+
+
+class AnyNoteOrTags(StructuredModel):
+    items: List[Union[AnyNote, FixedScoreTags]] = ComparableField()
+
+
+class FixedScoreNoteOrTags(StructuredModel):
+    items: List[Union[FixedScoreNote, FixedScoreTags]] = ComparableField()
+
+
+def _note_then_tags(holder, note, tags, first_matches=True):
+    first = (
+        note(key="a", name="n", v="s")
+        if first_matches
+        else note(key="q", name="m", v="s")
+    )
+    return holder(items=[first, FixedScoreTags(key="b", name="n", v=tags)])
+
+
+@pytest.mark.parametrize("include_confusion_matrix", [False, True])
+@pytest.mark.parametrize(
+    "holder, note, score",
+    [
+        pytest.param(NoteOrTags, Note, 2 / 3, id="optional-str"),
+        pytest.param(AnyNoteOrTags, AnyNote, 2 / 3, id="any"),
+        pytest.param(FixedScoreNoteOrTags, FixedScoreNote, 1.0, id="fixed-score-note"),
+    ],
+)
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_list_field_after_a_failed_first_pair_of_another_class_counts_as_before(
+    holder, note, score, gt, pred, error, include_confusion_matrix
+):
+    # The first pair's Note does not match, so the Tags pair is the only one
+    # with `v`. Note does not declare `v` as a list, so before #400 the pair
+    # counted from the comparator. Tags declares it as a list, and the
+    # dispatcher raises on these lists, so the pair counts that way still.
+    result = _note_then_tags(holder, note, gt).compare_with(
+        _note_then_tags(holder, note, pred, first_matches=False),
+        include_confusion_matrix=include_confusion_matrix,
+    )
+
+    assert result["overall_score"] == pytest.approx(score)
+    if include_confusion_matrix:
+        assert _list_fields(result, "items") == {
+            "key": _expect(tp=1),
+            "name": _expect(tp=1),
+            "v": _expect(fd=1),
+        }
+
+
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_list_field_after_a_failed_first_pair_counts_in_the_bulk_evaluator(
+    gt, pred, error
+):
+    evaluator = BulkStructuredModelEvaluator(target_schema=NoteOrTags)
+    evaluator.update(
+        _note_then_tags(NoteOrTags, Note, gt),
+        _note_then_tags(NoteOrTags, Note, pred, first_matches=False),
+        doc_id="doc",
+    )
+    evaluation = evaluator.compute()
+
+    assert evaluation.errors == []
+    assert {k: evaluation.metrics[k] for k in ("tp", "fd", "fn")} == {
+        "tp": 1,
+        "fd": 1,
+        "fn": 0,
+    }
+    assert evaluation.field_metrics["items.v"]["fd"] == 1
+
+
+@pytest.mark.parametrize(
+    "first_matches, expected",
+    [
+        pytest.param(True, _expect(tp=3, fn=1), id="first-matches"),
+        pytest.param(False, _expect(tp=2, fn=1), id="first-fails"),
+    ],
+)
+def test_a_failed_first_pair_leaves_each_pair_read_by_its_own_class(
+    first_matches, expected
+):
+    # `v` is `Any` on AnyNote and a list on FixedScoreTags. The last pair is an
+    # AnyNote, read by value, so `"x"` against `[]` is an FN either way. With
+    # the first pair failed it is no longer read by FixedScoreTags's
+    # annotation, which gave an FD. The Tags pair's lists count 2 TP either way.
+    def items(first_key, last_v):
+        return AnyNoteOrTags(
+            items=[
+                AnyNote(key=first_key, name="n" if first_key == "a" else "m", v="s"),
+                FixedScoreTags(key="b", name="n", v=["a", "b"]),
+                AnyNote(key="c", name="n", v=last_v),
+            ]
+        )
+
+    result = items("a", "x").compare_with(
+        items("a" if first_matches else "q", []), include_confusion_matrix=True
+    )
+
+    assert _list_fields(result, "items")["v"] == expected
 
 
 class FixedScoreMappingElement(StructuredModel):
