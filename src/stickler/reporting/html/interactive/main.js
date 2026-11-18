@@ -526,9 +526,10 @@ const updateDocumentButtonState = () => {
 };
 
 const loadPDF = (url, canvasId, loadingId, errorId) => {
-    const canvas = getElement(`#${canvasId}`);
-    const loading = getElement(`#${loadingId}`);
-    const error = getElement(`#${errorId}`);
+    // Document IDs may contain CSS syntax, so use literal DOM ID lookups.
+    const canvas = document.getElementById(canvasId);
+    const loading = document.getElementById(loadingId);
+    const error = document.getElementById(errorId);
     
     if (!canvas || !loading || !error) return;
     
@@ -590,10 +591,10 @@ const renderPDFPage = (docId, pageNum) => {
         pdfInfo.canvas.width = scaledViewport.width;
         
         page.render({ canvasContext: pdfInfo.context, viewport: scaledViewport }).promise.then(() => {
-            const loading = getElement(`#pdf-loading-${docId}`);
+            const loading = document.getElementById(`pdf-loading-${docId}`);
             if (loading) loading.style.display = 'none';
             pdfInfo.canvas.style.display = 'block';
-            setText(`#page-info-${docId}`, `Page ${pageNum} of ${pdfInfo.doc.numPages}`);
+            setText(document.getElementById(`page-info-${docId}`), `Page ${pageNum} of ${pdfInfo.doc.numPages}`);
         });
     });
 };
@@ -616,8 +617,8 @@ const updateNavigationButtons = (docId) => {
     const pdfInfo = window.pdfData?.[docId];
     if (!pdfInfo) return;
     
-    const prevBtn = getElement(`#prev-${docId}`);
-    const nextBtn = getElement(`#next-${docId}`);
+    const prevBtn = document.getElementById(`prev-${docId}`);
+    const nextBtn = document.getElementById(`next-${docId}`);
     
     if (prevBtn) prevBtn.disabled = (pdfInfo.currentPage <= 1);
     if (nextBtn) nextBtn.disabled = (pdfInfo.currentPage >= pdfInfo.doc.numPages);
