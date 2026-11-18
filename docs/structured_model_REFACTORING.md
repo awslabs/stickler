@@ -393,7 +393,9 @@ Maintained — one pass through the tree:
 ```python
 result = engine.compare_recursive(other)        # Single traversal
 if include_confusion_matrix:
-    result = builder.build_confusion_matrix(result)  # No re-traversal
+    confusion_matrix = AggregateMetricsCalculator().calculate_aggregate_metrics(result)  # No re-traversal
+    if add_derived_metrics:
+        confusion_matrix = DerivedMetricsCalculator().add_derived_metrics_to_result(...)
 ```
 
 ### Performance Validation

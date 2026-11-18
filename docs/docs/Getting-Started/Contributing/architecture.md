@@ -328,7 +328,7 @@ The single-traversal design collects all three in **one pass** through `compare_
 Optional features are computed only when requested:
 
 ```python
-# See: comparison_engine.py:279-306
+# See: ComparisonEngine.compare_with in comparison_engine.py
 if include_confusion_matrix:
     confusion_matrix = AggregateMetricsCalculator().calculate_aggregate_metrics(...)
     if add_derived_metrics:
