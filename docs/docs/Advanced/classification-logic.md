@@ -186,7 +186,11 @@ where a subclass arrived for its base, which `Optional[Pet]` accepts.
     two models of one class would raise, such as two models whose fields hold
     those lists, the field counts one TP or FD from the ground-truth model's
     own `compare_with()`. That runs when the model's class also returns a
-    fixed score, and raises the same way when it recurses.
+    fixed score, and raises the same way when it recurses. A field that goes
+    to the dispatcher directly, such as `List[Any]`, raises on these pairs,
+    unless the list's first element's class does not declare it as a model
+    or a list, as with a subclass's field after its base. Then it counts
+    them the same way.
 
     Whether a refused object should still *pair* inside a list, or should instead
     be counted as a missed ground truth plus an invented prediction, is the open
@@ -222,7 +226,7 @@ These are computed at every node of the result tree, from that node's own counts
 
 **List order** -- Order does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position.
 
-**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively: every field the ground-truth element's class declares is classified by the same dispatcher as a top-level field, so it follows the rules on this page. A field annotated as a model, a list, or an `Optional` model or union of models, such as `Optional[Inner]`, `List[str]`, `Optional[Union[A, B]]` or `Union[A, B, List[str]]`, goes to the dispatcher directly. Any other field, such as `Any`, `object`, `Union[A, B]`, `Sequence[str]` or `Optional[Annotated[Inner, Field(...)]]`, is read by its value first. If the classes in one list annotate a field differently, the first matched ground-truth element that declares it decides which. These cases are counted differently from top level:
+**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively: every field the ground-truth element's class declares is classified by the same dispatcher as a top-level field, so it follows the rules on this page. A field annotated as a model, a list, or an `Optional` model or union of models, such as `Optional[Inner]`, `List[str]`, `Optional[Union[A, B]]` or `Union[A, B, List[str]]`, goes to the dispatcher directly. Any other field, such as `Any`, `object`, `Union[A, B]`, `Sequence[str]` or `Optional[Annotated[Inner, Field(...)]]`, is read by its value first. If the classes in one list annotate a field differently, the first matched ground-truth element that declares it decides which, or, when the list's first element is not matched, each pair's own class does. These cases are counted differently from top level:
 
 - A field the predicted element's class does not declare (an extra field) is not counted, where at top level it adds an FA to the root `overall`.
 - In a field read by value, a model of another class than the ground truth's is one TP or FD, from the ground-truth model's `compare_with()` score against the field's threshold, and `aggregate` counts it the same way rather than per field. That score reads a field the prediction lacks as `None`, so `Search(query="hotels")` against `Browse(url="x.com")` scores `0.0` and is an FD. A ground-truth field left `None` matches the missing one, so `Inner(a="x", b=None)` against `Other(c="z")` scores `0.5`, from `b`, and is a TP at the default threshold of `0.5`. It scores only the ground truth's own fields, so `Pet(name="tom")` against its subclass `Cat(name="tom", lives=9)` scores `1.0` and is a TP, as the warning under [Objects of different classes](#objects-of-different-classes) says. A field that goes to the dispatcher directly counts such a pair as top level does.

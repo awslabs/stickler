@@ -51,10 +51,12 @@ Each release links to full notes on the
     `Any` or `Optional[Annotated[Inner, Field(...)]]`, as it already was in
     `Optional[Inner]`;
   - a field that the classes of a union declare with different annotations
-    is read by the first matched ground-truth element that declares it. With
-    `AStr(x: Optional[str])` listed before `BList(x: Optional[List[str]])`,
-    `BList(x=["a", "b"])` against `BList(x=["a", "c"])` now counts `x` as
-    1 TP and 1 FD, not 1 TP, as it does with `BList` first.
+    is read by the first matched ground-truth element that declares it, or
+    by each pair's own class when the list's first element is not matched.
+    With `AStr(x: Optional[str])` listed before
+    `BList(x: Optional[List[str]])`, `BList(x=["a", "b"])` against
+    `BList(x=["a", "c"])` now counts `x` as 1 TP and 1 FD, not 1 TP, as it
+    does with `BList` first.
 
   In a list of models, whatever the sub-field's type, a matched prediction
   that lacked a field of the first ground-truth element's class raised
@@ -100,7 +102,14 @@ Each release links to full notes on the
   `Leaf(d=[Inner(a="x")])` against `Leaf(d=[Point(x=1)])` is a TP. The score
   is 1.0 before and after in each of these cases. A sub-field routed as a
   nested model or a list, such as `Optional[Leaf]` or `List[Any]`, still
-  raises on them, as before.
+  raises on them, as before, if the list's first element's class declares it
+  that way too. If that class does not, the pair counts the same way, since
+  only that class's fields were read before. So a fixed-score subclass's
+  `List[Any]` field, listed after its base, which lacks the field, counts one
+  FD for `[Inner(a="x"), "b"]` against `["a", "b"]`, where it was not
+  counted. A union class's `Optional[List[Any]]` field counts one FD there,
+  as before, when the list's first element is of a class that declares the
+  field as `Optional[str]` or `Any`.
   Every sub-field of such an element now also gets the dispatcher's
   warnings, as it does without the override and at top level. A dict or a
   plain pydantic model its comparator cannot score, or two models of
