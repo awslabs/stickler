@@ -448,6 +448,19 @@ def _is_named_map(pointer: Tuple[str, ...]) -> bool:
     return _map_holders(pointer)[-1] is not None
 
 
+def _is_entry_named_properties(pointer: Tuple[str, ...]) -> bool:
+    """Whether `pointer` names a `$defs` or `definitions` entry called
+    `properties`. Such an entry used to be read as the `properties` keyword
+    of its set of definitions, a map of properties, so its own shape
+    (`patternProperties`, a keyword beside a combiner) was never checked. It
+    is read as an entry now, with its keys and contents checked, and its own
+    shape still left alone."""
+    return pointer[-1:] == ("properties",) and _map_holders(pointer)[-2] in (
+        "$defs",
+        "definitions",
+    )
+
+
 def _position_after(position: str, key: Any) -> str:
     """What the value under `key` is, in a node at `position`: a "schema", a
     map of schemas by name ("names", or "definitions" for a set of
@@ -1333,9 +1346,12 @@ class JsonSchemaImporter:
             built: bool = True,
             reads: bool = True,
             position: str = "schema",
+            shapes: bool = True,
         ) -> None:
             # `position` is what the node is, as `_position_after` reads it,
-            # whatever scope the walk reads it with.
+            # whatever scope the walk reads it with. With `shapes` False the
+            # node's own shape (`patternProperties`, a keyword beside a
+            # combiner) is not checked, only its keys and contents.
             if isinstance(node, list):
                 item = "value" if position == "value" else "schema"
                 for index, value in enumerate(node):
@@ -1400,7 +1416,7 @@ class JsonSchemaImporter:
                         # once the walk is done.
                         unbuilt.setdefault(id(node), found)
 
-            if "patternProperties" in node:
+            if shapes and "patternProperties" in node:
                 location = f" at '{path}'" if path else ""
                 raise ValueError(
                     "JSON Schema patternProperties cannot be represented as named "
@@ -1408,7 +1424,7 @@ class JsonSchemaImporter:
                 )
 
             combiners = [keyword for keyword in _COMBINERS if keyword in node]
-            if combiners:
+            if shapes and combiners:
                 allowed = set(_ANNOTATION_KEYWORDS)
                 allowed.update({"$defs", "definitions"})
                 allowed.update(combiners)
@@ -1521,7 +1537,9 @@ class JsonSchemaImporter:
             like a keyword (`oneOf`, `items`) is a name."""
             at = ".".join(pointer)
             if not (_is_named_map(pointer) and isinstance(body, dict)):
-                walk(body, at, None, built, False, _pointer_position(pointer))
+                shapes = not _is_entry_named_properties(pointer)
+                position = _pointer_position(pointer)
+                walk(body, at, None, built, False, position, shapes)
                 return
             for name, member in body.items():
                 position = _pointer_position((*pointer, name))
@@ -1578,7 +1596,14 @@ class JsonSchemaImporter:
                 for name, body in mapping.items():
                     if id(body) not in entries:
                         entries.add(id(body))
-                        walk(body, f"{at}.{name}", None, False, reads=False)
+                        walk(
+                            body,
+                            f"{at}.{name}",
+                            None,
+                            False,
+                            reads=False,
+                            shapes=name != "properties",
+                        )
                 continue
             pointer, body, _, _ = pending.pop()
             if pointer in walked or id(body) in entries:

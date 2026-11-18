@@ -1547,6 +1547,40 @@ class TestOnlyReachedDefinitionsAreChecked:
                 }
             )
 
+    @pytest.mark.parametrize("namespace", ("$defs", "definitions"))
+    @pytest.mark.parametrize(
+        "body, used",
+        (
+            (
+                {"type": "object", "patternProperties": {"^x": {"type": "string"}}},
+                False,
+            ),
+            ({"type": "object", "patternProperties": {"^x": {"type": "string"}}}, True),
+            (
+                {
+                    "type": "object",
+                    "properties": {"x": {"type": "string"}},
+                    "anyOf": [{"required": ["x"]}],
+                },
+                False,
+            ),
+        ),
+        ids=("patternProperties-unused", "patternProperties-used", "anyOf-unused"),
+    )
+    def test_an_entry_named_properties_keeps_its_own_shape_unchecked(
+        self, body, used, namespace
+    ):
+        """Its keys and contents are checked as an entry's, but dev read it
+        as a map of properties, so a shape at its top was never checked."""
+        schema = {
+            "type": "object",
+            "properties": {"a": {"type": "string"}},
+            namespace: {"properties": body},
+        }
+        if used:
+            schema["properties"]["u"] = {"$ref": f"#/{namespace}/properties"}
+        StructuredModel.from_json_schema(schema)
+
     @pytest.mark.parametrize("keyword", ("default", "examples"))
     def test_definitions_inside_data_are_not_checked(self, keyword):
         data = {"a": "x", "$defs": {"X": {"x-aws-stickler-weight": 2.0}}}
