@@ -945,7 +945,8 @@ class TestAListOfModels:
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            exec(
+            # Runs the fixed model source written above, to define the class.
+            exec(  # nosec B102
                 compile(
                     source,
                     "order_models.py",
@@ -1202,7 +1203,8 @@ def _exec_models(source, *, postponed=True):
     flags = __future__.annotations.compiler_flag if postponed else 0
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        exec(
+        # Runs model source built from this file's own templates, to define the class.
+        exec(  # nosec B102
             compile(source, "order_models.py", "exec", flags=flags, dont_inherit=True),
             namespace,
         )
