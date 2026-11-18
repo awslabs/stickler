@@ -19,6 +19,15 @@ Each release links to full notes on the
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
 
+### Deprecated
+
+- `stickler.structured_object_evaluator.models.confusion_matrix_calculator` is
+  back as a deprecated shim, so an import of it keeps working in 1.0.x.
+  Importing it emits a `DeprecationWarning`, and
+  `ConfusionMatrixCalculator.classify_field_for_confusion_matrix` classifies a
+  field as it did in 1.0.1. Nothing in Stickler uses it any more, and it will be
+  removed in 1.1.0 ([#406](https://github.com/awslabs/stickler/pull/406))
+
 ### Fixed
 
 - A sub-field of a `List[StructuredModel]` element is now classified by the
