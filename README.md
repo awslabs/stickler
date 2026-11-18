@@ -683,7 +683,7 @@ Every extension, its default, and the default threshold for each field position 
 - **Dynamic model creation**: [`docs/StructuredModel_Dynamic_Creation.md`](docs/StructuredModel_Dynamic_Creation.md)
 - **Comparator details**: [`src/stickler/comparators/Comparators.md`](src/stickler/comparators/Comparators.md)
 
-> **Bulk reduce input:** `update_from_comparison_result()` and `aggregate_from_comparisons()` accept default `compare_with()` outputs (confusion matrix plus field comparisons), not `evaluator_format=True` output. Evaluator-format input is silently accepted and yields all-zero metrics.
+> **Bulk reduce input:** `update_from_comparison_result()` and `aggregate_from_comparisons()` require `compare_with(include_confusion_matrix=True)` output; the default `compare_with()` output is rejected (`ValueError: comparison_result missing 'confusion_matrix' key`). For confidence and bounding-box metrics, also pass `document_field_comparisons=True`. With `evaluator_format=True`, confusion-matrix metrics may appear correct but `weighted_overall_score` is silently wrong because that format carries `overall` instead of `overall_score`.
 
 ## Examples
 
