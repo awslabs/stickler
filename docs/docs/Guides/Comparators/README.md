@@ -223,9 +223,6 @@ class Product(StructuredModel):
 - `token_sort_ratio` -- Splits strings into tokens, sorts them, then compares. Handles reordered words (e.g., "John Smith" vs "Smith John").
 - `token_set_ratio` -- Splits into token sets, comparing the intersection and remainder. Handles extra or missing words.
 
-!!! note "Dependency"
-    FuzzyComparator requires the `rapidfuzz` package. Install it with: `pip install rapidfuzz`
-
 ---
 
 ### ANLSStarComparator
@@ -513,7 +510,7 @@ class Address(StructuredModel):
 | `eval_guidelines` | `None` | Custom guidelines for the LLM to follow during comparison |
 
 !!! note "Dependency"
-    LLMComparator requires the `strands-agents` package. Install it with: `pip install stickler-eval[llm]`
+    LLMComparator requires the `strands-agents` package. Install it with: `pip install "stickler-eval[llm]"`
 
 ---
 

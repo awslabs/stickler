@@ -17,7 +17,7 @@ Key components:
 The Structured Object Evaluator is part of the `stickler` package. Install it using pip:
 
 ```bash
-pip install stickler
+pip install stickler-eval
 ```
 
 ## Usage

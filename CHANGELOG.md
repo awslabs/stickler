@@ -90,6 +90,12 @@ Each release links to full notes on the
   (`"Total – 1250"` reads 1250)
   ([#559](https://github.com/awslabs/stickler/issues/559))
 
+- Quoted every `pip install "stickler-eval[...]"` in the docs, examples and the
+  `LLMComparator` `ImportError`, since zsh reads unquoted brackets as a glob,
+  and the comparator guides now install BERT and Semantic through their extras
+  ([#482](https://github.com/awslabs/stickler/issues/482), based on
+  [#533](https://github.com/awslabs/stickler/pull/533) by @HarshRajSinghania)
+
 ### Security
 
 - **`print_confusion_matrix_html` now escapes its output.** It wrapped the
