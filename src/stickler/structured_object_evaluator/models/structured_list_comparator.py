@@ -375,8 +375,9 @@ class StructuredListComparator:
                 absent values are a TN and an absent list facing a non-list
                 reads as ``None``; two lists still go to the list comparator.
                 Two models of different classes are classified by
-                :func:`_other_class_result`, and two lists the dispatcher
-                cannot score by :func:`_comparator_result`.
+                :func:`_compare_with_result`. Two lists the dispatcher cannot
+                score are classified by :func:`_comparator_result`, and two
+                models of one class by :func:`_compare_with_result`.
         """
         pair_results = []
         for gt_idx, pred_idx, _ in matched_pairs:
@@ -388,7 +389,7 @@ class StructuredListComparator:
                 if by_value:
                     if _are_models_of_other_classes(gt_sub_value, pred_sub_value):
                         pair_results.append(
-                            _other_class_result(
+                            _compare_with_result(
                                 gt_item, sub_field_name, gt_sub_value, pred_sub_value
                             )
                         )
@@ -414,15 +415,23 @@ class StructuredListComparator:
                         sub_field_name, gt_sub_value, pred_sub_value
                     )
                 except (AttributeError, TypeError):
-                    if not (
-                        by_value
-                        and isinstance(gt_sub_value, list)
-                        and isinstance(pred_sub_value, list)
-                    ):
+                    if not by_value:
                         raise
-                    pair_result = _comparator_result(
-                        gt_item, sub_field_name, gt_sub_value, pred_sub_value
-                    )
+                    if isinstance(gt_sub_value, list) and isinstance(
+                        pred_sub_value, list
+                    ):
+                        pair_result = _comparator_result(
+                            gt_item, sub_field_name, gt_sub_value, pred_sub_value
+                        )
+                    elif isinstance(gt_sub_value, StructuredModel) and isinstance(
+                        pred_sub_value, StructuredModel
+                    ):
+                        # Models of other classes were classified above.
+                        pair_result = _compare_with_result(
+                            gt_item, sub_field_name, gt_sub_value, pred_sub_value
+                        )
+                    else:
+                        raise
                 pair_results.append(pair_result)
         return pair_results
 
@@ -647,17 +656,21 @@ def _are_models_of_other_classes(gt_value: Any, pred_value: Any) -> bool:
     )
 
 
-def _other_class_result(
+def _compare_with_result(
     gt_item: "StructuredModel", sub_field_name: str, gt_value: Any, pred_value: Any
 ) -> Dict[str, Any]:
-    """One TP or FD for two models of different classes in a list item.
+    """One TP or FD for two models in a list item, from ``gt_value.compare_with()``.
 
     The verdict is ``gt_value.compare_with(pred_value)`` against the field's
-    threshold. That reads a field the prediction lacks as
-    missing, so ``Search(query)`` vs ``Browse(url)`` scores 0.0, an FD. The
-    dispatcher would use ``compare()``, which skips such a field and scores
-    that pair 1.0 (#327). No nested ``fields`` are kept, so ``aggregate``
-    counts the pair as this one TP or FD.
+    threshold. For two models of different classes, that reads a field the
+    prediction lacks as missing, so ``Search(query)`` vs ``Browse(url)``
+    scores 0.0, an FD. The dispatcher would use ``compare()``, which skips such
+    a field and scores that pair 1.0 (#327). For two models of one class, it
+    is used only when the dispatcher raises: the item's ``compare_with()``
+    returns a score without recursing, so the pair keeps the count it had
+    before #400. If the models' own ``compare_with()`` recurses, it raises the
+    same way. No nested ``fields`` are kept, so ``aggregate`` counts the pair
+    as this one TP or FD.
     """
     threshold = gt_item._get_comparison_info(sub_field_name).threshold
     score = gt_value.compare_with(pred_value)["overall_score"]
