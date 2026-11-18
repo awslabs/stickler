@@ -89,11 +89,18 @@ Each release links to full notes on the
   under `aggregate`. Like the other pairs above, they follow the
   field-by-field scoring `StructuredModel` still uses for objects of
   different classes. Where the dispatcher raises, as it does at top level and
-  without the override, the pair still counts one TP or FD from the
+  without the override, a sub-field not routed as a nested model or a list
+  counts the pair as before. Two lists count one TP or FD from the
   comparator. That covers a ground-truth list holding a value without
   `compare_with()`, such as `[Inner(a="x"), "b"]` against `["a", "b"]`, and a
   list of models against plain pydantic models, such as `[Inner(a="x")]`
-  against `[Point(x=1)]`. The score is 1.0 before and after in every case.
+  against `[Point(x=1)]`. Two models of one class count one TP or FD from the
+  ground truth's own `compare_with()`, which runs when that too returns a
+  fixed score. For such a `Leaf` with an `Any` field `d`,
+  `Leaf(d=[Inner(a="x")])` against `Leaf(d=[Point(x=1)])` is a TP. The score
+  is 1.0 before and after in each of these cases. A sub-field routed as a
+  nested model or a list, such as `Optional[Leaf]` or `List[Any]`, still
+  raises on them, as before.
   Every sub-field of such an element now also gets the dispatcher's
   warnings, as it does without the override and at top level. A dict or a
   plain pydantic model its comparator cannot score, or two models of
