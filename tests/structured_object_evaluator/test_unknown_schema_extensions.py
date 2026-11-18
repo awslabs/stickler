@@ -2012,6 +2012,94 @@ class TestARefToAMapOfSchemasReadsItsMembersAsNames:
             StructuredModel.from_json_schema(self._aliasing(holder, {"m": member}))
 
 
+class TestAMemberNamedLikeAMapKeywordIsASchema:
+    """A member named `definitions`, `$defs` or `dependentSchemas` under
+    `components`, an `x-*` payload or a data value is a schema, not a map of
+    them, so a `$ref` to it, or to its `properties`, reads those by name.
+
+    Read as the keyword, its `properties` map was walked as a schema, and a
+    property named `items`, `anyOf`, `allOf` or `patternProperties` was read
+    as that keyword. Each shape here raised where dev imports.
+    """
+
+    HOLDERS = pytest.mark.parametrize(
+        "holder",
+        (
+            "components/schemas/definitions",
+            "components/schemas/$defs",
+            "components/schemas/dependentSchemas",
+            "x-models/definitions",
+            "x-models/dependentSchemas",
+            "$defs/W/x-sub/definitions",
+            "properties/a/default/definitions",
+        ),
+    )
+    # Properties named like a keyword, and the (threshold, weight) the class
+    # built from the target reads on the first, if it carries a field key.
+    MEMBERS = pytest.mark.parametrize(
+        "members, reads",
+        (
+            (
+                {"items": {"type": "string", "x-aws-stickler-threshold": 0.9}},
+                (0.9, 1.0),
+            ),
+            ({"anyOf": {"type": "string", "x-aws-stickler-weight": 2.0}}, (0.5, 2.0)),
+            ({"allOf": {"type": "string"}, "b": {"type": "string"}}, None),
+            ({"patternProperties": {"type": "string"}}, None),
+        ),
+        ids=("items", "anyOf", "allOf", "patternProperties"),
+    )
+
+    @staticmethod
+    def _holding(holder, members, title=None):
+        """A schema whose node at `holder` is an object with `members` as its
+        properties."""
+        target = {"type": "object", "properties": members}
+        if title:
+            target["title"] = title
+        schema = {"type": "object", "properties": {"a": dict(_PLAIN)}}
+        schema["$defs"] = {"W": dict(_PLAIN)}
+        *parents, last = holder.split("/")
+        node = schema
+        for part in parents:
+            node = node.setdefault(part, {})
+        node[last] = target
+        return schema
+
+    @HOLDERS
+    @MEMBERS
+    @pytest.mark.parametrize("use", ("property", "items", "root"))
+    def test_a_ref_to_it_builds_its_class(self, use, members, reads, holder):
+        pointer = f"#/{holder}"
+        # A class can not be named `$defs`. The root's is `DynamicModel`.
+        title = "Defs" if holder.endswith("$defs") and use != "root" else None
+        schema = self._holding(holder, members, title)
+        if use == "property":
+            schema["properties"]["p"] = {"$ref": pointer}
+        elif use == "items":
+            schema["properties"]["p"] = {"type": "array", "items": {"$ref": pointer}}
+        else:
+            del schema["type"]
+            schema["$ref"] = pointer
+        model = StructuredModel.from_json_schema(schema)
+        built = model if use == "root" else _unwrap(model.model_fields["p"].annotation)
+        assert set(members) <= set(built.model_fields)
+        if reads:
+            info = built._get_comparison_info(next(iter(members)))
+            assert (info.threshold, info.weight) == reads
+
+    @HOLDERS
+    @MEMBERS
+    def test_a_ref_under_not_to_its_properties_builds_nothing(
+        self, members, reads, holder
+    ):
+        """`not` builds nothing, and the map it points at holds names."""
+        schema = self._holding(holder, members)
+        schema["not"] = {"$ref": f"#/{holder}/properties"}
+        model = StructuredModel.from_json_schema(schema)
+        assert set(model.model_fields) - {"extra_fields"} == {"a"}
+
+
 class TestAllOfRaisesOnlyWhereNothingReadsTheKeys:
     """An `allOf` arm drops its model keys, but the object it names may not.
 

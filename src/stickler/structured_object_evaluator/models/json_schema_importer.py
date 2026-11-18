@@ -410,12 +410,26 @@ def _walk_position(pointer: Tuple[str, ...]) -> Tuple[str, Optional[str], bool]:
 
 def _is_named_map(pointer: Tuple[str, ...]) -> bool:
     """Whether the walk would meet the node at `pointer` as a map of schemas
-    by name, such as a `properties` map, reading each segment as it does: a
-    keyword wherever a schema holds it."""
-    reading = "schema"
+    by name, reading each segment as it does.
+
+    The walk reads every node it enters as a schema, so a `properties` key
+    of any of them is a map by name. The other such keywords (`$defs`,
+    `definitions`, `dependentSchemas`, `patternProperties`) are one only as a
+    keyword of a schema, as `_position_after` reads it. A member so named
+    under `components`, an `x-*` payload or a data value is a schema, and its
+    `properties` map holds names, not keywords."""
+    reading, position = "schema", "schema"
     for part in pointer:
-        reading = min(_next_readings({reading}, part) - {"member"})
-    return reading in _NAMED_SCHEMA_KEYWORDS
+        if reading != "schema":
+            reading = "schema"  # a name in a map or an index in a list
+        elif part == "properties" or (
+            position == "schema" and part in _NAMED_SCHEMA_KEYWORDS
+        ):
+            reading = "names"
+        elif part in _LISTED_SCHEMA_KEYWORDS:
+            reading = "list"
+        position = _position_after(position, part)
+    return reading == "names"
 
 
 def _position_after(position: str, key: Any) -> str:
