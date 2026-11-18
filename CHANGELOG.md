@@ -96,10 +96,10 @@ Each release links to full notes on the
   against `[Point(x=1)]`. The score is 1.0 before and after in every case.
   Every sub-field of such an element now also gets the dispatcher's
   warnings, as it does without the override and at top level. A dict or a
-  plain pydantic model its comparator cannot score, or two plain pydantic
-  models of different classes, now warns where it was silent, so a run that
-  turns warnings into errors, such as pytest's `filterwarnings = error`,
-  raises there.
+  plain pydantic model its comparator cannot score, or two models of
+  different classes where one is a plain pydantic model, now warns where it
+  was silent, so a run that turns warnings into errors, such as pytest's
+  `filterwarnings = error`, raises there.
 
   Four cases still differ from top level. The first two apply to every
   sub-field, and the last two to a sub-field not routed as a nested model or
