@@ -453,8 +453,43 @@ class StructuredModel(BaseModel):
             required.append(field_name)
         cls._required_match_fields = tuple(required)
 
+        # a nested object is not paired, so its required fields would never
+        # veto anything; refuse it instead of ignoring it silently
+        for field_name, field_info in cls.model_fields.items():
+            annotation = field_info.annotation
+            while True:
+                inner = unwrap_optional(unwrap_annotated(annotation))[0]
+                if inner is annotation:
+                    break
+                annotation = inner
+            if (
+                isinstance(annotation, type)
+                and issubclass(annotation, StructuredModel)
+                and annotation._required_match_fields
+            ):
+                raise ValueError(
+                    f"Field '{field_name}' is a nested {annotation.__name__}, "
+                    f"which sets required_match on "
+                    f"{list(annotation._required_match_fields)}. A nested object "
+                    f"is not paired, so the veto would never apply. Move the "
+                    f"required field up to this class, or make the field a "
+                    f"List[{annotation.__name__}]."
+                )
+
     def fails_required_match(self, other: Any) -> bool:
-        """Whether a required field of this object is not matched by ``other``.
+        """Whether a required field of either object is not matched by the other.
+
+        Both sides are read, so swapping ground truth and prediction gives the
+        same answer when their classes differ.
+        """
+        if self._fails_own_required_match(other):
+            return True
+        return isinstance(other, StructuredModel) and other._fails_own_required_match(
+            self
+        )
+
+    def _fails_own_required_match(self, other: Any) -> bool:
+        """Whether a field required by this object's class fails against ``other``.
 
         A value null on one side fails and null on both passes. Otherwise the
         field fails when its raw score is not at or above its resolved threshold,
