@@ -323,10 +323,6 @@ class StructuredModel(BaseModel):
       - Calculates nested field metrics
 
     **Metrics Calculation:**
-    - ConfusionMatrixCalculator: Calculates confusion matrix metrics
-      - Computes TP, FP, TN, FN, FD, FA counts
-      - Classifies the non-list sub-fields of matched list items
-
     - AggregateMetricsCalculator: Rolls up child metrics to parent nodes
       - Performs recursive traversal of result tree
       - Sums child aggregate metrics to parent
@@ -1424,27 +1420,6 @@ class StructuredModel(BaseModel):
         """
         basic_metrics = ["tp", "fp", "fn", "tn", "fa", "fd"]
         return all(metric in metrics_dict for metric in basic_metrics)
-
-    def _classify_field_for_confusion_matrix(
-        self, field_name: str, other_value: Any, threshold: float = None
-    ) -> Dict[str, int]:
-        """Classify a field comparison according to the confusion matrix rules.
-
-        This method delegates to ConfusionMatrixCalculator for the actual implementation.
-
-        Args:
-            field_name: Name of the field being compared
-            other_value: Value to compare with
-            threshold: Threshold for matching (uses field's threshold if None)
-
-        Returns:
-            Dictionary with the six counts: tp, fa, fd, fp, tn, fn
-        """
-        from .confusion_matrix_calculator import ConfusionMatrixCalculator
-
-        return ConfusionMatrixCalculator.classify_field_for_confusion_matrix(
-            self, field_name, other_value, threshold
-        )
 
     def _collect_enhanced_non_matches(
         self, recursive_result: dict, other: "StructuredModel"

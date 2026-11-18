@@ -65,9 +65,9 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   1.1.0 omits the key.
 
 **Metrics**
-- `confusion_matrix_calculator.py`, `derived_metrics_calculator.py`,
-  `aggregate_metrics_calculator.py`, `metrics_helper.py`, `threshold_helper.py`
-  — confusion-matrix and derived/aggregate metric rollups.
+- `derived_metrics_calculator.py`, `aggregate_metrics_calculator.py`,
+  `metrics_helper.py`, `threshold_helper.py` — confusion-matrix and derived/
+  aggregate metric rollups.
 - `rich_value_helper.py` — unwraps the Rich Value Pattern
   (`{"_value": ..., "_confidence": ..., "_bbox": ...}`) during `from_json()`,
   returning `(data, confidences, extras)`.
