@@ -164,6 +164,34 @@ where a subclass arrived for its base, which `Optional[Pet]` accepts.
     unverified rather than as endorsed: annotate the field with a single model type
     if you need the guarantee today.
 
+    The same gap lets a pair in a list of models count a TP even when it scores
+    `0.0`. Pairing uses `compare()`, which skips the fields the prediction lacks,
+    so in a `List[Union[Search, Browse]]` field, `[Search(query="hotels")]`
+    against `[Browse(url="x.com")]` counts a TP, with `query` an FN under
+    `aggregate`, while the field scores `0.0`. A model paired with an element
+    that is not a model, such as a string, dict or list, is a TP the same way:
+    in an `Any`, `object` or `List[Any]` field, at top level or in a list
+    element, `[Inner(a="x", b=None)]` against `["a"]` counts a TP, with `a` an
+    FN and `b` a TN under `aggregate`. So does `[Inner(a="x", b=None)]`
+    against `[{"a": "x"}]`. A plain pydantic element is the exception: scoring
+    a model against one raises `TypeError`. These pairs, and one against a
+    model of another class such as `[Other(c="z")]`, count a TP also when the
+    list element's class overrides `compare_with()` to return a fixed score.
+    Such an element never scores its fields. So in a field read by value, such
+    as `Any` or `object` (see **Nested lists** below), where scoring two lists
+    would raise, the field counts one TP or FD from its comparator instead.
+    That covers `[Inner(a="x", b=None)]` against a list of plain pydantic
+    models, and a ground-truth list holding a value without `compare_with()`,
+    such as `[Inner(a="x", b=None), "b"]` against `["a", "b"]`. Where scoring
+    two models of one class would raise, such as two models whose fields hold
+    those lists, the field counts one TP or FD from the ground-truth model's
+    own `compare_with()`. That runs when the model's class also returns a
+    fixed score, and raises the same way when it recurses. A field that goes
+    to the dispatcher directly, such as `List[Any]`, raises on these pairs,
+    unless the list's first element's class does not declare it as a model
+    or a list, as with a subclass's field after its base. Then it counts
+    them the same way.
+
     Whether a refused object should still *pair* inside a list, or should instead
     be counted as a missed ground truth plus an invented prediction, is the open
     question in [#321](https://github.com/awslabs/stickler/issues/321).
@@ -198,7 +226,12 @@ These are computed at every node of the result tree, from that node's own counts
 
 **List order** -- Order does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position.
 
-**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively.
+**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively: every field the ground-truth element's class declares is classified by the same dispatcher as a top-level field, so it follows the rules on this page. A field annotated as a model, a list, or an `Optional` model or union of models, such as `Optional[Inner]`, `List[str]`, `Optional[Union[A, B]]` or `Union[A, B, List[str]]`, goes to the dispatcher directly. Any other field, such as `Any`, `object`, `Union[A, B]`, `Sequence[str]` or `Optional[Annotated[Inner, Field(...)]]`, is read by its value first. If the classes in one list annotate a field differently, the first matched ground-truth element that declares it decides which, or, when the list's first element is not matched, each pair's own class does. These cases are counted differently from top level:
+
+- A field the predicted element's class does not declare (an extra field) is not counted, where at top level it adds an FA to the root `overall`.
+- In a field read by value, a model of another class than the ground truth's is one TP or FD, from the ground-truth model's `compare_with()` score against the field's threshold, and `aggregate` counts it the same way rather than per field. That score reads a field the prediction lacks as `None`, so `Search(query="hotels")` against `Browse(url="x.com")` scores `0.0` and is an FD. A ground-truth field left `None` matches the missing one, so `Inner(a="x", b=None)` against `Other(c="z")` scores `0.5`, from `b`, and is a TP at the default threshold of `0.5`. It scores only the ground truth's own fields, so `Pet(name="tom")` against its subclass `Cat(name="tom", lives=9)` scores `1.0` and is a TP, as the warning under [Objects of different classes](#objects-of-different-classes) says. A field that goes to the dispatcher directly counts such a pair as top level does.
+- When a field holds models in some pairs and `None` or a primitive in others, `aggregate` keeps one shape. In a field read by value, every pair counts as one leaf, so the models' own fields are not broken out, and a model of another class has the same effect. In a field that goes to the dispatcher directly, such as `Optional[Inner]`, the models' fields are kept and the other pairs are left out. So `[Inner(a="x", b=None), Inner(a="y", b=None)]` against `[Inner(a="x", b=None), None]` gives `aggregate` 1 TP and 1 FN in an `Any` field and 1 TP and 1 TN in an `Optional[Inner]` one, where the same pairs at top level give 1 TP, 1 TN and 1 FN.
+- In a field read by value, an empty list is null, as the null-vs-empty rule above says, so in an `Any` field `None` against `[]` is a TN and `"x"` against `[]` an FN. The same field at top level, and `non_matches`, read `[]` as a value, giving an FA and an FD.
 
 **Missing vs. null fields** -- A missing field and a field explicitly set to `null` are handled the same way: if the other side has a non-null value, the result is FN or FA accordingly.
 
