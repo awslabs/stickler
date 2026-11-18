@@ -270,8 +270,8 @@ class ANLSStarComparator(BaseComparator):
         Here each value has 16 characters, the prediction appends one character,
         and the predicted items are reversed. That is roughly 26 minutes over a
         10,000-document corpus for that one field. If that bites, the remedies
-        are to declare a nested
-        ``StructuredModel`` for the keys you actually score, or to follow
+        are to declare a nested ``StructuredModel`` for the keys you actually
+        score, or to follow
         https://github.com/awslabs/stickler/issues/204, which proposes a batch
         comparator hook and a prefilter for exactly this n x m blow-up.
 

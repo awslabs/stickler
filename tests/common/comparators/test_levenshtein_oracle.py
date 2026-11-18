@@ -30,6 +30,11 @@ def oracle(s1: str, s2: str) -> int:
     return distances[-1]
 
 
+def _short_id(value):
+    """Keep parametrize IDs short: long strings would otherwise flood -v logs."""
+    return None if len(value) <= 20 else f"len{len(value)}"
+
+
 def _string_pairs():
     edge_cases = (
         "",
@@ -70,7 +75,7 @@ def _string_pairs():
         yield text(length), text(length)
 
 
-@pytest.mark.parametrize("left,right", list(_string_pairs()))
+@pytest.mark.parametrize("left,right", list(_string_pairs()), ids=_short_id)
 def test_distance_and_similarity_match_original_dp(left, right):
     distance = oracle(left, right)
     assert LevenshteinComparator._levenshtein_distance(left, right) == distance
