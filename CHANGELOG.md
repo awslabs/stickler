@@ -240,6 +240,38 @@ Each release links to full notes on the
   `match_threshold` overrides the element class's for list pairing; on a
   `StructuredModel` it sets only `EvalResult.matched`. Scoring is unchanged
   ([#484](https://github.com/awslabs/stickler/issues/484))
+- The list contract is stated once, as a table in `classification-logic.md`
+  (pairing, bar, counts, recursion, score, reports), and other pages link to
+  it instead of restating it. Scoring is unchanged. Claims corrected against
+  measured output:
+  - A list declared without `ComparableField` pairs against the class
+    `match_threshold` (`0.7` unless set), not `0.5`.
+  - A list field's element order does not matter, but a nested list element
+    is compared as one value, and on the zero-config path it must match
+    exactly, order included.
+  - On a plain pydantic class, the runtime `match_threshold` of `evaluate()`
+    and `eval_for()` also sets `List[Model]` and `List[dict]` pairing and the
+    threshold of nested plain-model and `dict` fields, while a primitive list
+    keeps its inferred threshold. On a `StructuredModel` class it sets only
+    `matched`, and a `List[StructuredModel]` field pairs at the element
+    class's own `match_threshold` on either path
+    ([#416](https://github.com/awslabs/stickler/issues/416)). The docstrings
+    now say TP/FD, not TP/FN/FA.
+  - `clip_under_threshold` has no effect on `List[StructuredModel]`, so an FD
+    pair keeps its score, a known defect
+    ([#415](https://github.com/awslabs/stickler/issues/415)).
+  - `clip_under_threshold` defaults to off, not on, for dict and plain-model
+    fields and lists of them on a `StructuredModel` declared in Python. With
+    `x-aws-stickler-infer-unspecified`, an inferred JSON Schema property takes
+    its clip setting from inference, which is off for a free-form object and a
+    free-text string, rather than always `true`.
+  - `aggregate` leaves out FN and FA items beside an accepted sibling, and a
+    field `threshold` on `List[StructuredModel]` raises `ValueError`.
+  - A primitive list element row's `weighted_score` in `field_comparisons` is
+    its raw similarity, unweighted. Rows inside list items are described as
+    they are today ([#418](https://github.com/awslabs/stickler/issues/418)).
+  - The Hungarian matching example shows measured counts and the list score,
+    and its result block is checkable.
 - Amount examples no longer present a field threshold as rounding tolerance for
   `NumericComparator`. It scores 1.0 or 0.0, so the README, Best Practices,
   Evaluation and IDP Accelerator examples now set `absolute_tolerance=0.01` (or
