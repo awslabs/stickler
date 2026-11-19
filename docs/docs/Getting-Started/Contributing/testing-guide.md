@@ -382,7 +382,7 @@ Tests run automatically on every push and pull request via GitHub Actions.
 
 1. **run_pytest.yaml** - Runs pytest with coverage
    - Triggers on push and pull_request
-   - Uses Python 3.12
+   - Tests Python 3.10 to 3.14
    - Generates coverage report
 
 2. **lint.yaml** - Runs Ruff linter
