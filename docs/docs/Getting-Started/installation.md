@@ -15,32 +15,16 @@ uv pip install stickler-eval
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.10 or later
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended)
 
 ## Development Install
 
-If you want to contribute or run from source:
-
-```bash
-git clone https://github.com/awslabs/stickler.git
-cd stickler
-
-# uv handles Python version, venv creation, and dependency installation
-uv sync
-```
-
-Or with pip (you manage your own Python + venv):
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-```
+See [Development Setup](Contributing/development-setup.md).
 
 ## Optional Dependencies
 
-Stickler's core comparators (Exact, Levenshtein, Numeric, Fuzzy) work out of the box. The AI-powered comparators require additional packages, installable via extras:
+Stickler's core comparators (Exact, Levenshtein, Numeric, Fuzzy, Date, Phone, Normalized, ANLS\* and BBox IoU) work out of the box. The comparators below need an extra:
 
 ### SemanticComparator
 
@@ -55,12 +39,13 @@ pip install "stickler-eval[semantic]"
 
 ### BERTComparator
 
-Uses BERTScore for contextual similarity. Runs locally -- no cloud services needed.
+Uses BERTScore for contextual similarity. Runs locally, but downloads `roberta-large` (about 1.4 GB) from Hugging Face on first use.
 
 ```bash
 pip install "stickler-eval[bert]"
 ```
 
+- Network access to Hugging Face on first use
 - GPU recommended for performance, but CPU works
 
 ### LLMComparator
@@ -74,12 +59,16 @@ pip install "stickler-eval[llm]"
 - AWS credentials configured
 - Access to Amazon Bedrock with your chosen model enabled
 
-### All optional dependencies
+### Other extras
 
-Install everything at once:
+| Extra | Adds |
+|---|---|
+| `docsplit` | document packet splitting |
+| `reporting` | pandas, for passing a DataFrame as `ProcessEvaluation.matrix` (HTML reports need no extra) |
+| `all` | every extra except `bert` |
 
 ```bash
-pip install stickler-eval[bert,semantic,llm]
+pip install "stickler-eval[all]"
 ```
 
 ## Verify Installation
@@ -88,19 +77,7 @@ pip install stickler-eval[bert,semantic,llm]
 python -c "import stickler; print('Stickler installed successfully')"
 ```
 
-Run the quick start example:
-
-```bash
-python examples/scripts/quick_start.py
-```
-
-Run the test suite:
-
-```bash
-uv run pytest tests/
-# or, if using pip + venv:
-pytest tests/
-```
+The example script and the test suite need a clone, see [Development Setup](Contributing/development-setup.md).
 
 ## Troubleshooting
 

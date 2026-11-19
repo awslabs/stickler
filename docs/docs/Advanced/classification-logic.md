@@ -36,12 +36,20 @@ False Alarm (FA) and False Discovery (FD) together make up the broader False Pos
 
 ### Lists
 
-Lists use the [Hungarian algorithm](hungarian-matching.md) for optimal element pairing.
+#### The list contract {: #list-contract }
 
-1. **Empty lists**: `[] vs []` is TN; `[] vs [items]` produces one FA per item; `[items] vs []` produces one FN per item.
-2. **Matched elements**: similarity >= threshold is TP; below threshold is FD. See [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
-3. **Unmatched elements**: leftover GT elements are FN; leftover EST elements are FA.
-4. **`None` elements**: absent, so they are not matched or counted. A list of only `None` is an empty list. See [`None` elements in a list](#none-elements-in-a-list).
+This table is the single statement of how Stickler treats a list field. Other pages link here rather than restate it. The Known gaps note under it lists where the code does not yet follow it.
+
+| Aspect | Rule |
+|---|---|
+| Pairing | A list field's elements are paired one-to-one by the [Hungarian algorithm](hungarian-matching.md), maximising total similarity, so their order does not matter: `["a", "b"]` vs `["b", "a"]` scores `1.0`. An element that is itself a list (`List[List[str]]`) is compared as one whole value, so order inside it does count. On the zero-config path (`stickler.evaluate()` on a plain pydantic class) that inner list, and a list held in an `Any` field, must match exactly, order included. `None` and `NaN` elements are removed first ([`None` elements in a list](#none-elements-in-a-list)); reports keep original indices. Pair similarity is the field's comparator, or `GT[i].compare(Pred[j])` for `List[StructuredModel]` (fields absent on both sides excluded). |
+| Bar | `List[StructuredModel]`: the element class's `match_threshold`; a runtime `match_threshold` does not change it. A field `threshold` there raises `ValueError` in Python, and JSON Schema ignores it. Primitive, dict and plain-model lists on a `StructuredModel` declared in Python: the field's `threshold`, else a threshold named on the comparator, else `0.5` when declared with `ComparableField()`, or the class `match_threshold` (`0.7` unless set) when declared without it (`tags: List[str]`). JSON Schema and the zero-config path have their own defaults ([JSON Schema](../Guides/Evaluation/README.md#extension-reference), [zero-config](../Getting-Started/thresholds-and-metrics.md#4-runtime-match-threshold)). A pair that [meets](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold) the bar is a TP. |
+| Counts (the list node's `overall`) | Paired element: TP if it meets the bar, else FD. Unpaired GT element: FN. Unpaired prediction: FA. An empty, `None` or all-`None` list is null: both null is one TN (score `1.0`); one side null gives one FN or FA per present element (score `0.0`). |
+| Recursion | Only TP pairs of `StructuredModel` items are descended into. FD, FN and FA items are atomic. `aggregate` holds the leaves of TP items only, so FD, FN and FA items are left out of it when any sibling was accepted. With no accepted item it falls back to the list node's own counts ([why](aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). |
+| Score | `sum(pair scores) / max(n_gt, n_pred)`, never clipped as a whole against a field threshold. For primitive, dict and plain-model lists the pair score is the element similarity, zeroed below the bar when `clip_under_threshold` is on. On a `StructuredModel` declared in Python it defaults to on for primitive lists and off for dict and plain-model lists. JSON Schema and the zero-config path have their own defaults ([JSON Schema](../Guides/Evaluation/README.md#extension-reference), [zero-config](../API-Reference/auto.md#inference)). For `List[StructuredModel]` the pair score is `GT[i].compare_with(Pred[j])["overall_score"]`, which applies each field's own threshold and can differ from the pairing similarity. Currently `clip_under_threshold` has no effect there, so an FD pair keeps its score: a known gap. [Worked example](hungarian-matching.md#step-4-list-score). |
+| Reports | `field_comparisons`: one row per element of a primitive, dict or plain-model list, whatever its classification (a dict or plain-model element is not expanded into its keys or fields); for `List[StructuredModel]`, one row per leaf of a TP item and one object row per FD, FN or FA item. `non_matches` has the same rows, but only the FD, FN and FA ones. A `field_comparisons` row's `match` is true when its own classification is TP or TN: a value or object row met its bar; a list row had every element paired as a TP, with no FD, FA or FN at the element level. Failures deeper down get their own rows. |
+
+**Known gaps.** Four behaviours are defects, not the contract: `clip_under_threshold` having no effect on `List[StructuredModel]`; inside a list item, a `field_comparisons` row reporting the clipped `score`, and a nested list or object getting one row; a `None` list being reported differently from `[]` in `field_comparisons` (one row for the whole field against a non-empty list, and one row against another `None`, where every other pair of null lists, such as `[]` vs `[]`, gets none); and inside a list item, the cases listed under **Nested lists** below counting differently than at top level.
 
 #### `None` elements in a list {: #none-elements-in-a-list }
 
@@ -164,6 +172,34 @@ where a subclass arrived for its base, which `Optional[Pet]` accepts.
     unverified rather than as endorsed: annotate the field with a single model type
     if you need the guarantee today.
 
+    The same gap lets a pair in a list of models count a TP even when it scores
+    `0.0`. Pairing uses `compare()`, which skips the fields the prediction lacks,
+    so in a `List[Union[Search, Browse]]` field, `[Search(query="hotels")]`
+    against `[Browse(url="x.com")]` counts a TP, with `query` an FN under
+    `aggregate`, while the field scores `0.0`. A model paired with an element
+    that is not a model, such as a string, dict or list, is a TP the same way:
+    in an `Any`, `object` or `List[Any]` field, at top level or in a list
+    element, `[Inner(a="x", b=None)]` against `["a"]` counts a TP, with `a` an
+    FN and `b` a TN under `aggregate`. So does `[Inner(a="x", b=None)]`
+    against `[{"a": "x"}]`. A plain pydantic element is the exception: scoring
+    a model against one raises `TypeError`. These pairs, and one against a
+    model of another class such as `[Other(c="z")]`, count a TP also when the
+    list element's class overrides `compare_with()` to return a fixed score.
+    Such an element never scores its fields. So in a field read by value, such
+    as `Any` or `object` (see **Nested lists** below), where scoring two lists
+    would raise, the field counts one TP or FD from its comparator instead.
+    That covers `[Inner(a="x", b=None)]` against a list of plain pydantic
+    models, and a ground-truth list holding a value without `compare_with()`,
+    such as `[Inner(a="x", b=None), "b"]` against `["a", "b"]`. Where scoring
+    two models of one class would raise, such as two models whose fields hold
+    those lists, the field counts one TP or FD from the ground-truth model's
+    own `compare_with()`. That runs when the model's class also returns a
+    fixed score, and raises the same way when it recurses. A field that goes
+    to the dispatcher directly, such as `List[Any]`, raises on these pairs,
+    unless the list's first element's class does not declare it as a model
+    or a list, as with a subclass's field after its base. Then it counts
+    them the same way.
+
     Whether a refused object should still *pair* inside a list, or should instead
     be counted as a missed ground truth plus an invented prediction, is the open
     question in [#321](https://github.com/awslabs/stickler/issues/321).
@@ -186,7 +222,7 @@ neither term. The mixed-matching example above scores recall `1.000` even though
 `0.667`. `HungarianMatcher.calculate_metrics` always uses that second formula.
 See [FD and recall](hungarian-matching.md#fd-and-recall).
 
-These are computed at every node of the result tree, from that node's own counts, and which counts those are depends on which node you read. `overall` classifies that node's direct children: for a list field, whether each pairing was genuine or spurious; at the root, its own fields, which means the two units can mix in a single count. `aggregate` gives leaf detail, and for a list of objects that means only the items that were comparable, since a list item below the element class's `match_threshold` is one FD and is not descended into. A single nested `StructuredModel` field is not gated this way: its leaves are always reported. See [Which node answers which question](aggregate-metrics.md#which-node-answers-which-question).
+These are computed at every node of the result tree, from that node's own counts, and which counts those are depends on which node you read. `overall` classifies that node's direct children: for a list field, whether each pairing was genuine or spurious; at the root, its own fields, which means the two units can mix in a single count. `aggregate` gives leaf detail, and for a list of objects that means only the items that were comparable, since a list item below the element class's `match_threshold` is one FD and is not descended into; unmatched FN and FA items are left out too when a sibling was accepted ([Recursion](#list-contract)). A single nested `StructuredModel` field is not gated this way: its leaves are always reported. See [Which node answers which question](aggregate-metrics.md#which-node-answers-which-question).
 
 ## Edge Cases
 
@@ -196,9 +232,14 @@ These are computed at every node of the result tree, from that node's own counts
 
 **Threshold boundary** -- A similarity score exactly equal to the threshold counts as a match (TP). So does a score less than `1e-10` under it, at every gate listed in [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold), so a rounding error such as `0.7 + 0.1` (`0.7999999999999999`) against `0.8` does not turn a TP into an FD.
 
-**List order** -- Order does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position.
+**List order** -- The order of a list field's elements does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position. A nested list element is compared as one whole value ([Pairing](#list-contract)).
 
-**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively.
+**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each TP pair is evaluated recursively ([Recursion](#list-contract)): every field the ground-truth element's class declares is classified by the same dispatcher as a top-level field, so it follows the rules on this page. A field annotated as a model, a list, or an `Optional` model or union of models, such as `Optional[Inner]`, `List[str]`, `Optional[Union[A, B]]` or `Union[A, B, List[str]]`, goes to the dispatcher directly. Any other field, such as `Any`, `object`, `Union[A, B]`, `Sequence[str]` or `Optional[Annotated[Inner, Field(...)]]`, is read by its value first. If the classes in one list annotate a field differently, the first matched ground-truth element that declares it decides which, or, when the list's first element is not matched, each pair's own class does. These cases are counted differently from top level:
+
+- A field the predicted element's class does not declare (an extra field) is not counted, where at top level it adds an FA to the root `overall`.
+- In a field read by value, a model of another class than the ground truth's is one TP or FD, from the ground-truth model's `compare_with()` score against the field's threshold, and `aggregate` counts it the same way rather than per field. That score reads a field the prediction lacks as `None`, so `Search(query="hotels")` against `Browse(url="x.com")` scores `0.0` and is an FD. A ground-truth field left `None` matches the missing one, so `Inner(a="x", b=None)` against `Other(c="z")` scores `0.5`, from `b`, and is a TP at the default threshold of `0.5`. It scores only the ground truth's own fields, so `Pet(name="tom")` against its subclass `Cat(name="tom", lives=9)` scores `1.0` and is a TP, as the warning under [Objects of different classes](#objects-of-different-classes) says. A field that goes to the dispatcher directly counts such a pair as top level does.
+- When a field holds models in some pairs and `None` or a primitive in others, `aggregate` keeps one shape. In a field read by value, every pair counts as one leaf, so the models' own fields are not broken out, and a model of another class has the same effect. In a field that goes to the dispatcher directly, such as `Optional[Inner]`, the models' fields are kept and the other pairs are left out. So `[Inner(a="x", b=None), Inner(a="y", b=None)]` against `[Inner(a="x", b=None), None]` gives `aggregate` 1 TP and 1 FN in an `Any` field and 1 TP and 1 TN in an `Optional[Inner]` one, where the same pairs at top level give 1 TP, 1 TN and 1 FN.
+- In a field read by value, an empty list is null, as the null-vs-empty rule above says, so in an `Any` field `None` against `[]` is a TN and `"x"` against `[]` an FN. The same field at top level, and `non_matches`, read `[]` as a value, giving an FA and an FD.
 
 **Missing vs. null fields** -- A missing field and a field explicitly set to `null` are handled the same way: if the other side has a non-null value, the result is FN or FA accordingly.
 

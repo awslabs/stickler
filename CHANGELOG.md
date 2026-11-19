@@ -19,7 +19,320 @@ Each release links to full notes on the
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
 
+- `from_json_schema()` now warns for `x-aws-stickler-model-name`,
+  `x-aws-stickler-match-threshold` or `x-aws-stickler-infer-unspecified` on an
+  object-typed property where no class reads them. The keys are still dropped.
+  One position is beside a `$ref` on a property typed
+  `"object"` or a list form that includes it (`["object", "null"]`), such as
+  `{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold":
+  0.93}`: the class is built from the target, which reads only its own keys, so
+  it builds `Row` at `0.7`. The other is an object-typed property that no
+  position builds, reached only through the root `$ref` or an `allOf` arm, such
+  as `{"$ref": "#/$defs/Wrap/properties/inner"}`: the root reads the keys beside
+  its `$ref`, and `allOf` merges its arms into one class at the defaults, so it
+  builds `DynamicModel` or `AllOfModel` at `0.7`. Both hold wherever the property
+  sits, for example in a `$defs` entry, under `not`, `then` or an `x-*` key in
+  one, under `#/components/...`, or in an `x-*` payload such as `#/x-models/T`.
+  One exception: where a property of the first kind is itself the target of a
+  `$ref` from a property, `items` or an `anyOf`/`oneOf` arm, the keys beside its
+  own `$ref` warn only on a property node of a `$defs` entry outside an `x-*`
+  key, and elsewhere are still dropped with no warning (see Fixed). An import
+  that fails anyway, such as a root `$ref` to a property typed
+  `["object", "null"]`, still fails, with no warning. The warning names the
+  key, its position and where it is read. It becomes a `ValueError` in 1.1.0, as
+  at the positions no doc names for these keys (see Fixed)
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
 ### Fixed
+
+- **The individual-results JSONL file and the HTML report's embedded document
+  data are now valid JSON when a value is NaN or infinite.** A blank numeric
+  cell from pandas (NaN) was written as a bare `NaN` token, which JavaScript
+  evaluates but `JSON.parse` and other strict parsers reject. The
+  `individual_results_jsonl` writer now writes NaN, `inf` and `-inf` as `null`,
+  with two exceptions written as the string `"nan"`, `"inf"` or `"-inf"`: a
+  `doc_id`, which matches the id the report's tables show, and a confidence
+  (`_confidence` in `prediction_raw`, and `prediction_confidences`), so
+  replaying the file still rejects that document's confidences as `update()`
+  does rather than counting it as having none. The report reads any such token
+  left in an older file as `null`, except a `doc_id`, which keeps its string so
+  the document stays selectable. The per-document view shows these values as an empty cell, as it
+  already did for `None`, instead of `NaN` or `Infinity`. A NaN or infinite
+  `ComparableField` threshold is left out of the report's threshold data
+  ([#450](https://github.com/awslabs/stickler/issues/450)).
+
+- `from_json_schema()` now reads `x-aws-stickler-model-name`,
+  `x-aws-stickler-match-threshold` and `x-aws-stickler-infer-unspecified` on a
+  node typed `["object", "null"]`, as it does on `"object"`, and so on one
+  typed `["object"]`. The list form is rewritten to `anyOf` before parsing,
+  and the keys stayed beside the `anyOf` instead of on the object arm that
+  becomes the class, so the node built
+  `DynamicModel` at `0.7` while its field keys were honoured. A regression in
+  1.0.0 for the name and match threshold, which `0.7.0` read. Results move for
+  any such schema that declared one: an `items` element scoring `0.9` against a
+  declared `0.93` was a true positive (`tp 1, fd 0, fp 0`) and is now a false
+  discovery (`tp 0, fd 1, fp 1`), and inference inside the node now uses its
+  tuned thresholds (`number` at `0.95` rather than `0.5`). An invalid value
+  there (a match threshold of `1.5`, a name that is not an identifier) was
+  ignored and now raises, as it does on `"object"`. Beside a `$ref`, the
+  rewrite also copied the `$ref` onto the null arm, so a node typed
+  `["object", "null"]` or `["array", "null"]` built a union of two types
+  compared with `ExactComparator` at `1.0` (a one-character difference scored
+  `0.0`). It now builds what the single type builds, and scores as it does:
+  `["object", "null"]` as `"object"` (`0.9`), and `["array", "null"]` as
+  `"array"`, so an array of objects is paired by Hungarian matching at field
+  threshold `0.5`, and a `$ref` to an object builds that class with
+  `LevenshteinComparator` at `0.7`. Beside a `$ref` to a scalar, every arm
+  still builds that scalar, as before, so the node builds what the single type
+  builds and a required property stays required. A list form holding both
+  `"object"` and `"array"` still builds a union compared with
+  `ExactComparator`, of two arms
+  where it built three. Where the single type fails to import, the list form
+  now fails too, with the same error, where the union imported: a comparator
+  on an array whose `items` are such a node, or on an `anyOf` whose arm is one
+  that leads to an array of objects (an array of objects takes no comparator),
+  and a `$ref` to an array of objects with no properties. Part A of
+  [#349](https://github.com/awslabs/stickler/issues/349)
+
+- A recursive `$ref` that no model is named after, such as one back to
+  `#/properties/kind` or to an array definition, now raises the `ValueError`
+  for a recursive model, naming the field, where it raised `PydanticUserError`.
+  Back to a property named `type`, it raised `PydanticInvalidForJsonSchema`, or
+  imported as a union of two types when that property is typed
+  `["object", "null"]` beside its `$ref`, and now raises too
+
+- `from_json_schema()` now checks an `x-aws-stickler-*` key on a `$defs` or
+  `definitions` entry that a `$ref` reaches, as it does inline. The walk entered
+  a definition without checking its own keys, so `x-aws-stickler-thresold` there
+  imported silently where inline it raises. A definition with `properties` reads
+  only the object-level keys, which configure the class it generates for every
+  property, `items` or `anyOf`/`oneOf` arm that `$ref`s it. A field-level key
+  (`comparator`, `comparator-config`, `threshold`, `weight`,
+  `clip-under-threshold`) inside one now raises and names where it belongs: on
+  the property that uses it, beside the `$ref`, or beside the
+  `anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms (for `allOf`, only
+  an object with `properties`, directly or through an alias, where it and each
+  alias hop to it are typed `"object"` or untyped, since a one-arm `allOf` of
+  anything else fails to import); for `items`, or an arm of them, on the array
+  property, which for an array of objects reads only the weight. A definition
+  used as the root reads no field keys. Honouring it instead would make one key
+  work on a property `$ref` and
+  vanish on an `items` `$ref`, which does not read field keys. Any other
+  definition (a scalar, an array, a combiner, an alias `$ref`, a mapping)
+  generates no class and reads neither set, so an object-level key there raises
+  too. `x-aws-stickler-aggregate` is still accepted and ignored on a definition
+  entry, as on a field. A `$ref` to a node inside an entry also checks the
+  entry, but checks the node's own keys only on a property or `items` node
+  anywhere in the entry, under `not` or `then` too. At the top of another node
+  (`#/$defs/W/not`, `#/$defs/W/x-sub/T`), a typo or a misplaced key on the node
+  still imports, as before. A property or `items` target is checked as before,
+  under an `x-*` key or `#/components/...` too, and a typo at the top of a
+  target outside `$defs` (`#/x-models/T`) still imports. Only the node is
+  built: the rest of the entry around it builds nothing, as an unused
+  definition, so its contents are checked, but object-level keys there that no
+  class reads import, as before. A field key on a property node is valid
+  there, but another property that `$ref`s the node does not read it:
+  `{"$ref": "#/$defs/W/properties/s"}` keeps the default threshold whatever `s`
+  declares. An entry no `$ref` reaches builds nothing, so its own keys are not
+  checked and a dereferenced schema, which keeps the originals beside their
+  inlined copies, imports as before. Its contents are checked, and so are the
+  contents of its `$ref` targets, so a typo in one of its properties, or inside
+  an `x-*` node that only it references, still raises. A target that is a
+  `properties` map, such as `#/$defs/W/properties`, is read one property at a
+  time, so a property named like a keyword is a name there, as before. An
+  entry named like a keyword is now read as an entry, where it was read as that
+  keyword: a typo in a property of an entry named `properties` now raises, and
+  an unused entry named `items`, `anyOf`, `allOf` or `patternProperties` no
+  longer has its own keys checked or its name rejected. The shape of an entry
+  named `properties` is still not checked, so `patternProperties` or a keyword
+  beside a combiner at its top imports, as before. Only a `$defs` or
+  `definitions` keyword of the root, or of a node reached from it through schema
+  keywords, holds entries. One under `#/components/...`, inside an `x-*` payload
+  or a data value, or a property named so, holds none, so a `$ref` into it
+  checks no definition, as before. Every key that
+  now raises was dropped in silence
+  (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`). `to_json_schema()`
+  never writes `$defs`, so its exports are unaffected. Closes the known gap
+  recorded for this key in 1.0.0
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
+- `from_json_schema()` now raises for an object-level key at a position where no
+  class is built from it, where it was dropped: beside a `$ref` on `items` or an
+  `anyOf`/`oneOf` arm, where the class is built from the target and reads the
+  target's keys; on an `allOf` arm, inline or through `$ref`, which is merged
+  into one class at the defaults; and on an object reached through a root
+  `$ref`, where the root reads the keys beside the `$ref` instead. No doc names
+  these positions for the keys. On an object-typed property, which the docs
+  accept them on, they warn instead (see Changed). Beside a `$ref`, this
+  includes an `items` node anywhere in a `$defs` entry outside an `x-*` key,
+  such as `#/$defs/List/items` or `#/$defs/W/not/items`, that a property,
+  `items` or arm `$ref`s. At the top of another node of an entry
+  (`#/$defs/W/not`), under an `x-*` key, or outside `$defs` (`#/components/R`),
+  the keys beside the target's `$ref` are still dropped, as before. The last two
+  raise only when no other position builds the same object from its keys,
+  counting positions inside any `$ref` target; a `$ref` under `not`,
+  `additionalProperties` or `if` builds nothing, so it does not count. All three
+  also apply inside any `$ref` target that a position building a class
+  references, wherever it sits, for example under `#/components/...`, or under
+  `not`, `then`, `additionalProperties` or an `x-*` key in a `$defs` entry. Each
+  of these resolved the default in silence: `items: {"$ref": ...,
+  "x-aws-stickler-match-threshold": 0.93}` built at `0.7`, and an `allOf` arm
+  reaching a keyed definition built `AllOfModel` at `0.7`. The warning for
+  `x-aws-stickler-threshold` on an array of models now names the definition
+  that `items` `$ref`s, inside an `allOf` arm and under a property name that
+  holds a `.` too, where it said to declare the match threshold inside `items`,
+  which beside the `$ref` now raises. Where it cannot find the property, it says
+  what holds for inline `items` and for a `$ref`
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
+- An import error under `not`, `then`, `contains`, `additionalProperties` or
+  another keyword that builds no class now names that keyword in its path
+  (`'$defs.W.not[]'`, `'not.p'`), where it left the keyword out and so named a
+  node that does not exist (`'[]'`, `'p'`)
+
+- `from_json_schema()` no longer checks, as a schema, a value under an `x-*` key
+  that no `$ref` reaches, or a schema-shaped value under `default`, `examples`,
+  `enum` or `const`. Such a value is another tool's data or instance data, so a
+  typo, a misplaced key, `patternProperties` or a keyword beside a combiner
+  there no longer raises. Where a `$ref` from the schema or from a definition,
+  used or not, points into an `x-*` payload, the node it points at is walked
+  for its contents, and a property or `items` node's own keys are checked too
+  (the payload's other members are not). A member of such a value named like a
+  keyword, such as `anyOf` or `definitions`, is a schema, so a `$ref` through it
+  reads the `properties` under it as names, as before. A `$defs` or
+  `definitions` inside such a value is part of it, so its entries are not
+  walked either. A `$ref` held in such a value is not followed, so a payload
+  that only such a `$ref` names is not checked either
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
+- A root schema typed `["object", "null"]`, a root `anyOf`/`oneOf`, or a root
+  `$ref` to either, now raises `ValueError` saying the root must be a single
+  object, rather than `AttributeError: model_fields`. A nested
+  `["object", "null"]` node is supported.
+
+- A sub-field of a `List[StructuredModel]` element is now classified by the
+  same dispatcher as a top-level field, so its counts match top level, apart
+  from the four cases below. Scores do not change. A sub-field the list path
+  did not route as a nested model or a list took its counts from the field's
+  comparator directly, skipping the dispatcher's guards. That covers `Any`,
+  `object`, `Union[A, B]`, `Dict` and `str`, and also spellings such as
+  `Sequence[str]`, `Sequence[Inner]` and
+  `Optional[Annotated[Inner, Field(...)]]`. Where their counts differed from
+  top level, they now match it. For example:
+  - a dict its comparator cannot score (in an `Any` or `Union[A, B]`
+    sub-field, or a `Dict` one with an explicit `LevenshteinComparator`)
+    raised `TypeError` out of `compare_with()`. It now warns and counts an FD;
+  - a pair that top level does not give the field's comparator, inferred or
+    explicit, is an FD, not a TP the item's score did not credit. Examples
+    are a tuple, a `Decimal` or `UUID` against its string, members of two
+    `Enum` classes, and `Inner(a="x")` against `[Inner(a="x")]`;
+  - a value top level does not read as null, such as `()`, `frozenset()`,
+    `b" "` or `"  "`, is no longer a TN against a null one: `"  "` vs `None`
+    is an FN (the reverse an FA), and `"  "` vs `"  "` a TP;
+  - two lists count one per element, not one in total, and a list of models
+    now keeps its fields under `aggregate`, so `["a", "b"]` vs `[]` in an `Any`
+    or `Sequence[str]` sub-field is 2 FN, not 1;
+  - a model of the ground truth's class takes its verdict from the item's
+    score for that field, not from its own `compare_with()`, so it can move
+    from FD to TP or back. Its fields now appear under `aggregate` when every
+    pair of that sub-field has them. For example, `Inner(a="hotel")` against
+    `Inner(a="hotels")` at a field threshold of 0.9 is now an FD, not a TP, in
+    `Any` or `Optional[Annotated[Inner, Field(...)]]`, as it already was in
+    `Optional[Inner]`;
+  - a field that the classes of a union declare with different annotations
+    is read by the first matched ground-truth element that declares it, or
+    by each pair's own class when the list's first element is not matched.
+    With `AStr(x: Optional[str])` listed before
+    `BList(x: Optional[List[str]])`, `BList(x=["a", "b"])` against
+    `BList(x=["a", "c"])` now counts `x` as 1 TP and 1 FD, not 1 TP, as it
+    does with `BList` first.
+
+  In a list of models, whatever the sub-field's type, a matched prediction
+  that lacked a field of the first ground-truth element's class raised
+  `AttributeError`: a subclass listed before its base, `List[Union[A, B]]`, or
+  a list of models in an `Any`, `object` or `List[Any]` field, at top level or
+  in a list element, against a list holding a dict, string, number, list or
+  model of another class. The field now reads as missing, and each pair is
+  classified on its ground-truth element's own fields. Such a pair still takes
+  its object-level verdict from `compare()`, which skips the fields the
+  prediction lacks, so `[Search(query="hotels")]` against
+  `[Browse(url="x.com")]` now counts a TP, with `query` an FN under
+  `aggregate`, while the field scores 0.0. A model against a non-model
+  element, such as `[Inner(a="x")]` against `["a"]`, is a TP the same way. A
+  plain pydantic prediction element is the exception: scoring a model against
+  it still raises `TypeError`, as before. A list with the base class first did
+  not raise, and now also counts the subclass's fields. A ground-truth list
+  whose first element is a model still raises `AttributeError` when a matched
+  ground-truth element has no `compare_with()`, such as `[Inner(a="x"), "b"]`
+  against itself. A matched ground-truth element that is not a model but has
+  its own `compare_with()`, such as a plain pydantic model, raised as well
+  and now runs.
+
+  When a list element's class overrides `compare_with()` to return a score
+  without recursing, scoring the element never reaches its sub-fields. So a
+  list of models in its `Any` or `object` sub-field did not raise against a
+  list of non-models or of models of another class, and counted one TP or FD
+  from the comparator, with no subtree. Where the dispatcher can score such a
+  pair, it now counts what the same pair does without the override and at top
+  level. `[Inner(a="x")]` against `["a"]`, `[1]`, `[["a"]]` or `[{"a": "x"}]`
+  was an FD, and against `[Other(c="z")]` an FD at a field threshold of 0.9
+  and a TP at the default. Each now counts a TP, with `a` an FN and `b` a TN
+  under `aggregate`. Like the other pairs above, they follow the
+  field-by-field scoring `StructuredModel` still uses for objects of
+  different classes. Where the dispatcher raises, as it does at top level and
+  without the override, a sub-field not routed as a nested model or a list
+  counts the pair as before. Two lists count one TP or FD from the
+  comparator. That covers a ground-truth list holding a value without
+  `compare_with()`, such as `[Inner(a="x"), "b"]` against `["a", "b"]`, and a
+  list of models against plain pydantic models, such as `[Inner(a="x")]`
+  against `[Point(x=1)]`. Two models of one class count one TP or FD from the
+  ground truth's own `compare_with()`, which runs when that too returns a
+  fixed score. For such a `Leaf` with an `Any` field `d`,
+  `Leaf(d=[Inner(a="x")])` against `Leaf(d=[Point(x=1)])` is a TP. The score
+  is 1.0 before and after in each of these cases. A sub-field routed as a
+  nested model or a list, such as `Optional[Leaf]` or `List[Any]`, still
+  raises on them, as before, if the list's first element's class declares it
+  that way too. If that class does not, the pair counts the same way, since
+  only that class's fields were read before. So a fixed-score subclass's
+  `List[Any]` field, listed after its base, which lacks the field, counts one
+  FD for `[Inner(a="x"), "b"]` against `["a", "b"]`, where it was not
+  counted. A union class's `Optional[List[Any]]` field counts one FD there,
+  as before, when the list's first element is of a class that declares the
+  field as `Optional[str]` or `Any`.
+  Every sub-field of such an element now also gets the dispatcher's
+  warnings, as it does without the override and at top level. A dict or a
+  plain pydantic model its comparator cannot score, or two models of
+  different classes where one is a plain pydantic model, now warns where it
+  was silent, so a run that turns warnings into errors, such as pytest's
+  `filterwarnings = error`, raises there.
+
+  Four cases still differ from top level. The first two apply to every
+  sub-field, and the last two to a sub-field not routed as a nested model or
+  a list, such as `Any`, `object`, `Union[A, B]` or `Sequence[str]`:
+  - an extra field on the prediction, one its class does not declare, is not
+    counted, where top level adds an FA to the root `overall`;
+  - when the sub-field holds models in some pairs and `None` or a primitive
+    in others, `aggregate` keeps one shape. In a sub-field not routed as a
+    nested model or a list, every pair stays one leaf, so all pairs count but
+    the models' fields do not, and a model of another class has the same
+    effect. In one that is, such as `Optional[Inner]` or
+    `Optional[List[Inner]]`, the models' fields count and the other pairs
+    are left out, as before. So `[Inner(a="x"), Inner(a="y")]` against
+    `[Inner(a="x"), None]` gives `aggregate` 1 TP and 1 FN in `Any` and
+    1 TP and 1 TN in `Optional[Inner]`, where the same pairs at top level
+    give 1 TP, 1 TN and 1 FN;
+  - a model of another class still takes its verdict from `compare_with()`
+    against the field's threshold. That reads a field the prediction lacks as
+    `None`, so a `Search` against a `Browse` scores 0.0 and stays an FD,
+    while `Inner(a="x", b=None)` against `Other(c="z")` scores 0.5, from `b`,
+    and stays a TP at the default threshold. It scores only the ground
+    truth's own fields, so a `Pet` against its subclass `Cat` stays a TP. In
+    an `Optional` union of models or a union with a list arm, such a pair
+    counts as at top level;
+  - an empty list counts as null, as the classification docs say, so in an
+    `Any` sub-field `None` vs `[]` is a TN and `"x"` vs `[]` an FN, where top
+    level and `non_matches` give an FA and an FD
+    ([#400](https://github.com/awslabs/stickler/issues/400))
 
 - **`LLMComparator` scores a reply as a match only when it is exactly `true`**
   ([#506](https://github.com/awslabs/stickler/issues/506)). Scores change:
@@ -31,12 +344,25 @@ Each release links to full notes on the
   ignored, so `**True**.` scores 1.0 and `"false"` scores 0.0. Any other reply
   scores 0.0 and warns, showing the start of the reply, rather than raising.
 
+- The Postal Codes guide now says postal codes are compared exactly only when
+  `stickler.evaluate` gets a plain Pydantic `BaseModel`, and by edit distance on
+  a `StructuredModel` field without a comparator (even one passed to
+  `stickler.evaluate`) or a JSON Schema `string`
+  ([#492](https://github.com/awslabs/stickler/issues/492)).
+
 - Corrected introductory example scores, the default text comparator description,
   and the sample amount in the documentation and README
   ([#478](https://github.com/awslabs/stickler/issues/478)).
 
 - Pretty printers restore stdout when rendering fails, propagate rendering errors,
   and include the bulk summary in confusion-matrix file output.
+
+- **The HTML report's PDF viewer loads documents whose IDs contain spaces
+  or CSS punctuation.** It found its canvas, loading, error, page-label and paging
+  elements with CSS selectors built from the document ID, so an ID such as
+  `invoice_1.pdf`, `inv 001` or `a:b` matched nothing or threw, and the gallery
+  stayed on "Loading PDF...". Those lookups now use the literal element ID
+  (Refs [#476](https://github.com/awslabs/stickler/issues/476))
 
 - `DateComparator` now treats a naive date against a tz-aware one the same way
   in range comparisons as for single dates: the aware side's own calendar date
@@ -107,6 +433,12 @@ Each release links to full notes on the
 
 ### Documentation
 
+- Documented that a bare `int` or `float` field on a `StructuredModel` is compared as
+  text by `LevenshteinComparator`, not as a number. `inf` against `-inf` scores 0.75
+  and `1000` against `-1000` scores 0.857 for a `float`, both above the 0.7 default
+  threshold. `ComparableField(comparator=NumericComparator())` compares numbers.
+  Scoring is unchanged ([#579](https://github.com/awslabs/stickler/issues/579))
+
 - Corrected the default field threshold on Thresholds and Metrics. The page
   gave `0.5` for every field, which holds only for `ComparableField()`. A bare
   annotation on a `StructuredModel` (`name: str`) takes the class
@@ -116,6 +448,51 @@ Each release links to full notes on the
   `match_threshold` overrides the element class's for list pairing; on a
   `StructuredModel` it sets only `EvalResult.matched`. Scoring is unchanged
   ([#484](https://github.com/awslabs/stickler/issues/484))
+- The list contract is stated once, as a table in `classification-logic.md`
+  (pairing, bar, counts, recursion, score, reports), and other pages link to
+  it instead of restating it. Scoring is unchanged. Claims corrected against
+  measured output:
+  - A list declared without `ComparableField` pairs against the class
+    `match_threshold` (`0.7` unless set), not `0.5`.
+  - A list field's element order does not matter, but a nested list element
+    is compared as one value, and on the zero-config path it must match
+    exactly, order included.
+  - On a plain pydantic class, the runtime `match_threshold` of `evaluate()`
+    and `eval_for()` also sets `List[Model]` and `List[dict]` pairing and the
+    threshold of nested plain-model and `dict` fields, while a primitive list
+    keeps its inferred threshold. On a `StructuredModel` class it sets only
+    `matched`, and a `List[StructuredModel]` field pairs at the element
+    class's own `match_threshold` on either path
+    ([#416](https://github.com/awslabs/stickler/issues/416)). The docstrings
+    now say TP/FD, not TP/FN/FA.
+  - `clip_under_threshold` has no effect on `List[StructuredModel]`, so an FD
+    pair keeps its score, a known defect
+    ([#415](https://github.com/awslabs/stickler/issues/415)).
+  - `clip_under_threshold` defaults to off, not on, for dict and plain-model
+    fields and lists of them on a `StructuredModel` declared in Python. With
+    `x-aws-stickler-infer-unspecified`, an inferred JSON Schema property takes
+    its clip setting from inference, which is off for a free-form object and a
+    free-text string, rather than always `true`.
+  - `aggregate` leaves out FN and FA items beside an accepted sibling, and a
+    field `threshold` on `List[StructuredModel]` raises `ValueError`.
+  - A primitive list element row's `weighted_score` in `field_comparisons` is
+    its raw similarity, unweighted. Rows inside list items are described as
+    they are today ([#418](https://github.com/awslabs/stickler/issues/418)).
+  - The Hungarian matching example shows measured counts and the list score,
+    and its result block is checkable.
+- Amount examples no longer present a field threshold as rounding tolerance for
+  `NumericComparator`. It scores 1.0 or 0.0, so the README, Best Practices,
+  Evaluation and IDP Accelerator examples now set `absolute_tolerance=0.01` (or
+  `x-aws-stickler-comparator-config`) instead of `threshold=0.95`, and amounts
+  are out of the threshold tables
+  ([#479](https://github.com/awslabs/stickler/issues/479))
+
+- Corrected the install docs. They said Python 3.12+, but `requires-python` is
+  `>=3.10` and CI tests 3.10 to 3.14. The Installation page now lists the
+  `docsplit`, `reporting` and `all` extras, says `BERTComparator` downloads a
+  model on first use, names every core comparator, and keeps only the import
+  check under Verify, since `examples/` and `tests/` are not in the wheel
+  ([#483](https://github.com/awslabs/stickler/issues/483))
 
 ## [1.0.1] - 2026-11-02
 
@@ -873,7 +1250,6 @@ Each release links to full notes on the
   `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
   adds only pandas; SciPy remains isolated to the `semantic` extra
   ([#216](https://github.com/awslabs/stickler/issues/216)).
-
 
 - **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
   defined directly rather than read from the removed `all_fields_matched` key.
