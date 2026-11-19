@@ -43,6 +43,15 @@ Each release links to full notes on the
   at the positions no doc names for these keys (see Fixed)
   ([#340](https://github.com/awslabs/stickler/issues/340))
 
+### Deprecated
+
+- `stickler.structured_object_evaluator.models.confusion_matrix_calculator` is
+  back as a deprecated shim, so an import of it keeps working in 1.0.x.
+  Importing it emits a `DeprecationWarning`, and
+  `ConfusionMatrixCalculator.classify_field_for_confusion_matrix` classifies a
+  field as it did in 1.0.1. Nothing in Stickler uses it any more, and it will be
+  removed in 1.1.0 ([#406](https://github.com/awslabs/stickler/pull/406))
+
 ### Fixed
 
 - `StructuredModel.from_json` no longer forces the first model arm of a
