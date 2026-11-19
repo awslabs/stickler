@@ -45,6 +45,16 @@ Each release links to full notes on the
 
 ### Fixed
 
+- `StructuredModel.from_json` no longer forces the first model arm of a
+  `Union[A, B, None]` field: a dict is now left for pydantic's union validation,
+  so it resolves to the same arm as `model_validate`
+  ([#505](https://github.com/awslabs/stickler/issues/505)). Before, data shaped
+  like `B` was built as `A`, and two different `B` values could score 1.0.
+  This also fixes a `ValidationError` that `from_json` raised on `dev` when the
+  first arm had a required field or a `Literal` tag the data did not fit. Scores
+  can change for pairs whose two sides resolve to different arms, and some go
+  up, because two `StructuredModel`s of different classes are not yet scored as
+  a false discovery.
 - **The individual-results JSONL file and the HTML report's embedded document
   data are now valid JSON when a value is NaN or infinite.** A blank numeric
   cell from pandas (NaN) was written as a bare `NaN` token, which JavaScript
