@@ -17,9 +17,11 @@ The `SemanticComparator` generates vector embeddings for both values using AWS B
 
 ### Setup
 
-Requires AWS credentials with Bedrock access. The default embedding model is `amazon.titan-embed-text-v2:0`.
+Requires the `semantic` extra and AWS credentials with Bedrock access. The default embedding model is `amazon.titan-embed-text-v2:0`.
 
 ```bash
+pip install "stickler-eval[semantic]"
+
 # Ensure AWS credentials are configured
 aws configure
 # Or set environment variables
@@ -97,7 +99,7 @@ The `BERTComparator` uses BERTScore to evaluate contextual similarity between te
 
 ### Setup
 
-BERTComparator runs entirely locally. It requires the `evaluate`, `torch`, and `bert-score` packages.
+BERTComparator runs entirely locally and needs the `bert` extra:
 
 ```bash
 pip install "stickler-eval[bert]"

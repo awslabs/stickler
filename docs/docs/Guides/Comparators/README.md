@@ -453,6 +453,9 @@ class Review(StructuredModel):
 | `sim_function` | `"cosine_similarity"` | Similarity function to use |
 | `embedding_function` | `None` | Optional custom embedding function (bypasses Bedrock) |
 
+!!! note "Dependency"
+    SemanticComparator needs the `semantic` extra: `pip install "stickler-eval[semantic]"`
+
 ---
 
 ### BERTComparator
@@ -479,6 +482,9 @@ class Document(StructuredModel):
 | `threshold` | `0.7` | Similarity threshold for binary classification |
 
 The default model is `distilbert-base-uncased`, loaded globally via the `evaluate` library.
+
+!!! note "Dependency"
+    BERTComparator needs the `bert` extra: `pip install "stickler-eval[bert]"`
 
 ---
 
@@ -510,7 +516,7 @@ class Address(StructuredModel):
 | `eval_guidelines` | `None` | Custom guidelines for the LLM to follow during comparison |
 
 !!! note "Dependency"
-    LLMComparator requires the `strands-agents` package. Install it with: `pip install "stickler-eval[llm]"`
+    LLMComparator needs the `llm` extra: `pip install "stickler-eval[llm]"`
 
 ---
 
