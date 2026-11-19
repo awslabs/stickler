@@ -9,6 +9,8 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-20
+
 ### Changed
 
 - The three changes that 1.0.1 announced for 1.0.2 now land in 1.1.0, because
@@ -3324,7 +3326,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.1...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.2...dev
+[1.0.2]: https://github.com/awslabs/stickler/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/awslabs/stickler/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/awslabs/stickler/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0
