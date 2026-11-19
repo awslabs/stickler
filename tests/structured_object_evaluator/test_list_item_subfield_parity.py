@@ -1,0 +1,1788 @@
+"""A sub-field of a list item is classified as it is outside a list.
+
+For each matched pair, `StructuredListComparator._handle_non_hierarchical_field`
+counted a primitive sub-field by calling the field's comparator directly, not
+through `_dispatch_field_comparison`. That skipped the dispatcher's guards, so:
+
+- a dict the field's comparator cannot score raised `TypeError` out of
+  `compare_with()`, where the same field at top level warns and scores an FD;
+- a pair the comparator is not given at top level (with an inferred
+  comparator, a tuple, a set, `bytes`, or a `date` against its ISO string; a
+  plain pydantic model under `LevenshteinComparator`) counted a TP that the
+  item's score did not credit, and that `non_matches` reported as an FD;
+- a list in an `Any` sub-field counted one unit instead of one per element;
+- a whitespace-only string counted as null.
+
+The list path now goes through the dispatcher. Three rules hold on top of it:
+an empty list is null by its value, as `classification-logic.md` says; a pair
+is read on its GT item's own fields, so a list of mixed model classes does not
+raise; and two models of different classes in a sub-field that is neither
+routed as a nested model nor list-annotated, such as `Any` or `Union[A, B]`,
+are classified by `compare_with()`, as before. Such a sub-field keeps its
+nested `fields` only when every pair has them, so every pair counts under
+`aggregate`. Two lists in it that the dispatcher cannot score, which only an
+element whose `compare_with()` does not recurse reaches, count from the
+comparator, as before, and two models of one class from their own
+`compare_with()`. So do they in a nested or list-annotated sub-field that the
+list's first element's class does not declare that way, since only that
+class's fields were read before. When the first element's pair is not a
+match, each pair is read by its own class's annotation. Every expected count
+below is a literal, so a change to the dispatcher shows up here. See
+https://github.com/awslabs/stickler/issues/400
+"""
+
+import datetime
+import warnings
+from typing import Annotated, Any, Dict, List, Optional, Sequence, Union
+
+import pytest
+from pydantic import BaseModel, Field
+
+from stickler import (
+    ComparableField,
+    FuzzyComparator,
+    LevenshteinComparator,
+    NonMatchType,
+    StructuredModel,
+)
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    BulkStructuredModelEvaluator,
+)
+
+COUNTS = ("tp", "fa", "fd", "fp", "tn", "fn")
+
+
+def _expect(**counts):
+    """Six counts from the non-zero ones; `fp` is `fa + fd`."""
+    full = {k: counts.get(k, 0) for k in COUNTS}
+    full["fp"] = full["fa"] + full["fd"]
+    return full
+
+
+class Element(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Any = ComparableField()
+    match_threshold = 0.4
+
+
+class Holder(StructuredModel):
+    items: List[Element] = ComparableField()
+
+
+class ObjectElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: object = ComparableField()
+    match_threshold = 0.4
+
+
+class ObjectHolder(StructuredModel):
+    items: List[ObjectElement] = ComparableField()
+
+
+class MappingElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Dict[str, str] = ComparableField(comparator=LevenshteinComparator())
+    match_threshold = 0.4
+
+
+class MappingHolder(StructuredModel):
+    items: List[MappingElement] = ComparableField()
+
+
+class Point(BaseModel):
+    x: int
+
+
+def _counts(node, key="overall"):
+    return {k: node[key][k] for k in COUNTS}
+
+
+def _in_list(gt, pred, holder=Holder, element=Element, **kwargs):
+    return holder(items=[element(key="k", value=gt)]).compare_with(
+        holder(items=[element(key="k", value=pred)]),
+        include_confusion_matrix=True,
+        **kwargs,
+    )
+
+
+def _value_node(result):
+    return result["confusion_matrix"]["fields"]["items"]["fields"]["value"]
+
+
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param({"text": "p"}, {"text": "q"}, _expect(fd=1), id="dict"),
+        pytest.param({"text": "p"}, {"text": "p"}, _expect(fd=1), id="identical-dict"),
+        pytest.param(("a", "b"), ("a", "c"), _expect(fd=1), id="tuple"),
+        pytest.param({"a"}, {"b"}, _expect(fd=1), id="set"),
+        pytest.param(b"ab", b"ab", _expect(fd=1), id="bytes"),
+        pytest.param(Point(x=1), Point(x=2), _expect(fd=1), id="plain-model"),
+        pytest.param(
+            datetime.date(2020, 1, 1), "2020-01-01", _expect(fd=1), id="date-vs-str"
+        ),
+        pytest.param(["a", "b"], ["a", "c"], _expect(tp=1, fd=1), id="list"),
+        pytest.param(["a", "b"], ["b", "a"], _expect(tp=2), id="reordered-list"),
+        pytest.param(["a", "b"], [], _expect(fn=2), id="list-vs-empty"),
+        pytest.param([], ["a", "b"], _expect(fa=2), id="empty-vs-list"),
+        # One list is absent, so this is one value against `None`, as at top
+        # level. `non_matches` reports one FN per element.
+        pytest.param(["a", "b"], None, _expect(fn=1), id="list-vs-none"),
+        pytest.param("  ", "x", _expect(fd=1), id="whitespace"),
+        pytest.param("  ", None, _expect(fn=1), id="whitespace-vs-none"),
+        pytest.param((), None, _expect(fn=1), id="empty-tuple-vs-none"),
+        pytest.param(None, (), _expect(fa=1), id="none-vs-empty-tuple"),
+        pytest.param("abc", "abd", _expect(tp=1), id="str"),
+        pytest.param(None, "x", _expect(fa=1), id="none-vs-str"),
+    ],
+)
+def test_sub_field_counts(gt, pred, expected):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert _counts(_value_node(_in_list(gt, pred))) == expected
+
+
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param(None, [], _expect(tn=1), id="none-vs-empty"),
+        pytest.param([], None, _expect(tn=1), id="empty-vs-none"),
+        pytest.param([], [], _expect(tn=1), id="both-empty"),
+        pytest.param([None], [None], _expect(tn=1), id="only-none-elements"),
+        pytest.param("", [], _expect(tn=1), id="empty-str-vs-empty"),
+        pytest.param({}, [], _expect(tn=1), id="empty-dict-vs-empty"),
+        pytest.param(float("nan"), [], _expect(tn=1), id="nan-vs-empty"),
+        pytest.param("x", [], _expect(fn=1), id="str-vs-empty"),
+        pytest.param([], "x", _expect(fa=1), id="empty-vs-str"),
+        # A whitespace string and an empty tuple are values, not null.
+        pytest.param("  ", [], _expect(fn=1), id="whitespace-vs-empty"),
+        pytest.param([], (), _expect(fa=1), id="empty-vs-empty-tuple"),
+    ],
+)
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(Holder, Element, id="any"),
+        pytest.param(ObjectHolder, ObjectElement, id="object"),
+    ],
+)
+def test_an_empty_list_in_an_open_sub_field_is_null(
+    holder, element, gt, pred, expected
+):
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == expected
+
+
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param("  ", "", _expect(fn=1), id="whitespace-vs-empty-str"),
+        pytest.param("", "  ", _expect(fa=1), id="empty-str-vs-whitespace"),
+        pytest.param((), {}, _expect(fn=1), id="empty-tuple-vs-empty-dict"),
+        pytest.param((), float("nan"), _expect(fn=1), id="empty-tuple-vs-nan"),
+        pytest.param(b"", "", _expect(fn=1), id="empty-bytes-vs-empty-str"),
+        pytest.param(set(), {}, _expect(fn=1), id="empty-set-vs-empty-dict"),
+        pytest.param("  ", "  ", _expect(tp=1), id="whitespace-vs-itself"),
+        pytest.param((), (), _expect(fd=1), id="empty-tuple-vs-itself"),
+    ],
+)
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(Holder, Element, id="any"),
+        pytest.param(ObjectHolder, ObjectElement, id="object"),
+    ],
+)
+def test_an_empty_value_in_an_open_sub_field_counts_as_at_top_level(
+    holder, element, gt, pred, expected
+):
+    # A whitespace string and an empty tuple, set or bytes are values, while
+    # "", {} and NaN are null, in a list element as at top level.
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == expected
+
+    alone = element(key="k", value=gt).compare_with(
+        element(key="k", value=pred), include_confusion_matrix=True
+    )
+    assert _counts(alone["confusion_matrix"]["fields"]["value"]) == expected
+
+
+class OptionalStrElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[str] = ComparableField()
+    match_threshold = 0.4
+
+
+class OptionalStrHolder(StructuredModel):
+    items: List[OptionalStrElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param("  ", "", _expect(fn=1), id="whitespace-vs-empty-str"),
+        pytest.param("", "  ", _expect(fa=1), id="empty-str-vs-whitespace"),
+        pytest.param("  ", "  ", _expect(tp=1), id="whitespace-vs-itself"),
+    ],
+)
+def test_a_whitespace_string_in_a_str_sub_field_is_a_value(gt, pred, expected):
+    node = _value_node(
+        _in_list(gt, pred, holder=OptionalStrHolder, element=OptionalStrElement)
+    )
+    assert _counts(node) == expected
+
+
+class StrOrListElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Union[str, List[str]]] = ComparableField()
+    match_threshold = 0.4
+
+
+class StrOrListHolder(StructuredModel):
+    items: List[StrOrListElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param(None, "", _expect(fa=1), id="none-vs-empty-str"),
+        pytest.param("", None, _expect(fn=1), id="empty-str-vs-none"),
+        pytest.param("", [], _expect(fn=1), id="empty-str-vs-empty-list"),
+        pytest.param("", ["a", "b"], _expect(fa=1), id="empty-str-vs-list"),
+        pytest.param(["a", "b"], "", _expect(fn=1), id="list-vs-empty-str"),
+        pytest.param(None, [], _expect(tn=1), id="none-vs-empty-list"),
+        pytest.param(["a", "b"], ["a", "c"], _expect(tp=1, fd=1), id="lists"),
+    ],
+)
+def test_a_list_annotated_sub_field_counts_as_top_level(gt, pred, expected):
+    # The dispatcher takes a list-annotated field's null rules from its
+    # annotation, so `""` is a value here, at top level and in a list alike.
+    # Only a field that is not list-annotated reads an empty list as null by
+    # its value.
+    node = _value_node(
+        _in_list(gt, pred, holder=StrOrListHolder, element=StrOrListElement)
+    )
+    assert _counts(node) == expected
+
+    alone = StrOrListElement(key="k", value=gt).compare_with(
+        StrOrListElement(key="k", value=pred), include_confusion_matrix=True
+    )
+    assert _counts(alone["confusion_matrix"]["fields"]["value"]) == expected
+
+
+class Inner(StructuredModel):
+    a: str = ComparableField()
+    b: Optional[str] = ComparableField(default=None)
+
+
+class Other(StructuredModel):
+    c: str = ComparableField()
+
+
+class Search(StructuredModel):
+    query: str = ComparableField()
+
+
+class Browse(StructuredModel):
+    url: str = ComparableField()
+
+
+class ModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Any = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class ModelHolder(StructuredModel):
+    items: List[ModelElement] = ComparableField()
+
+
+class UnionElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Union[Search, Browse] = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class UnionHolder(StructuredModel):
+    items: List[UnionElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, overall, aggregate",
+    [
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Inner(a="x", b="y"),
+            Inner(a="x", b="y"),
+            _expect(tp=1),
+            _expect(tp=2),
+            id="same-model",
+        ),
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Inner(a="x", b="y"),
+            Inner(a="x", b="z"),
+            _expect(fd=1),
+            _expect(tp=1, fd=1),
+            id="model-below-threshold",
+        ),
+        pytest.param(
+            UnionHolder,
+            UnionElement,
+            Search(query="hotels"),
+            Search(query="motels"),
+            _expect(fd=1),
+            _expect(tp=1),
+            id="union-below-threshold",
+        ),
+    ],
+)
+def test_a_model_in_a_sub_field_keeps_its_leaves(
+    holder, element, gt, pred, overall, aggregate
+):
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == overall
+    assert _counts(node, "aggregate") == aggregate
+
+    # The same field at top level, read from its own item.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        alone = element(key="k", value=gt).compare_with(
+            element(key="k", value=pred), include_confusion_matrix=True
+        )
+    top = alone["confusion_matrix"]["fields"]["value"]
+    assert _counts(top) == overall
+    assert _counts(top, "aggregate") == aggregate
+
+
+def _field_names(node):
+    return set(node.get("fields") or {})
+
+
+class SequenceStrElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Sequence[str] = ComparableField()
+    match_threshold = 0.4
+
+
+class SequenceStrHolder(StructuredModel):
+    items: List[SequenceStrElement] = ComparableField()
+
+
+class SequenceModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Sequence[Inner] = ComparableField()
+    match_threshold = 0.4
+
+
+class SequenceModelHolder(StructuredModel):
+    items: List[SequenceModelElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, overall, aggregate, fields",
+    [
+        pytest.param(
+            SequenceStrHolder,
+            SequenceStrElement,
+            ["a", "b"],
+            ["a", "c"],
+            _expect(tp=1, fd=1),
+            _expect(tp=1, fd=1),
+            set(),
+            id="sequence-of-str",
+        ),
+        pytest.param(
+            SequenceModelHolder,
+            SequenceModelElement,
+            [Inner(a="x", b="y"), Inner(a="p", b="q")],
+            [Inner(a="x", b="y"), Inner(a="p", b="q")],
+            _expect(tp=2),
+            _expect(tp=4),
+            {"a", "b"},
+            id="sequence-of-models",
+        ),
+    ],
+)
+def test_a_sequence_sub_field_counts_per_element_as_at_top_level(
+    holder, element, gt, pred, overall, aggregate, fields
+):
+    # `Sequence[...]` is not routed as a list, so its pairs are read by value,
+    # and two lists go to the dispatcher. It counts one per element and keeps
+    # a list of models' fields, as at top level. Before, both rows counted one
+    # TP with no fields.
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == overall
+    assert _counts(node, "aggregate") == aggregate
+    assert _field_names(node) == fields
+
+    alone = element(key="k", value=gt).compare_with(
+        element(key="k", value=pred), include_confusion_matrix=True
+    )
+    top = alone["confusion_matrix"]["fields"]["value"]
+    assert _counts(top) == overall
+    assert _counts(top, "aggregate") == aggregate
+    assert _field_names(top) == fields
+
+
+class AnnotatedModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Annotated[Inner, Field(description="A nested model.")]] = (
+        ComparableField(default=None, threshold=0.9)
+    )
+    match_threshold = 0.4
+
+
+class AnnotatedModelHolder(StructuredModel):
+    items: List[AnnotatedModelElement] = ComparableField()
+
+
+class OptionalModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Inner] = ComparableField(default=None, threshold=0.9)
+    match_threshold = 0.4
+
+
+class OptionalModelHolder(StructuredModel):
+    items: List[OptionalModelElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(AnnotatedModelHolder, AnnotatedModelElement, id="annotated"),
+        pytest.param(OptionalModelHolder, OptionalModelElement, id="optional"),
+    ],
+)
+def test_an_annotated_optional_model_sub_field_counts_as_optional_model(
+    holder, element
+):
+    # `Annotated` inside `Optional` is not routed as a nested model, so the
+    # pair is read by value, and a model of the GT's class goes to the
+    # dispatcher. `a` scores about 0.83, under the field's 0.9, so both
+    # spellings count an FD with the fields kept, as at top level. The
+    # `Annotated` one counted a TP with no fields before.
+    gt, pred = Inner(a="hotel"), Inner(a="hotels")
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == _expect(fd=1)
+    assert _counts(node, "aggregate") == _expect(tp=1, tn=1)
+    assert _field_names(node) == {"a", "b"}
+
+    alone = element(key="k", value=gt).compare_with(
+        element(key="k", value=pred), include_confusion_matrix=True
+    )
+    top = alone["confusion_matrix"]["fields"]["value"]
+    assert _counts(top) == _expect(fd=1)
+    assert _counts(top, "aggregate") == _expect(tp=1, tn=1)
+    assert _field_names(top) == {"a", "b"}
+
+
+class Pet(StructuredModel):
+    name: str = ComparableField()
+
+
+class Cat(Pet):
+    lives: int = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, expected",
+    [
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Inner(a="x", b="y"),
+            Other(c="z"),
+            _expect(fd=1),
+            id="other-class",
+        ),
+        pytest.param(
+            ObjectHolder,
+            ObjectElement,
+            Inner(a="x", b="y"),
+            Other(c="z"),
+            _expect(fd=1),
+            id="object-other-class",
+        ),
+        # compare_with() reads `b`, which `Other` lacks, as None, so the unset
+        # `b` matches: 0.5, a TP at the default threshold of 0.5.
+        pytest.param(
+            Holder,
+            Element,
+            Inner(a="x"),
+            Other(c="z"),
+            _expect(tp=1),
+            id="other-class-default-threshold",
+        ),
+        pytest.param(
+            UnionHolder,
+            UnionElement,
+            Search(query="hotels"),
+            Browse(url="x.com"),
+            _expect(fd=1),
+            id="union-other-class",
+        ),
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Cat(name="tom", lives=9),
+            Pet(name="tom"),
+            _expect(fd=1),
+            id="base-for-subclass",
+        ),
+        # compare_with() scores the GT's own fields, and a Pet has only `name`.
+        # The exact-class rule does not cover StructuredModel yet (#327).
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Pet(name="tom"),
+            Cat(name="tom", lives=9),
+            _expect(tp=1),
+            id="subclass-for-base",
+        ),
+    ],
+)
+def test_a_model_of_another_class_in_a_sub_field_is_scored_by_compare_with(
+    holder, element, gt, pred, expected
+):
+    # compare_with() reads a field the prediction lacks as missing. compare(),
+    # which the dispatcher uses, skips it, and would score `Inner(a, b)` vs
+    # `Other(c)` 1.0, a TP (#327). No nested fields are kept for such a pair.
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == expected
+    assert _counts(node, "aggregate") == expected
+    assert not node.get("fields")
+
+
+class OptionalUnionElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Union[Search, Browse]] = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class OptionalUnionHolder(StructuredModel):
+    items: List[OptionalUnionElement] = ComparableField()
+
+
+class ListArmUnionElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Union[Search, Browse, List[str]] = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class ListArmUnionHolder(StructuredModel):
+    items: List[ListArmUnionElement] = ComparableField()
+
+
+class ListArmAnyElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Union[Any, List[str]] = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class ListArmAnyHolder(StructuredModel):
+    items: List[ListArmAnyElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, aggregate",
+    [
+        pytest.param(
+            OptionalUnionHolder,
+            OptionalUnionElement,
+            Search(query="hotels"),
+            Browse(url="x.com"),
+            _expect(fn=1),
+            id="optional-union",
+        ),
+        pytest.param(
+            ListArmUnionHolder,
+            ListArmUnionElement,
+            Search(query="hotels"),
+            Browse(url="x.com"),
+            _expect(fn=1),
+            id="union-with-list-arm",
+        ),
+        pytest.param(
+            ListArmAnyHolder,
+            ListArmAnyElement,
+            Inner(a="x", b="y"),
+            Other(c="z"),
+            _expect(fn=2),
+            id="any-with-list-arm",
+        ),
+    ],
+)
+def test_another_class_in_a_nested_or_list_sub_field_counts_as_top_level(
+    holder, element, gt, pred, aggregate
+):
+    # A field routed as a nested model, or annotated as a list, sends every
+    # pair to the dispatcher, so the pair is a TP and its leaves report the
+    # fields the prediction lacks, as at top level (#327).
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == aggregate
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        alone = element(key="k", value=gt).compare_with(
+            element(key="k", value=pred), include_confusion_matrix=True
+        )
+    top = alone["confusion_matrix"]["fields"]["value"]
+    assert _counts(top) == _expect(tp=1)
+    assert _counts(top, "aggregate") == aggregate
+
+
+def _pairs_in_list(gts, preds, holder=Holder, element=Element):
+    def items(values):
+        return [element(key=f"k{i}", value=v) for i, v in enumerate(values)]
+
+    result = holder(items=items(gts)).compare_with(
+        holder(items=items(preds)), include_confusion_matrix=True
+    )
+    return result["confusion_matrix"]
+
+
+@pytest.mark.parametrize(
+    "holder, element, gts, preds, value, root",
+    [
+        pytest.param(
+            Holder,
+            Element,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            _expect(tp=1, fn=1),
+            _expect(tp=3, fn=1),
+            id="model-and-none",
+        ),
+        pytest.param(
+            ObjectHolder,
+            ObjectElement,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            _expect(tp=1, fn=1),
+            _expect(tp=3, fn=1),
+            id="object-model-and-none",
+        ),
+        pytest.param(
+            Holder,
+            Element,
+            ["abc", Inner(a="x")],
+            ["abc", Inner(a="x")],
+            _expect(tp=2),
+            _expect(tp=4),
+            id="primitive-and-model",
+        ),
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            [Inner(a="x", b="y"), Inner(a="p", b="q")],
+            [Inner(a="x", b="y"), Other(c="z")],
+            _expect(tp=1, fd=1),
+            _expect(tp=3, fd=1),
+            id="same-and-other-class",
+        ),
+    ],
+)
+def test_a_sub_field_of_mixed_shapes_counts_every_pair(
+    holder, element, gts, preds, value, root
+):
+    # `aggregate` sums a node's children when it has any. If one pair kept a
+    # model's fields, the other pair's flat counts would drop out of it.
+    matrix = _pairs_in_list(gts, preds, holder=holder, element=element)
+    node = matrix["fields"]["items"]["fields"]["value"]
+    assert _counts(node) == value
+    assert _counts(node, "aggregate") == value
+    assert _counts(matrix, "aggregate") == root
+
+
+class PipeModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Inner | None = ComparableField(default=None)
+    match_threshold = 0.4
+
+
+class PipeModelHolder(StructuredModel):
+    items: List[PipeModelElement] = ComparableField()
+
+
+class AnnotatedOuterElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Annotated[Optional[Inner], Field(description="A nested model.")] = (
+        ComparableField(default=None)
+    )
+    match_threshold = 0.4
+
+
+class AnnotatedOuterHolder(StructuredModel):
+    items: List[AnnotatedOuterElement] = ComparableField()
+
+
+class ModelListElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[List[Inner]] = ComparableField(default=None)
+    match_threshold = 0.4
+
+
+class ModelListHolder(StructuredModel):
+    items: List[ModelListElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gts, preds",
+    [
+        pytest.param(
+            OptionalModelHolder,
+            OptionalModelElement,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            id="optional",
+        ),
+        pytest.param(
+            PipeModelHolder,
+            PipeModelElement,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            id="pipe",
+        ),
+        pytest.param(
+            AnnotatedOuterHolder,
+            AnnotatedOuterElement,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            id="annotated-optional",
+        ),
+        pytest.param(
+            ModelListHolder,
+            ModelListElement,
+            [[Inner(a="x")], [Inner(a="y")]],
+            [[Inner(a="x")], None],
+            id="optional-list",
+        ),
+    ],
+)
+def test_a_dispatched_sub_field_of_mixed_shapes_leaves_the_other_pairs_out(
+    holder, element, gts, preds
+):
+    # A sub-field that goes to the dispatcher directly keeps the model pair's
+    # fields, so the `None` pair's FN drops out of `aggregate`, as before #400.
+    # The same pairs at top level sum to 1 TP, 1 TN and 1 FN.
+    matrix = _pairs_in_list(gts, preds, holder=holder, element=element)
+    node = matrix["fields"]["items"]["fields"]["value"]
+    assert _counts(node) == _expect(tp=1, fn=1)
+    assert _counts(node, "aggregate") == _expect(tp=1, tn=1)
+
+    top = {k: 0 for k in COUNTS}
+    for gt, pred in zip(gts, preds):
+        alone = element(key="k", value=gt).compare_with(
+            element(key="k", value=pred), include_confusion_matrix=True
+        )
+        pair = alone["confusion_matrix"]["fields"]["value"]
+        for k, n in _counts(pair, "aggregate").items():
+            top[k] += n
+    assert top == _expect(tp=1, tn=1, fn=1)
+
+
+class ExtraElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: str = ComparableField()
+    match_threshold = 0.4
+
+
+class ExtraHolder(StructuredModel):
+    items: List[ExtraElement] = ComparableField()
+
+
+def _false_alarms(node):
+    yield node["overall"]["fa"]
+    for child in node.get("fields", {}).values():
+        yield from _false_alarms(child)
+
+
+def test_an_extra_field_on_a_predicted_element_is_not_counted():
+    # An extra field is one the prediction carries but its class does not
+    # declare. At top level it adds an FA to the root `overall`. In a list
+    # element nothing counts it. A field the ground truth's class declares
+    # and the prediction's lacks is counted, as an FN (see the union tests).
+    gt = ExtraElement(key="k", value="p")
+    pred = ExtraElement(key="k", value="p", color="red")
+
+    alone = gt.compare_with(pred, include_confusion_matrix=True)
+    assert _counts(alone["confusion_matrix"]) == _expect(tp=2, fa=1)
+
+    listed = ExtraHolder(items=[gt]).compare_with(
+        ExtraHolder(items=[pred]), include_confusion_matrix=True
+    )
+    assert listed["overall_score"] == alone["overall_score"] == 1.0
+    assert _counts(listed["confusion_matrix"]) == _expect(tp=1)
+    assert set(_false_alarms(listed["confusion_matrix"])) == {0}
+
+
+class Pets(StructuredModel):
+    pets: List[Pet] = ComparableField()
+
+
+class Actions(StructuredModel):
+    actions: List[Union[Search, Browse]] = ComparableField()
+
+
+def _list_fields(result, field):
+    fields = result["confusion_matrix"]["fields"][field]["fields"]
+    return {name: _counts(node) for name, node in fields.items()}
+
+
+def test_a_list_of_a_model_and_its_subclass_does_not_raise():
+    pets = [Cat(name="tom", lives=9), Pet(name="rex")]
+
+    result = Pets(pets=pets).compare_with(
+        Pets(pets=list(pets)), include_confusion_matrix=True
+    )
+
+    assert result["overall_score"] == 1.0
+    # `lives` is counted for the Cat pair only, which declares it.
+    assert _list_fields(result, "pets") == {
+        "name": _expect(tp=2),
+        "lives": _expect(tp=1),
+    }
+
+
+def test_a_list_of_a_model_union_does_not_raise():
+    actions = [Search(query="q"), Browse(url="u")]
+
+    result = Actions(actions=actions).compare_with(
+        Actions(actions=list(actions)), include_confusion_matrix=True
+    )
+
+    assert result["overall_score"] == 1.0
+    assert _list_fields(result, "actions") == {
+        "query": _expect(tp=1),
+        "url": _expect(tp=1),
+    }
+
+
+def test_a_list_with_the_base_class_first_counts_the_subclass_fields():
+    result = Pets(pets=[Pet(name="rex"), Cat(name="tom", lives=9)]).compare_with(
+        Pets(pets=[Pet(name="rex"), Pet(name="tom")]), include_confusion_matrix=True
+    )
+
+    assert result["overall_score"] == 0.75
+    # The Cat pair is read on its own fields, so the missing `lives` counts.
+    assert _list_fields(result, "pets") == {
+        "name": _expect(tp=2),
+        "lives": _expect(fn=1),
+    }
+
+
+def test_a_model_union_pair_of_other_classes_pairs_as_a_tp():
+    # The pairing verdict comes from compare(), which skips the fields the
+    # prediction lacks, so the pair is a TP while the field scores 0.0 (#327).
+    result = Actions(actions=[Search(query="hotels")]).compare_with(
+        Actions(actions=[Browse(url="x.com")]), include_confusion_matrix=True
+    )
+
+    node = result["confusion_matrix"]["fields"]["actions"]
+    assert result["overall_score"] == 0.0
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1)
+    assert _list_fields(result, "actions") == {"query": _expect(fn=1)}
+
+
+class AStr(StructuredModel):
+    kind: str = ComparableField(default="a", threshold=1.0)
+    x: Optional[str] = ComparableField(default=None)
+    match_threshold = 0.1
+
+
+class BList(StructuredModel):
+    kind: str = ComparableField(default="b", threshold=1.0)
+    x: Optional[List[str]] = ComparableField(default=None)
+    match_threshold = 0.1
+
+
+class StrOrListItems(StructuredModel):
+    items: List[Union[AStr, BList]] = ComparableField()
+
+
+@pytest.mark.parametrize("a_first", [True, False], ids=["str-first", "list-first"])
+def test_a_field_two_union_classes_declare_differently_counts_per_element(a_first):
+    # `x` follows the first matched GT element that declares it, so with AStr
+    # first it is read by value, where BList's two lists counted one TP. Each
+    # pair now goes through its own GT item's dispatcher, which counts per
+    # element, as with BList first.
+    gt = [AStr(x="p"), BList(x=["a", "b"])]
+    pred = [AStr(x="p"), BList(x=["a", "c"])]
+    if not a_first:
+        gt, pred = gt[::-1], pred[::-1]
+
+    result = StrOrListItems(items=gt).compare_with(
+        StrOrListItems(items=pred), include_confusion_matrix=True
+    )
+
+    node = result["confusion_matrix"]["fields"]["items"]["fields"]["x"]
+    assert result["overall_score"] == 0.875
+    assert _counts(node) == _expect(tp=2, fd=1)
+    assert _counts(node, "aggregate") == _expect(tp=2, fd=1)
+
+
+class AnyField(StructuredModel):
+    value: Any = ComparableField()
+
+
+class ObjectField(StructuredModel):
+    value: object = ComparableField()
+
+
+class AnyOrListField(StructuredModel):
+    value: Union[Any, List[str]] = ComparableField()
+
+
+@pytest.mark.parametrize("model", [AnyField, ObjectField, AnyOrListField])
+@pytest.mark.parametrize(
+    "pred, overall",
+    [
+        pytest.param(["a"], _expect(tp=1), id="str"),
+        pytest.param([1, 2], _expect(tp=1, fa=1), id="numbers"),
+        pytest.param([{"a": "x"}], _expect(tp=1), id="dict"),
+        pytest.param([["a"]], _expect(tp=1), id="list"),
+    ],
+)
+def test_a_list_of_models_in_an_open_field_against_non_models_does_not_raise(
+    model, pred, overall
+):
+    result = model(value=[Inner(a="x")]).compare_with(
+        model(value=pred), include_confusion_matrix=True
+    )
+
+    node = result["confusion_matrix"]["fields"]["value"]
+    assert _counts(node) == overall
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
+def test_a_list_of_models_in_an_any_sub_field_against_non_models_does_not_raise():
+    node = _value_node(_in_list([Inner(a="x")], ["a"]))
+
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
+class ListAnyField(StructuredModel):
+    value: List[Any] = ComparableField()
+
+
+class ListAnyElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: List[Any] = ComparableField()
+    match_threshold = 0.4
+
+
+class ListAnyHolder(StructuredModel):
+    items: List[ListAnyElement] = ComparableField()
+
+
+@pytest.mark.parametrize("at_top_level", [True, False], ids=["top-level", "sub-field"])
+@pytest.mark.parametrize(
+    "field, holder, element, pred",
+    [
+        pytest.param(
+            ListAnyField, ListAnyHolder, ListAnyElement, ["a"], id="list-of-any-str"
+        ),
+        pytest.param(AnyField, Holder, Element, [Other(c="z")], id="any-other-class"),
+        pytest.param(
+            ObjectField,
+            ObjectHolder,
+            ObjectElement,
+            [Other(c="z")],
+            id="object-other-class",
+        ),
+    ],
+)
+def test_a_list_of_models_against_a_list_lacking_their_fields_does_not_raise(
+    field, holder, element, pred, at_top_level
+):
+    # The prediction lacks `a` and `b`, which read as missing. Pairing uses
+    # compare(), which skips them, so the pair is a TP (#327).
+    gt = [Inner(a="x")]
+    if at_top_level:
+        result = field(value=gt).compare_with(
+            field(value=pred), include_confusion_matrix=True
+        )
+        node = result["confusion_matrix"]["fields"]["value"]
+    else:
+        node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
+def _at_top_level(gt, pred):
+    result = AnyField(value=gt).compare_with(
+        AnyField(value=pred), include_confusion_matrix=True
+    )
+    return result, result["confusion_matrix"]["fields"]["value"]
+
+
+def _as_sub_field(gt, pred):
+    result = _in_list(gt, pred)
+    return result, _value_node(result)
+
+
+WHERE = [
+    pytest.param(_at_top_level, id="top-level"),
+    pytest.param(_as_sub_field, id="sub-field"),
+]
+
+
+@pytest.mark.parametrize("compare", WHERE)
+@pytest.mark.parametrize("value", ["b", 1, {"a": "x"}], ids=["str", "int", "dict"])
+def test_a_ground_truth_list_of_a_model_and_a_non_model_still_raises(compare, value):
+    # The first GT element is a model, so the list is scored as a list of
+    # models, which calls each matched GT item's compare_with(). A value
+    # without one raises, so field classification never sees such a pair. This
+    # raised before #400 too: only the prediction side's crash is fixed.
+    values = [Inner(a="x"), value]
+    with pytest.raises(AttributeError, match="compare_with"):
+        compare(values, list(values))
+
+
+@pytest.mark.parametrize("compare", WHERE)
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param(
+            ["b", Inner(a="x")],
+            ["b", Inner(a="x")],
+            _expect(tp=2),
+            id="non-model-first",
+        ),
+        pytest.param(
+            [Inner(a="x"), "b"],
+            [Inner(a="x")],
+            _expect(tp=1, fn=1),
+            id="non-model-unmatched",
+        ),
+    ],
+)
+def test_a_ground_truth_list_of_a_model_and_a_non_model_runs_otherwise(
+    compare, gt, pred, expected
+):
+    # The raise needs both a model as the first GT element and a matched GT
+    # element without compare_with(). Either alone runs.
+    _, node = compare(gt, pred)
+    assert _counts(node) == expected
+
+
+class Scored(BaseModel):
+    """Not a StructuredModel, but scores itself like one."""
+
+    a: str = "x"
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class Duck:
+    """A plain class that scores itself like a StructuredModel."""
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+    def __eq__(self, other):
+        return isinstance(other, Duck)
+
+
+@pytest.mark.parametrize("compare", WHERE)
+@pytest.mark.parametrize("element", [Scored, Duck])
+def test_a_ground_truth_list_of_a_model_and_a_self_scoring_value_runs(
+    compare, element
+):
+    # The list scores, since every GT item has compare_with(). Field
+    # classification then skips the GT item that is not a StructuredModel,
+    # which has no `_dispatch_field_comparison()` to call.
+    values = [Inner(a="x"), element()]
+    result, node = compare(values, list(values))
+
+    assert result["overall_score"] == 1.0
+    assert _counts(node) == _expect(tp=2)
+
+
+class FixedScoreElement(ModelElement):
+    """Scores an item without recursing, as a custom `compare_with()` may."""
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreHolder(StructuredModel):
+    items: List[FixedScoreElement] = ComparableField()
+
+
+class FixedScoreObjectElement(StructuredModel):
+    """`FixedScoreElement` with an `object` sub-field."""
+
+    key: str = ComparableField(threshold=1.0)
+    value: object = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreObjectHolder(StructuredModel):
+    items: List[FixedScoreObjectElement] = ComparableField()
+
+
+class FixedScoreDefaultElement(Element):
+    """`FixedScoreElement` at the default field threshold."""
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreDefaultHolder(StructuredModel):
+    items: List[FixedScoreDefaultElement] = ComparableField()
+
+
+def test_a_dict_against_a_model_in_a_sub_field_list_does_not_raise():
+    result = _in_list(
+        [Inner(a="x")], [{"a": "x"}], holder=ModelHolder, element=ModelElement
+    )
+
+    node = _value_node(result)
+    # compare() skips a field the prediction lacks, so the pair is a TP, as
+    # at top level (#327). The leaves report the miss. The same pair under a
+    # fixed-score compare_with() is pinned below.
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(FixedScoreHolder, FixedScoreElement, id="any"),
+        pytest.param(FixedScoreObjectHolder, FixedScoreObjectElement, id="object"),
+        pytest.param(
+            FixedScoreDefaultHolder, FixedScoreDefaultElement, id="default-threshold"
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "pred",
+    [
+        pytest.param(["a"], id="str"),
+        pytest.param([1], id="int"),
+        pytest.param([["a"]], id="list"),
+        pytest.param([{"a": "x"}], id="dict"),
+        pytest.param([Other(c="z")], id="other-class"),
+    ],
+)
+def test_a_fixed_score_element_counts_a_list_of_models_as_without_it(
+    holder, element, pred
+):
+    # The element's compare_with() returns a score without recursing. The
+    # pair still counts what it does without the override and at top level:
+    # a TP, with the leaves reporting the miss.
+    result = _in_list([Inner(a="x")], pred, holder=holder, element=element)
+
+    node = _value_node(result)
+    assert result["overall_score"] == 1.0
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
+FIXED_SCORE = [
+    pytest.param(FixedScoreHolder, FixedScoreElement, id="any"),
+    pytest.param(FixedScoreObjectHolder, FixedScoreObjectElement, id="object"),
+    pytest.param(
+        FixedScoreDefaultHolder, FixedScoreDefaultElement, id="default-threshold"
+    ),
+]
+
+
+def _assert_one_comparator_fd(result):
+    node = _value_node(result)
+    assert result["overall_score"] == 1.0
+    assert _counts(node) == _expect(fd=1)
+    assert _counts(node, "aggregate") == _expect(fd=1)
+    assert not node.get("fields")
+
+
+@pytest.mark.parametrize("holder, element", FIXED_SCORE)
+@pytest.mark.parametrize(
+    "value",
+    ["b", 1, {"a": "x"}, ["a"], Point(x=1)],
+    ids=["str", "int", "dict", "list", "pydantic"],
+)
+def test_a_fixed_score_element_counts_a_ground_truth_list_it_cannot_score_as_before(
+    holder, element, value
+):
+    # Scoring the list as a list of models raises on the matched GT value,
+    # which has no compare_with(), as at top level. This element's
+    # compare_with() never scores the field, so the pair counts as it did
+    # before #400: one FD from the field's comparator.
+    gt = [Inner(a="x"), value]
+    _assert_one_comparator_fd(_in_list(gt, ["a", "b"], holder=holder, element=element))
+
+
+@pytest.mark.parametrize("holder, element", FIXED_SCORE)
+@pytest.mark.parametrize(
+    "pred",
+    [[Point(x=1)], [Point(x=1), Point(x=2)]],
+    ids=["one", "two"],
+)
+def test_a_fixed_score_element_counts_a_list_of_models_against_plain_pydantic_as_before(
+    holder, element, pred
+):
+    # Inner.compare_with() raises TypeError on a plain pydantic model, as at
+    # top level. This element's compare_with() never scores the field, so the
+    # pair counts as it did before #400: one FD from the field's comparator.
+    _assert_one_comparator_fd(
+        _in_list([Inner(a="x")], pred, holder=holder, element=element)
+    )
+
+
+class FixedScoreLeaf(StructuredModel):
+    """A nested model that also scores without recursing."""
+
+    d: Any = ComparableField()
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreLeafUnionElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Union[FixedScoreLeaf, Inner] = ComparableField()
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreLeafUnionHolder(StructuredModel):
+    items: List[FixedScoreLeafUnionElement] = ComparableField()
+
+
+class FixedScoreLeafAnnotatedElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Annotated[FixedScoreLeaf, Field(description="d")]] = (
+        ComparableField()
+    )
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreLeafAnnotatedHolder(StructuredModel):
+    items: List[FixedScoreLeafAnnotatedElement] = ComparableField()
+
+
+class FixedScoreLeafOptionalElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[FixedScoreLeaf] = ComparableField()
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreLeafOptionalHolder(StructuredModel):
+    items: List[FixedScoreLeafOptionalElement] = ComparableField()
+
+
+# Two models of one class whose own fields the dispatcher raises on: the
+# first raises TypeError (a plain pydantic prediction), the second
+# AttributeError (a GT value without compare_with()).
+UNSCORABLE_LEAVES = [
+    pytest.param(
+        FixedScoreLeaf(d=[Inner(a="x")]),
+        FixedScoreLeaf(d=[Point(x=1)]),
+        id="plain-pydantic",
+    ),
+    pytest.param(
+        FixedScoreLeaf(d=[Inner(a="x"), "b"]),
+        FixedScoreLeaf(d=[Inner(a="x"), "b"]),
+        id="no-compare-with",
+    ),
+]
+
+FIXED_SCORE_BY_VALUE = FIXED_SCORE + [
+    pytest.param(FixedScoreLeafUnionHolder, FixedScoreLeafUnionElement, id="union"),
+    pytest.param(
+        FixedScoreLeafAnnotatedHolder, FixedScoreLeafAnnotatedElement, id="annotated"
+    ),
+]
+
+
+@pytest.mark.parametrize("include_confusion_matrix", [False, True])
+@pytest.mark.parametrize("holder, element", FIXED_SCORE_BY_VALUE)
+@pytest.mark.parametrize("gt, pred", UNSCORABLE_LEAVES)
+def test_a_fixed_score_element_counts_a_fixed_score_model_it_cannot_score_as_before(
+    holder, element, gt, pred, include_confusion_matrix
+):
+    # Neither compare_with() recurses, so scoring never reaches the lists in
+    # `d`. The dispatcher does, and raises as at top level. The pair counts
+    # as it did before #400: one TP from the GT model's compare_with().
+    result = holder(items=[element(key="k", value=gt)]).compare_with(
+        holder(items=[element(key="k", value=pred)]),
+        include_confusion_matrix=include_confusion_matrix,
+    )
+
+    assert result["overall_score"] == 1.0
+    assert result["field_scores"] == {"items": 1.0}
+    if include_confusion_matrix:
+        node = _value_node(result)
+        assert _counts(node) == _expect(tp=1)
+        assert _counts(node, "aggregate") == _expect(tp=1)
+        assert not node.get("fields")
+
+
+@pytest.mark.parametrize(
+    "gt, pred, error",
+    [
+        pytest.param(
+            FixedScoreLeaf(d=[Inner(a="x")]),
+            FixedScoreLeaf(d=[Point(x=1)]),
+            TypeError,
+            id="plain-pydantic",
+        ),
+        pytest.param(
+            FixedScoreLeaf(d=[Inner(a="x"), "b"]),
+            FixedScoreLeaf(d=[Inner(a="x"), "b"]),
+            AttributeError,
+            id="no-compare-with",
+        ),
+    ],
+)
+def test_a_fixed_score_model_in_a_nested_model_sub_field_still_raises(gt, pred, error):
+    # An Optional[FixedScoreLeaf] sub-field goes to the dispatcher directly,
+    # not read by value, so it raised before #400 too.
+    with pytest.raises(error):
+        _in_list(
+            gt,
+            pred,
+            holder=FixedScoreLeafOptionalHolder,
+            element=FixedScoreLeafOptionalElement,
+        )
+
+
+class FixedScoreWrap(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    mids: List[FixedScoreDefaultElement] = ComparableField()
+    match_threshold = 0.4
+
+
+class FixedScoreWrapHolder(StructuredModel):
+    items: List[FixedScoreWrap] = ComparableField()
+
+
+@pytest.mark.parametrize("gt, pred", UNSCORABLE_LEAVES)
+def test_a_fixed_score_model_one_list_level_down_scores_as_before(gt, pred):
+    # FixedScoreWrap recurses, so scoring its `mids` list classifies the
+    # sub-field, and plain compare() reached the raise too.
+    def wrap(value):
+        mid = FixedScoreDefaultElement(key="k", value=value)
+        return FixedScoreWrapHolder(items=[FixedScoreWrap(key="w", mids=[mid])])
+
+    gt_model, pred_model = wrap(gt), wrap(pred)
+
+    assert gt_model.compare(pred_model) == 1.0
+    result = gt_model.compare_with(pred_model, include_confusion_matrix=True)
+    assert result["overall_score"] == 1.0
+    mids = result["confusion_matrix"]["fields"]["items"]["fields"]["mids"]
+    assert _counts(mids["fields"]["value"]) == _expect(tp=1)
+
+
+@pytest.mark.parametrize("gt, pred", UNSCORABLE_LEAVES)
+def test_a_fixed_score_model_counts_in_the_bulk_evaluator_as_before(gt, pred):
+    evaluator = BulkStructuredModelEvaluator(target_schema=FixedScoreDefaultHolder)
+    evaluator.update(
+        FixedScoreDefaultHolder(items=[FixedScoreDefaultElement(key="k", value=gt)]),
+        FixedScoreDefaultHolder(items=[FixedScoreDefaultElement(key="k", value=pred)]),
+        doc_id="doc",
+    )
+    evaluation = evaluator.compute()
+
+    # A raise would record an error and add one FN to the overall counts.
+    assert evaluation.errors == []
+    assert {k: evaluation.metrics[k] for k in ("tp", "fn")} == {"tp": 1, "fn": 0}
+    assert evaluation.field_metrics["items.value"]["tp"] == 1
+
+
+class TaggedBase(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    name: str = ComparableField()
+    match_threshold = 0.4
+
+
+class FixedScoreTagged(TaggedBase):
+    """A fixed-score subclass with a list field its base does not declare."""
+
+    tags: List[Any] = ComparableField()
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreOptionalTagged(TaggedBase):
+    tags: Optional[List[Any]] = ComparableField(default=None)
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class TaggedHolder(StructuredModel):
+    items: List[TaggedBase] = ComparableField()
+
+
+TAGGED = [
+    pytest.param(FixedScoreTagged, id="list"),
+    pytest.param(FixedScoreOptionalTagged, id="optional-list"),
+]
+
+# Two lists the dispatcher raises on, as in UNSCORABLE_LEAVES: a GT value
+# without compare_with() (AttributeError), and a plain pydantic prediction
+# (TypeError).
+UNSCORABLE_LISTS = [
+    pytest.param([Inner(a="x"), "b"], ["a", "b"], AttributeError, id="no-compare-with"),
+    pytest.param([Inner(a="x")], [Point(x=1)], TypeError, id="plain-pydantic"),
+]
+
+
+def _tagged(sub, tags, base_first=True):
+    items = [TaggedBase(key="a", name="n"), sub(key="b", name="n", tags=tags)]
+    return TaggedHolder(items=items if base_first else items[::-1])
+
+
+@pytest.mark.parametrize("include_confusion_matrix", [False, True])
+@pytest.mark.parametrize("sub", TAGGED)
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_fixed_score_subclass_list_field_after_its_base_counts_from_the_comparator(
+    sub, gt, pred, error, include_confusion_matrix
+):
+    # Before #400 only the first element's class was read, so `tags`, which
+    # TaggedBase does not declare, was never classified. It now is, and the
+    # dispatcher raises on these lists. The subclass's compare_with() never
+    # scores the field, so the pair counts one FD from the comparator.
+    result = _tagged(sub, gt).compare_with(
+        _tagged(sub, pred), include_confusion_matrix=include_confusion_matrix
+    )
+
+    assert result["overall_score"] == 1.0
+    assert result["field_scores"] == {"items": 1.0}
+    if include_confusion_matrix:
+        node = result["confusion_matrix"]["fields"]["items"]["fields"]["tags"]
+        assert _counts(node) == _expect(fd=1)
+        assert _counts(node, "aggregate") == _expect(fd=1)
+        assert not node.get("fields")
+        assert _list_fields(result, "items")["key"] == _expect(tp=2)
+
+
+@pytest.mark.parametrize("sub", TAGGED)
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_fixed_score_subclass_list_field_before_its_base_still_raises(
+    sub, gt, pred, error
+):
+    # The first element's class declares `tags` as a list, so it went to the
+    # dispatcher before #400 too.
+    with pytest.raises(error):
+        _tagged(sub, gt, base_first=False).compare_with(
+            _tagged(sub, pred, base_first=False)
+        )
+
+
+class TaggedWrap(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    docs: List[TaggedBase] = ComparableField()
+
+
+class TaggedWrapHolder(StructuredModel):
+    items: List[TaggedWrap] = ComparableField()
+
+
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_fixed_score_subclass_list_field_one_list_level_down_counts_too(
+    gt, pred, error
+):
+    # TaggedWrap recurses, so scoring its `docs` list classifies `tags`, and
+    # plain compare() reached the raise too.
+    def wrap(tags):
+        docs = _tagged(FixedScoreTagged, tags).items
+        return TaggedWrapHolder(items=[TaggedWrap(key="w", docs=docs)])
+
+    gt_model, pred_model = wrap(gt), wrap(pred)
+
+    assert gt_model.compare(pred_model) == 1.0
+    result = gt_model.compare_with(pred_model, include_confusion_matrix=True)
+    assert result["overall_score"] == 1.0
+    docs = result["confusion_matrix"]["fields"]["items"]["fields"]["docs"]
+    assert _counts(docs["fields"]["tags"]) == _expect(fd=1)
+
+
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_fixed_score_subclass_list_field_counts_in_the_bulk_evaluator(
+    gt, pred, error
+):
+    evaluator = BulkStructuredModelEvaluator(target_schema=TaggedHolder)
+    evaluator.update(
+        _tagged(FixedScoreTagged, gt), _tagged(FixedScoreTagged, pred), doc_id="doc"
+    )
+    evaluation = evaluator.compute()
+
+    assert evaluation.errors == []
+    assert {k: evaluation.metrics[k] for k in ("tp", "fn")} == {"tp": 2, "fn": 0}
+    assert evaluation.field_metrics["items.tags"]["fd"] == 1
+
+
+class Note(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    name: str = ComparableField()
+    v: Optional[str] = ComparableField(default=None)
+    match_threshold = 0.4
+
+
+class AnyNote(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    name: str = ComparableField()
+    v: Any = ComparableField(default=None)
+    match_threshold = 0.4
+
+
+class FixedScoreNote(Note):
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreTags(StructuredModel):
+    """Declares `v` as a list where the union's other class does not."""
+
+    key: str = ComparableField(threshold=1.0)
+    name: str = ComparableField()
+    v: Optional[List[Any]] = ComparableField(default=None)
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class NoteOrTags(StructuredModel):
+    items: List[Union[Note, FixedScoreTags]] = ComparableField()
+
+
+class AnyNoteOrTags(StructuredModel):
+    items: List[Union[AnyNote, FixedScoreTags]] = ComparableField()
+
+
+class FixedScoreNoteOrTags(StructuredModel):
+    items: List[Union[FixedScoreNote, FixedScoreTags]] = ComparableField()
+
+
+def _note_then_tags(holder, note, tags, first_matches=True):
+    first = (
+        note(key="a", name="n", v="s")
+        if first_matches
+        else note(key="q", name="m", v="s")
+    )
+    return holder(items=[first, FixedScoreTags(key="b", name="n", v=tags)])
+
+
+@pytest.mark.parametrize("include_confusion_matrix", [False, True])
+@pytest.mark.parametrize(
+    "holder, note, score",
+    [
+        pytest.param(NoteOrTags, Note, 2 / 3, id="optional-str"),
+        pytest.param(AnyNoteOrTags, AnyNote, 2 / 3, id="any"),
+        pytest.param(FixedScoreNoteOrTags, FixedScoreNote, 1.0, id="fixed-score-note"),
+    ],
+)
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_list_field_after_a_failed_first_pair_of_another_class_counts_as_before(
+    holder, note, score, gt, pred, error, include_confusion_matrix
+):
+    # The first pair's Note does not match, so the Tags pair is the only one
+    # with `v`. Note does not declare `v` as a list, so before #400 the pair
+    # counted from the comparator. Tags declares it as a list, and the
+    # dispatcher raises on these lists, so the pair counts that way still.
+    result = _note_then_tags(holder, note, gt).compare_with(
+        _note_then_tags(holder, note, pred, first_matches=False),
+        include_confusion_matrix=include_confusion_matrix,
+    )
+
+    assert result["overall_score"] == pytest.approx(score)
+    if include_confusion_matrix:
+        assert _list_fields(result, "items") == {
+            "key": _expect(tp=1),
+            "name": _expect(tp=1),
+            "v": _expect(fd=1),
+        }
+
+
+@pytest.mark.parametrize("gt, pred, error", UNSCORABLE_LISTS)
+def test_a_list_field_after_a_failed_first_pair_counts_in_the_bulk_evaluator(
+    gt, pred, error
+):
+    evaluator = BulkStructuredModelEvaluator(target_schema=NoteOrTags)
+    evaluator.update(
+        _note_then_tags(NoteOrTags, Note, gt),
+        _note_then_tags(NoteOrTags, Note, pred, first_matches=False),
+        doc_id="doc",
+    )
+    evaluation = evaluator.compute()
+
+    assert evaluation.errors == []
+    assert {k: evaluation.metrics[k] for k in ("tp", "fd", "fn")} == {
+        "tp": 1,
+        "fd": 1,
+        "fn": 0,
+    }
+    assert evaluation.field_metrics["items.v"]["fd"] == 1
+
+
+@pytest.mark.parametrize(
+    "first_matches, expected",
+    [
+        pytest.param(True, _expect(tp=3, fn=1), id="first-matches"),
+        pytest.param(False, _expect(tp=2, fn=1), id="first-fails"),
+    ],
+)
+def test_a_failed_first_pair_leaves_each_pair_read_by_its_own_class(
+    first_matches, expected
+):
+    # `v` is `Any` on AnyNote and a list on FixedScoreTags. The last pair is an
+    # AnyNote, read by value, so `"x"` against `[]` is an FN either way. With
+    # the first pair failed it is no longer read by FixedScoreTags's
+    # annotation, which gave an FD. The Tags pair's lists count 2 TP either way.
+    def items(first_key, last_v):
+        return AnyNoteOrTags(
+            items=[
+                AnyNote(key=first_key, name="n" if first_key == "a" else "m", v="s"),
+                FixedScoreTags(key="b", name="n", v=["a", "b"]),
+                AnyNote(key="c", name="n", v=last_v),
+            ]
+        )
+
+    result = items("a", "x").compare_with(
+        items("a" if first_matches else "q", []), include_confusion_matrix=True
+    )
+
+    assert _list_fields(result, "items")["v"] == expected
+
+
+class FixedScoreMappingElement(StructuredModel):
+    """`FixedScoreElement` with a `Dict` sub-field under `FuzzyComparator`."""
+
+    key: str = ComparableField(threshold=1.0)
+    value: Dict[str, str] = ComparableField(comparator=FuzzyComparator())
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreMappingHolder(StructuredModel):
+    items: List[FixedScoreMappingElement] = ComparableField()
+
+
+@pytest.mark.parametrize("as_error", [False, True], ids=["warns", "raises"])
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, message",
+    [
+        pytest.param(
+            FixedScoreMappingHolder,
+            FixedScoreMappingElement,
+            {"text": "p"},
+            {"text": "p"},
+            "holds a mapping",
+            id="mapping",
+        ),
+        pytest.param(
+            FixedScoreDefaultHolder,
+            FixedScoreDefaultElement,
+            Point(x=1),
+            Point(x=1),
+            "holds a pydantic model",
+            id="pydantic",
+        ),
+        pytest.param(
+            FixedScoreDefaultHolder,
+            FixedScoreDefaultElement,
+            Point(x=1),
+            Inner(a="x"),
+            "compared a Point against a Inner",
+            id="other-class",
+        ),
+    ],
+)
+def test_a_fixed_score_element_sub_field_warns_as_without_it(
+    holder, element, gt, pred, message, as_error
+):
+    # This element's compare_with() never scores its fields, so before #400
+    # nothing warned here. The dispatcher now classifies the sub-field and
+    # warns as it does without the override and at top level, so a run that
+    # turns warnings into errors raises here too. One call per test, since
+    # warn_once fires once per process and the conftest resets it per test.
+    if as_error:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(UserWarning, match=message):
+                _in_list(gt, pred, holder=holder, element=element)
+        return
+
+    with pytest.warns(UserWarning, match=message):
+        result = _in_list(gt, pred, holder=holder, element=element)
+
+    assert result["overall_score"] == 1.0
+    assert _counts(_value_node(result)) == _expect(fd=1)
+
+
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param(("a", "b"), ("a", "b"), NonMatchType.FALSE_DISCOVERY, id="tuple"),
+        pytest.param("  ", "x", NonMatchType.FALSE_DISCOVERY, id="whitespace"),
+        pytest.param("  ", None, NonMatchType.FALSE_NEGATIVE, id="whitespace-vs-none"),
+    ],
+)
+def test_sub_field_counts_agree_with_non_matches(gt, pred, expected):
+    result = _in_list(gt, pred, document_non_matches=True)
+
+    reported = [
+        n["non_match_type"]
+        for n in result["non_matches"]
+        if n["field_path"] == "items[0].value"
+    ]
+    assert reported == [expected]
+    count = {
+        NonMatchType.FALSE_DISCOVERY: "fd",
+        NonMatchType.FALSE_NEGATIVE: "fn",
+    }[expected]
+    assert _counts(_value_node(result))[count] == 1
+
+
+@pytest.mark.parametrize("include_confusion_matrix", [False, True])
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(Holder, Element, id="any"),
+        pytest.param(MappingHolder, MappingElement, id="dict-explicit-levenshtein"),
+    ],
+)
+def test_dict_in_sub_field_warns_instead_of_raising(
+    holder, element, include_confusion_matrix
+):
+    gt = holder(items=[element(key="k", value={"text": "p"})])
+    pred = holder(items=[element(key="k", value={"text": "q"})])
+
+    with pytest.warns(UserWarning, match="holds a mapping"):
+        result = gt.compare_with(
+            pred, include_confusion_matrix=include_confusion_matrix
+        )
+
+    # The item scores as it does alone: `key` matches, `value` is an FD.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        alone = gt.items[0].compare_with(pred.items[0])["overall_score"]
+    assert alone == 0.5
+    assert result["overall_score"] == alone
