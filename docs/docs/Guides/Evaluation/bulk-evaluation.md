@@ -163,7 +163,7 @@ Each line in `results.jsonl` contains:
 {"doc_id": "doc_001", "comparison_result": {"field_scores": {...}, "overall_score": 0.92, ...}}
 ```
 
-This is the raw output of `compare_with(include_confusion_matrix=True)` for that pair, making it easy to analyze individual results after the fact.
+This is the raw output of `compare_with(include_confusion_matrix=True)` for that pair, making it easy to analyze individual results after the fact. Every line is strict JSON: NaN and infinite numbers are written as `null`, except a `doc_id` or a confidence (`_confidence`, `prediction_confidences`), which is written as the string `"nan"`, `"inf"` or `"-inf"`. A string confidence keeps replay matching `update()`, which rejects a non-finite confidence; `null` would read as no confidence.
 
 Lines are appended only after the comparison has been successfully accumulated into the bulk evaluator's state, so the JSONL reflects "successfully accumulated" outcomes rather than "attempted" ones. Documents that error inside `update()` are recorded in the in-memory error list and do not produce a JSONL row.
 

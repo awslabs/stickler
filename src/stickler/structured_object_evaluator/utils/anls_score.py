@@ -3,7 +3,9 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 from ..models.structured_model import StructuredModel
-from .compare_json import compare_json  # noqa: F401 -- re-exported, see utils/__init__.py
+from .compare_json import (
+    compare_json,  # noqa: F401 -- re-exported, see utils/__init__.py
+)
 
 
 def compare_structured_models(

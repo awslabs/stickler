@@ -227,7 +227,7 @@ class JsonSchemaFieldConverter:
         # its schema, emitting one that rebuilds into a structurally different
         # model. Raise rather than produce a wrong schema quietly. A union with
         # a model arm, or a model inside a nested list, is written as 1.0.0
-        # wrote it, as "string", with a warning; 1.0.2 raises.
+        # wrote it, as "string", with a warning; 1.1.0 raises.
         #
         # Deliberately scoped to models, not to every dict miss:
         # Decimal, UUID and enums legitimately export as "string".
@@ -300,7 +300,7 @@ class JsonSchemaFieldConverter:
         field_config = {"type": stickler_type}
         # As in field_to_property(): a model cannot be written as a scalar, a
         # union with a model arm is written as "str" with a warning until
-        # 1.0.2, and a plain BaseModel is written as `dict`.
+        # 1.1.0, and a plain BaseModel is written as `dict`.
         from .structured_model import StructuredModel
 
         if not StructuredModel._warn_legacy_export(

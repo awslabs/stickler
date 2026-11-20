@@ -51,7 +51,7 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 | `comparator` | `BaseComparator` | `LevenshteinComparator()` | The comparison algorithm to use. See [Comparators](../Comparators/README.md) for the full list. |
 | `threshold` | `float` (0.0--1.0) | `0.5` | Minimum similarity score required for a field to be classified as a match. |
 | `weight` | `float` (> 0.0) | `1.0` | Relative importance of this field when computing aggregate scores. |
-| `clip_under_threshold` | `bool` | `True` | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. |
+| `clip_under_threshold` | `bool` | `True` (`False` on dict and plain-model fields and lists of them) | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. List fields follow the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract. |
 
 ### How Each Parameter Affects Scoring
 
@@ -74,7 +74,7 @@ overall_score = sum(field_score * weight) / sum(weights)
 
 Fields with higher weights pull the overall score toward their individual result. At the dataset level, `BulkStructuredModelEvaluator.compute()` exposes this weight-aware aggregate as `metrics["weighted_overall_score"]` -- prefer it over `cm_f1` when weights are non-uniform, since `cm_f1` treats every field-match equally. See [Weighted Overall Score](bulk-evaluation.md#weighted-overall-score) in the bulk-evaluation guide.
 
-**`clip_under_threshold`** -- When enabled (the default), a field that scores below its threshold contributes 0.0 to the weighted average instead of its partial similarity. This prevents low-confidence matches from inflating the overall score.
+**`clip_under_threshold`** -- When enabled (the default, except on dict and plain-model fields), a field that scores below its threshold contributes 0.0 to the weighted average instead of its partial similarity. This prevents low-confidence matches from inflating the overall score. A list field follows the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 ### Example Model
 
@@ -104,8 +104,7 @@ class Invoice(StructuredModel):
     )
 
     total_amount: float = ComparableField(
-        comparator=NumericComparator(),  # Tolerance-based numeric comparison
-        threshold=0.95,
+        comparator=NumericComparator(absolute_tolerance=0.01),  # Equal within 0.01
         weight=2.5,
     )
 
@@ -187,12 +186,12 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | Extension | Type | Default | Purpose |
 |-----------|------|---------|---------|
 | `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`) |
-| `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value warns there. Read, not ignored, on an array of free-form `{"type": "object"}` items |
+| `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value warns there (in Python, `ComparableField(threshold=...)` on a `List[StructuredModel]` raises `ValueError`). Read, not ignored, on an array of free-form `{"type": "object"}` items |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
-| `x-aws-stickler-clip-under-threshold` | boolean | `true` | Zero out scores below threshold |
+| `x-aws-stickler-clip-under-threshold` | boolean | `true` | Zero out scores below threshold. An inferred property takes it from inference (see below) |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
-| `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold and weight for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
+| `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold, weight and clip setting for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
 | `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments passed to the named comparator |
 
 An unstated `x-aws-stickler-threshold` does not resolve to one number. It depends
@@ -211,6 +210,13 @@ A scalar is plain when it has none of the keywords in the last row. Any other
 `format` (`email`, `hostname`, ...) leaves it plain. Declaring the key explicitly
 overrides the default in every position that reads it.
 `x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
+
+With `x-aws-stickler-infer-unspecified`, a scalar, a free-form object, or an
+array of either that names no comparator takes any threshold or clip setting it
+leaves unstated from
+[inference](../../Advanced/dynamic-models.md#what-inference-chooses) instead.
+Inference turns clip off for a free-form object, a free-text string such as
+`notes` or `description`, and an array of either, and leaves it on elsewhere.
 
 ### Example Schema
 
@@ -236,7 +242,7 @@ overrides the default in every position that reads it.
     "total_amount": {
       "type": ["number", "null"],
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95,
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
       "x-aws-stickler-weight": 2.5
     }
   },
@@ -330,7 +336,7 @@ Key differences from the default output:
 - A list field nests that `overall` beside per-item `items` (filled for a list of models). Which shape a field gets follows the ground-truth value: a list field whose ground truth is `None` comes back flat, with converted metrics.
 - Any other field's metrics are a conversion of its score, not counts: a score of at least 0.5 reads precision equal to the score and recall `1.0`, a lower one `0.0` for both. `customer_name` scores `0.0`, so reads `0.0`; a true positive at `0.94` would read precision `0.94`.
 - `confusion_matrix` is `{}` unless `include_confusion_matrix=True`.
-- `non_matches` holds the records only with `document_non_matches=True`. Without it, it is `[]`, as in 1.0.0, because no records were collected, not because none were found, and a `DeprecationWarning` says so once per process. The printers and the HTML report cannot tell the two apart for evaluator-format output and print "No non-matches found" until 1.0.2, which omits the key, as the default output does.
+- `non_matches` holds the records only with `document_non_matches=True`. Without it, it is `[]`, as in 1.0.0, because no records were collected, not because none were found, and a `DeprecationWarning` says so once per process. The printers and the HTML report cannot tell the two apart for evaluator-format output and print "No non-matches found" until 1.1.0, which omits the key, as the default output does.
 
 This format is what `BulkStructuredModelEvaluator` expects when aggregating results across many documents.
 

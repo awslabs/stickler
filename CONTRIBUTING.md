@@ -10,7 +10,7 @@ information to effectively respond to your bug report or contribution.
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.10 or later
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended) or pip
 - Git
 

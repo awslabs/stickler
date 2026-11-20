@@ -14,6 +14,8 @@ to JSONL and aggregated later.
 import json
 from typing import List
 
+import pytest
+
 from stickler.comparators import (
     ExactComparator,
     LevenshteinComparator,
@@ -506,6 +508,59 @@ class TestBulkVsJsonlReplay:
                 result_a.confidence_metrics["fields"][field]
                 == result_b.confidence_metrics["fields"][field]
             ), f"Field {field} metrics differ between bulk and JSONL replay"
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_confidence_replays_like_update(self, tmp_path, bad):
+        """update() rejects a non-finite confidence, so that doc adds no pairs
+        and records an accumulator error. Written as null, replay read it as
+        "no confidence" and counted the doc's other fields instead (#450)."""
+        gts = [
+            Product(name="Widget", price=29.99, sku="ABC123"),
+            Product(name="Gadget", price=49.99, sku="DEF456"),
+        ]
+        preds = [
+            Product.from_json({
+                "name": {"_value": "Widget", "_confidence": 0.9},
+                "price": {"_value": 29.99, "_confidence": bad},
+                "sku": {"_value": "ABC123", "_confidence": 0.8},
+            }),
+            Product.from_json({
+                "name": {"_value": "Wrong", "_confidence": 0.2},
+                "price": {"_value": 49.99, "_confidence": 0.7},
+                "sku": {"_value": "DEF456", "_confidence": 0.6},
+            }),
+        ]
+
+        jsonl_path = tmp_path / "results.jsonl"
+        eval_a = BulkStructuredModelEvaluator(
+            target_schema=Product, individual_results_jsonl=str(jsonl_path)
+        )
+        for i, (gt, pred) in enumerate(zip(gts, preds)):
+            eval_a.update(gt, pred, doc_id=f"doc{i}")
+        eval_a.close()
+        result_a = eval_a.compute()
+
+        def reject(constant):
+            raise ValueError(f"non-JSON constant {constant}")
+
+        eval_b = BulkStructuredModelEvaluator(target_schema=Product)
+        with open(jsonl_path) as f:
+            for line in f:
+                record = json.loads(line, parse_constant=reject)
+                eval_b.update_from_comparison_result(
+                    record["comparison_result"], doc_id=record["doc_id"]
+                )
+        result_b = eval_b.compute()
+
+        assert result_a.confidence_metrics["coverage"]["fields_with_confidence"] == 3
+        assert result_a.confidence_metrics == result_b.confidence_metrics
+        assert result_a.metrics == result_b.metrics
+
+        def accumulator_errors(result):
+            return [(e["doc_id"], e.get("accumulator")) for e in result.errors]
+
+        assert accumulator_errors(result_a) == [("doc0", "confidence_metrics")]
+        assert accumulator_errors(result_b) == accumulator_errors(result_a)
 
     def test_bulk_update_matches_aggregate_from_comparisons(self):
         """aggregate_from_comparisons() produces same confidence metrics
