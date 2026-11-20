@@ -8,6 +8,7 @@ not P(correct), so it is never read. Neither are ``choice``, ``score`` or
 order comes from the question.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping
 
@@ -65,8 +66,17 @@ def _probability(value: Any, where: str) -> float:
     return p
 
 
+_LEVEL_NUMBER = re.compile(r"[0-9]+")  # ASCII only: str.isdigit() also accepts "²" and "٢"
+
+
 def _score_key_index(key: str, spec: DecisionSpec, where: str) -> int:
-    if key.isdigit():
+    """A Score probability key: a level number (its position) or a level name.
+
+    A key made of ASCII digits is always a level number. A level name that is
+    also a number is rejected when the question is built unless it names its
+    own position, so the two readings never disagree.
+    """
+    if _LEVEL_NUMBER.fullmatch(key):
         i = int(key)
         if i >= spec.k:
             raise AnswerError(f"{where}: level {key!r} is outside 0..{spec.k - 1}")

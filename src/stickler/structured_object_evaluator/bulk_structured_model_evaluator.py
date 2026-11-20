@@ -214,19 +214,20 @@ class BulkStructuredModelEvaluator:
 
         # A schema with Choice, Score or Noul fields gets the decision metrics
         # without being asked, unless the caller already supplied them.
-        from stickler.decisions.accumulator import (
-            ACCUMULATOR_NAME as _DECISION_ACCUMULATOR,
-        )
-        from stickler.decisions.accumulator import (
-            DecisionAccumulator,
-        )
+        # Recognised by type, not name, so a user accumulator that happens to
+        # be called "decision_metrics" is never read as these.
+        from stickler.decisions.accumulator import DecisionAccumulator
         from stickler.decisions.primitives import has_decision_fields
 
         self._has_decisions = has_decision_fields(target_schema)
         if self._has_decisions and not any(
-            acc.name == _DECISION_ACCUMULATOR for acc in self._accumulators
+            isinstance(acc, DecisionAccumulator) for acc in self._accumulators
         ):
             self._accumulators.append(DecisionAccumulator(target_schema))
+        self._decision_accumulator = next(
+            (acc for acc in self._accumulators if isinstance(acc, DecisionAccumulator)),
+            None,
+        )
 
         # Names key accumulator_metrics; duplicates would silently overwrite.
         name_counts = Counter(acc.name for acc in self._accumulators)
@@ -322,6 +323,7 @@ class BulkStructuredModelEvaluator:
             pred_model: Predicted StructuredModel instance
             doc_id: Optional document identifier for error tracking
         """
+        given_doc_id = doc_id
         if doc_id is None:
             doc_id = f"doc_{self._processed_count}"
 
@@ -336,7 +338,7 @@ class BulkStructuredModelEvaluator:
             # Delegate to update_from_comparison_result which handles both
             # confusion matrix accumulation and confidence extraction
             # (via prediction_raw in the comparison result).
-            self.update_from_comparison_result(comparison_result, doc_id)
+            self.update_from_comparison_result(comparison_result, given_doc_id)
 
             # JSONL append of raw comparison result after accumulation
             # succeeds, so the file reflects "successfully accumulated"
@@ -379,8 +381,11 @@ class BulkStructuredModelEvaluator:
             comparison_result: Dict from ``compare_with(include_confusion_matrix=True)``.
                 Must contain ``confusion_matrix``; ``prediction_raw`` and
                 ``field_comparisons`` are optional (used for confidence).
-            doc_id: Optional document identifier for error tracking.
+            doc_id: Optional document identifier for error tracking. An id
+                given here is also the document's identity for accumulators
+                that group by document; a generated one is not.
         """
+        given_doc_id = doc_id
         if doc_id is None:
             doc_id = f"doc_{self._processed_count}"
 
@@ -407,6 +412,11 @@ class BulkStructuredModelEvaluator:
             prediction_raw = comparison_result.get("prediction_raw")
             for acc in self._accumulators:
                 try:
+                    # getattr: an accumulator written against the interface
+                    # without subclassing it may not define the hook.
+                    start = getattr(acc, "start_document", None)
+                    if start is not None:
+                        start(given_doc_id)
                     acc.accumulate(comparison_result, prediction_raw)
                 except Exception as acc_err:
                     self._accumulator_errors[acc.name] += 1
@@ -740,7 +750,11 @@ class BulkStructuredModelEvaluator:
             total_time=total_time,
             non_matches=list(self._non_matches) if self.document_non_matches else None,
             confidence_metrics=confidence_metrics,
-            decision_metrics=accumulator_metrics.get("decision_metrics"),
+            decision_metrics=(
+                accumulator_metrics.get(self._decision_accumulator.name)
+                if self._decision_accumulator is not None
+                else None
+            ),
             accumulator_metrics=accumulator_metrics or None,
             accumulator_errors=accumulator_errors,
         )
@@ -763,7 +777,6 @@ class BulkStructuredModelEvaluator:
             # matrix so `save_metrics()` is a complete snapshot of what
             # `compute()` would return, not a confusion-matrix-only dump.
             "confidence_metrics": process_eval.confidence_metrics,
-            "decision_metrics": process_eval.decision_metrics,
             "accumulator_metrics": process_eval.accumulator_metrics,
             "non_matches": process_eval.non_matches,
             "evaluation_summary": {

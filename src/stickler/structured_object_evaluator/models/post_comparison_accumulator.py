@@ -37,6 +37,15 @@ class PostComparisonAccumulator(ABC):
         """Clear all accumulated state."""
         ...
 
+    def start_document(self, doc_id: Any) -> None:
+        """Called with the document's id just before ``accumulate``.
+
+        A no-op by default. Override it when the metrics depend on which
+        document a result came from, for example to resample by document.
+        An exception here skips ``accumulate`` for that document and is
+        recorded like an ``accumulate`` failure.
+        """
+
     @abstractmethod
     def accumulate(
         self,

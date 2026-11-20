@@ -319,29 +319,25 @@ class DataExtractor:
         """
         import numpy as np
 
-        from stickler.decisions.escalate import accept_or_escalate, arrays_from_result
+        from stickler.decisions.escalate import (
+            accept_or_escalate,
+            arrays_from_result,
+            risk_coverage,
+        )
 
         arrays = arrays_from_result(decision_metrics)
         report = accept_or_escalate(decision_metrics, taus=())
         out: Dict[str, Dict[str, Any]] = {}
         for name, a in arrays.items():
             answered = a.answered
-            conf = a.conf[answered]
-            correct = a.correct[answered].astype(float)
             n_total = a.n_total
+            taus, accepted, accuracy = risk_coverage(a.conf[answered], a.correct[answered])
             points = []
-            if conf.size and n_total:
-                order = np.argsort(-conf, kind="stable")
-                c, ok = conf[order], correct[order]
-                ends = np.flatnonzero(np.r_[c[1:] != c[:-1], True]) + 1
-                acc = np.cumsum(ok)[ends - 1] / ends
-                for end, accuracy in zip(ends, acc):
-                    points.append((
-                        float(end) / n_total,
-                        1.0 - float(accuracy),
-                        float(c[end - 1]),
-                        int(end),
-                    ))
+            if n_total:
+                points = [
+                    (float(end) / n_total, 1.0 - float(acc), float(tau), int(end))
+                    for tau, end, acc in zip(taus, accepted, accuracy)
+                ]
                 if len(points) > max_points:
                     idx = np.unique(np.linspace(0, len(points) - 1, max_points).round().astype(int))
                     points = [points[i] for i in idx]

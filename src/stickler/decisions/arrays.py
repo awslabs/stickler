@@ -13,6 +13,12 @@ import numpy as np
 
 from .primitives import DecisionSpec
 
+# Confidences are rounded to this many decimals. A Noul "no" has confidence
+# 1 - P(yes), and in binary floating point 1 - 0.43 is 0.5700000000000001, so
+# without rounding it would not tie with a "yes" at 0.57. AUROC, ece_mass and
+# the accept-or-escalate cuts all treat equal confidences as one block.
+CONF_DECIMALS = 12
+
 
 @dataclass(frozen=True)
 class DecisionArrays:
@@ -67,11 +73,11 @@ class DecisionArrays:
 
     @property
     def conf(self) -> np.ndarray:
-        """Probability of the predicted answer per row; NaN where missing."""
+        """Probability of the predicted answer per row, rounded to ``CONF_DECIMALS``; NaN where missing."""
         out = np.full(self.n_total, np.nan)
         ok = self.answered
         if ok.any():
-            out[ok] = self.P[ok].max(axis=1)
+            out[ok] = np.round(self.P[ok].max(axis=1), CONF_DECIMALS)
         return out
 
     @property

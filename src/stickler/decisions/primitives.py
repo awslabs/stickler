@@ -6,6 +6,7 @@ its options or ordered levels. The spec comes from the question, never from
 the answer, so the model under test cannot change how it is scored.
 """
 
+import re
 import weakref
 from dataclasses import dataclass
 from typing import (
@@ -32,7 +33,7 @@ DecisionKind = Literal["choice", "score", "noul"]
 # Attribute on a field's json_schema_extra callable that holds its DecisionSpec.
 _SPEC_ATTR = "_decision_spec"
 # Key written into the field's JSON schema, so an exported model records it.
-SCHEMA_KEY = "x-stickler-decision"
+SCHEMA_KEY = "x-aws-stickler-decision"
 
 
 @dataclass(frozen=True)
@@ -83,7 +84,7 @@ class DecisionSpec:
             ) from None
 
     def to_schema(self) -> Dict[str, Any]:
-        """The JSON-serialisable form written under ``x-stickler-decision``."""
+        """The JSON-serialisable form written under ``x-aws-stickler-decision``."""
         out: Dict[str, Any] = {"type": self.kind}
         if self.criteria is not None:
             out["criteria"] = self.criteria
@@ -122,6 +123,16 @@ def _score_spec(criteria: Sequence[Any]) -> DecisionSpec:
     if len(criteria) < 2:
         raise ValueError("A Score question needs at least two levels")
     names = tuple(_level_name(level, i) for i, level in enumerate(criteria))
+    # A probability key of ASCII digits is read as a level number. A level
+    # named "2" at position 0 would make the key "2" mean two different levels.
+    clashes = [(i, n) for i, n in enumerate(names) if re.fullmatch(r"[0-9]+", n) and int(n) != i]
+    if clashes:
+        i, n = clashes[0]
+        raise ValueError(
+            f"Score level {i} is named {n!r}. Answers key probabilities by level number or "
+            "level name, so a level named after a different number is ambiguous. Rename it "
+            f"(for example {n + ' points'!r}), or order the levels so each number names its position."
+        )
     return DecisionSpec("score", names, tuple(range(len(criteria))), list(criteria))
 
 

@@ -11,6 +11,9 @@ Rules shared by every kind:
   every calibration metric use answered rows only.
 - Confidence is ``a.conf``, the probability of the predicted (argmax) answer.
 - ``coverage`` is ``{"ratio", "ok", "missing"}`` over asked decisions.
+- A precision or recall with nothing to divide by (no predictions of a class,
+  no gold of a class) is None, not 0.0. F1 is ``2 tp / (n_pred + n_gold)``, so
+  it is defined whenever the class was predicted or in gold.
 
 numpy only: sklearn and scipy are not runtime dependencies.
 """
@@ -41,11 +44,25 @@ def _ratio(num: float, den: float) -> float:
     return float(num) / float(den) if den else 0.0
 
 
-def _prf(tp: int, n_pred: int, n_gold: int) -> Dict[str, float]:
-    precision = _ratio(tp, n_pred)
-    recall = _ratio(tp, n_gold)
-    f1 = _ratio(2 * precision * recall, precision + recall)
-    return {"precision": precision, "recall": recall, "f1": f1}
+def _maybe_ratio(num: float, den: float) -> Optional[float]:
+    """``num / den``, or None when ``den`` is 0: the quantity is undefined."""
+    return float(num) / float(den) if den else None
+
+
+def _prf(tp: int, n_pred: int, n_gold: int) -> Dict[str, Optional[float]]:
+    return {
+        "precision": _maybe_ratio(tp, n_pred),
+        "recall": _maybe_ratio(tp, n_gold),
+        # Equal to 2PR / (P + R) when both are defined, and to sklearn's
+        # zero_division=0 value when one is not.
+        "f1": _maybe_ratio(2 * tp, n_pred + n_gold),
+    }
+
+
+def _balanced_accuracy(y: np.ndarray, pred: np.ndarray, k: int) -> Optional[float]:
+    """Mean recall over the gold classes present; a missing answer is wrong."""
+    recalls = [float((pred[y == c] == c).mean()) for c in range(k) if (y == c).any()]
+    return float(np.mean(recalls)) if recalls else None
 
 
 def _coverage(a: DecisionArrays) -> Dict[str, Any]:
@@ -73,13 +90,17 @@ def brier_multiclass(P: np.ndarray, y: np.ndarray) -> Optional[float]:
     return float(((P - onehot) ** 2).sum(axis=1).mean())
 
 
+def _nll_terms(P: np.ndarray, y: np.ndarray) -> np.ndarray:
+    P = np.asarray(P, dtype=float)
+    p = P[np.arange(P.shape[0]), np.asarray(y, dtype=int)]
+    return -np.log(np.clip(p, _EPS, 1.0))
+
+
 def nll(P: np.ndarray, y: np.ndarray) -> Optional[float]:
     """Mean ``-log P[gold]``, with the probability clipped at 1e-15."""
-    P = np.asarray(P, dtype=float)
-    if P.shape[0] == 0:
+    if np.asarray(P).shape[0] == 0:
         return None
-    p = P[np.arange(P.shape[0]), np.asarray(y, dtype=int)]
-    return float(-np.log(np.clip(p, _EPS, 1.0)).mean())
+    return float(_nll_terms(P, y).mean())
 
 
 def binary_brier(p: Sequence[float], y: Sequence[Any]) -> Optional[float]:
@@ -90,13 +111,17 @@ def binary_brier(p: Sequence[float], y: Sequence[Any]) -> Optional[float]:
     return float(((p - np.asarray(y, dtype=float)) ** 2).mean())
 
 
+def _log_loss_terms(p: Sequence[float], y: Sequence[Any]) -> np.ndarray:
+    p = np.clip(np.asarray(p, dtype=float), _EPS, 1.0 - _EPS)
+    y = np.asarray(y, dtype=float)
+    return -(y * np.log(p) + (1.0 - y) * np.log(1.0 - p))
+
+
 def log_loss(p: Sequence[float], y: Sequence[Any]) -> Optional[float]:
     """Binary cross-entropy for probabilities ``p`` of the positive class, clipped at 1e-15."""
-    p = np.clip(np.asarray(p, dtype=float), _EPS, 1.0 - _EPS)
-    if p.size == 0:
+    if np.asarray(p).size == 0:
         return None
-    y = np.asarray(y, dtype=float)
-    return float(-(y * np.log(p) + (1.0 - y) * np.log(1.0 - p)).mean())
+    return float(_log_loss_terms(p, y).mean())
 
 
 def quadratic_weighted_kappa(y_true: Sequence[int], y_pred: Sequence[int], k: int) -> Optional[float]:
@@ -192,11 +217,12 @@ def ece_mass(conf: Sequence[float], correct: Sequence[Any], n_bins: int = 10) ->
 def correctness(a: DecisionArrays) -> Dict[str, Any]:
     """Correctness of one decision field.
 
-    Every kind: ``accuracy`` (missing counts as wrong), ``answered_accuracy``
+    Every kind: ``accuracy`` and ``balanced_accuracy`` (the mean recall over
+    gold classes; both count a missing answer as wrong), ``answered_accuracy``
     and ``coverage``. Choice adds ``per_class``, ``macro_f1`` and
-    ``confusion``; Noul adds yes-class ``precision``, ``recall``, ``f1`` at
-    ``P(yes) >= threshold``; Score adds ``qwk``, ``mae_argmax`` and
-    ``mae_expected`` on answered rows.
+    ``confusion``; Noul adds yes-class ``precision``, ``recall``, ``f1`` and
+    ``recall_no`` at ``P(yes) >= threshold``; Score adds ``qwk``,
+    ``mae_argmax`` and ``mae_expected`` on answered rows.
 
     A missing answer is a false negative for its gold class (Choice, Noul).
     """
@@ -208,6 +234,7 @@ def correctness(a: DecisionArrays) -> Dict[str, Any]:
         "coverage": _coverage(a),
     }
     spec, y, pred = a.spec, a.y, a.pred
+    out["balanced_accuracy"] = _balanced_accuracy(y, pred, spec.k)
 
     if spec.kind == "choice":
         per_class: Dict[str, Dict[str, Any]] = {}
@@ -219,7 +246,7 @@ def correctness(a: DecisionArrays) -> Dict[str, Any]:
         # Average over the options seen in gold or predictions, as sklearn's
         # f1_score(average="macro") does by default: an option nobody chose
         # and no gold used says nothing about the model.
-        seen = [m["f1"] for c, m in enumerate(per_class.values()) if (y == c).any() or (pred == c).any()]
+        seen = [m["f1"] for m in per_class.values() if m["f1"] is not None]
         out["macro_f1"] = float(np.mean(seen)) if seen else None
         confusion: Dict[str, Dict[str, int]] = {}
         pred_names = list(spec.labels) + [NO_ANSWER]
@@ -239,6 +266,10 @@ def correctness(a: DecisionArrays) -> Dict[str, Any]:
         says_yes[ok] = a.P[ok, 1] >= NOUL_THRESHOLD
         gold_yes = y == 1
         out.update(_prf(int((says_yes & gold_yes).sum()), int(says_yes.sum()), int(gold_yes.sum())))
+        # Recall of "no": of the gold no's, how many got a "no" answer.
+        gold_no = y == 0
+        says_no = ok & ~says_yes
+        out["recall_no"] = _maybe_ratio(int((says_no & gold_no).sum()), int(gold_no.sum()))
         out["threshold"] = NOUL_THRESHOLD
 
     elif spec.kind == "score":
@@ -258,8 +289,10 @@ def calibration(a: DecisionArrays, n_bins: int = 10) -> Dict[str, Any]:
 
     Every kind: ``auroc`` (confidence vs correct), ``ece_mass`` (its value;
     the bins are under ``ece_mass_bins``) and ``coverage``. Choice adds
-    ``brier_multiclass`` and ``nll``; Noul adds ``auroc_label`` (P(yes) vs
-    gold), ``brier`` and ``log_loss`` on P(yes); Score adds ``rps``.
+    ``brier_multiclass``, ``nll`` and ``nll_median``; Noul adds
+    ``auroc_label`` (P(yes) vs gold), ``brier``, ``log_loss`` and
+    ``log_loss_median`` on P(yes); Score adds ``rps``. The medians are there
+    because one confident wrong answer can dominate a mean log loss.
     """
     ok = a.answered
     P, y = a.P[ok], a.y[ok]
@@ -275,11 +308,13 @@ def calibration(a: DecisionArrays, n_bins: int = 10) -> Dict[str, Any]:
     if kind == "choice":
         out["brier_multiclass"] = brier_multiclass(P, y)
         out["nll"] = nll(P, y)
+        out["nll_median"] = float(np.median(_nll_terms(P, y))) if P.shape[0] else None
     elif kind == "noul":
         p_yes = P[:, 1]
         out["auroc_label"] = auroc(y == 1, p_yes)
         out["brier"] = binary_brier(p_yes, y)
         out["log_loss"] = log_loss(p_yes, y)
+        out["log_loss_median"] = float(np.median(_log_loss_terms(p_yes, y))) if p_yes.size else None
     elif kind == "score":
         out["rps"] = ranked_probability_score(P, y)
     return out
@@ -287,29 +322,53 @@ def calibration(a: DecisionArrays, n_bins: int = 10) -> Dict[str, Any]:
 
 # Error bars
 
+# The metrics ``confidence_intervals`` bounds by default: rates and scores.
+# Counts (support, confusion cells, ok/missing), bin edges and fixed settings
+# are left out, since an interval on them says nothing about the model.
+RATE_METRICS = frozenset({
+    "accuracy", "answered_accuracy", "balanced_accuracy", "ratio",
+    "precision", "recall", "f1", "recall_no", "macro_f1",
+    "qwk", "mae_argmax", "mae_expected",
+    "auroc", "auroc_label", "ece_mass", "brier", "brier_multiclass",
+    "nll", "nll_median", "log_loss", "log_loss_median", "rps",
+})
+# Subtrees whose keys are labels or bins, never metric names.
+_SKIP_SUBTREES = frozenset({"confusion", "ece_mass_bins"})
+
 
 def _is_number(x: Any) -> bool:
     return isinstance(x, (int, float, np.integer, np.floating)) and not isinstance(x, (bool, np.bool_))
 
 
-def _collect(point: Dict[str, Any], sample: Any, acc: Dict[str, Any]) -> None:
-    """Append each numeric leaf of ``sample`` found at a numeric leaf of ``point``."""
+def _wanted(key: str, keep: Optional[frozenset]) -> bool:
+    return keep is None or key in keep
+
+
+def _collect(point: Dict[str, Any], sample: Any, acc: Dict[str, Any], keep: Optional[frozenset]) -> None:
+    """Append each numeric leaf of ``sample`` found at a kept leaf of ``point``.
+
+    A leaf that is None in the point estimate but defined in a resample (a
+    recall whose class is absent from this run, say) is still collected.
+    """
     for key, value in point.items():
         sub = sample.get(key) if isinstance(sample, dict) else None
         if isinstance(value, dict):
-            _collect(value, sub, acc.setdefault(key, {}))
-        elif _is_number(value) and _is_number(sub) and np.isfinite(sub):
+            if keep is None or key not in _SKIP_SUBTREES:
+                _collect(value, sub, acc.setdefault(key, {}), keep)
+        elif _wanted(key, keep) and (value is None or _is_number(value)) and _is_number(sub) and np.isfinite(sub):
             acc.setdefault(key, []).append(float(sub))
 
 
-def _bounds(point: Dict[str, Any], acc: Dict[str, Any], alpha: float) -> Dict[str, Any]:
+def _bounds(point: Dict[str, Any], acc: Dict[str, Any], alpha: float, keep: Optional[frozenset]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for key, value in point.items():
         if isinstance(value, dict):
-            nested = _bounds(value, acc.get(key, {}), alpha)
+            if keep is not None and key in _SKIP_SUBTREES:
+                continue
+            nested = _bounds(value, acc.get(key, {}), alpha, keep)
             if nested:
                 out[key] = nested
-        elif _is_number(value):
+        elif _wanted(key, keep) and (_is_number(value) or (value is None and keep is not None)):
             values = acc.get(key)
             if values:
                 low, high = np.percentile(values, [100 * alpha / 2, 100 * (1 - alpha / 2)])
@@ -325,16 +384,21 @@ def bootstrap_ci(
     n_boot: int = 1000,
     seed: int = 0,
     alpha: float = 0.05,
+    keep: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
-    """Percentile bootstrap bounds for every numeric leaf of ``metric_fn(a)``.
+    """Percentile bootstrap bounds for the numeric leaves of ``metric_fn(a)``.
 
     Resamples documents (``a.groups``) with replacement, not rows, because
     decisions within a document are correlated. Each resample keeps every
     row of each drawn document, once per draw.
 
+    Args:
+        keep: Leaf names to bound (for example ``RATE_METRICS``). None bounds
+            every numeric leaf.
+
     Returns:
-        The numeric leaves of ``metric_fn(a)`` in the same nested shape, each
-        as ``{"low", "high"}``. Non-numeric and None leaves are left out.
+        The kept leaves of ``metric_fn(a)`` in the same nested shape, each
+        as ``{"low", "high"}``. Non-numeric leaves are left out.
         A leaf that is None or absent in a resample is skipped for that
         resample; a leaf with no values in any resample has None bounds.
         Deterministic for a given ``seed``.
@@ -343,6 +407,7 @@ def bootstrap_ci(
         raise ValueError(f"n_boot must be >= 1, got {n_boot}")
     if not 0.0 < alpha < 1.0:
         raise ValueError(f"alpha must be in (0, 1), got {alpha}")
+    keep_set = frozenset(keep) if keep is not None else None
     point = metric_fn(a)
     docs, inverse = np.unique(a.groups, return_inverse=True)
     acc: Dict[str, Any] = {}
@@ -352,11 +417,12 @@ def bootstrap_ci(
         for _ in range(n_boot):
             drawn = rng.integers(0, docs.size, size=docs.size)
             rows = np.concatenate([rows_of[d] for d in drawn])
-            _collect(point, metric_fn(a.subset(rows)), acc)
-    return _bounds(point, acc, alpha)
+            _collect(point, metric_fn(a.subset(rows)), acc, keep_set)
+    return _bounds(point, acc, alpha, keep_set)
 
 
 __all__: List[str] = [
+    "RATE_METRICS",
     "auroc",
     "binary_brier",
     "bootstrap_ci",

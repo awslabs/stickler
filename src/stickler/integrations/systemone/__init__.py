@@ -17,6 +17,7 @@ from typing import Any, Dict, Mapping, Optional, Type
 
 from pydantic import create_model
 
+from stickler.decisions.normalize import AnswerError
 from stickler.decisions.primitives import Choice, Noul, Score, spec_from_question
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
@@ -168,23 +169,27 @@ def from_systemone(response: Any) -> Dict[str, Any]:
         itself.
 
     Raises:
-        ValueError: If the response has no answers.
+        AnswerError: If the response has no answers, or its answers are not a
+            dict of question id to answer. ``AnswerError`` is a ``ValueError``.
     """
     if isinstance(response, Mapping):
         if "answers" not in response:
-            raise ValueError("System One response has no 'answers'")
-        return response["answers"]
-    if not hasattr(response, "answers"):
-        raise ValueError(
+            raise AnswerError("System One response has no 'answers'")
+        answers = response["answers"]
+    elif hasattr(response, "answers"):
+        answers = response.answers
+        if hasattr(answers, "model_dump"):
+            answers = answers.model_dump()
+    else:
+        raise AnswerError(
             f"System One response {type(response).__name__} has no 'answers'"
         )
-    answers = response.answers
-    if hasattr(answers, "model_dump"):
-        answers = answers.model_dump()
     if not isinstance(answers, Mapping):
-        raise ValueError(
+        raise AnswerError(
             f"System One 'answers' must be a dict, got {type(answers).__name__}"
         )
+    if isinstance(response, Mapping):
+        return answers
     return {
         qid: a.model_dump() if hasattr(a, "model_dump") else a
         for qid, a in answers.items()

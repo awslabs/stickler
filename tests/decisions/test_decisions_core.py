@@ -76,7 +76,7 @@ class TestFields:
 
     def test_schema_records_the_question(self):
         props = Triage.model_json_schema()["properties"]
-        assert props["severity"]["x-stickler-decision"] == {"type": "score", "criteria": ["low", "medium", "high"]}
+        assert props["severity"]["x-aws-stickler-decision"] == {"type": "score", "criteria": ["low", "medium", "high"]}
 
     def test_from_json_reads_answers(self):
         pred = Triage.from_json(TICKETS[1][1])

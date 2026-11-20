@@ -62,6 +62,7 @@ _EXPORTED_ARRAY_THRESHOLD_SENTINEL = 0.5
 # combination for an evaluation library.
 _KNOWN_FIELD_EXTENSIONS = frozenset(
     {
+        "x-aws-stickler-decision",
         "x-aws-stickler-comparator",
         "x-aws-stickler-comparator-config",
         "x-aws-stickler-threshold",
@@ -78,6 +79,7 @@ _KNOWN_FIELD_EXTENSIONS = frozenset(
 # `internal-examples` is ours, so offering either as a fix would be misleading.
 _DOCUMENTED_FIELD_EXTENSIONS = frozenset(
     {
+        "x-aws-stickler-decision",
         "x-aws-stickler-comparator",
         "x-aws-stickler-comparator-config",
         "x-aws-stickler-threshold",
@@ -727,6 +729,43 @@ class JsonSchemaImporter:
         finally:
             building.discard(source_model)
 
+    @staticmethod
+    def _decision_field(field_info: FieldInfo, field_path: str) -> Optional[Tuple[Type, Any]]:
+        """Rebuild a Choice, Score or Noul field from ``x-aws-stickler-decision``.
+
+        Its scoring is fixed (exact match at threshold 1.0), so a comparator or
+        threshold beside it that says otherwise is rejected, not dropped.
+        """
+        extra = field_info.json_schema_extra
+        if not isinstance(extra, dict) or "x-aws-stickler-decision" not in extra:
+            return None
+        from stickler.decisions.primitives import _decision_field, spec_from_question
+
+        question = extra["x-aws-stickler-decision"]
+        if not isinstance(question, dict) or "type" not in question:
+            raise ValueError(
+                f"x-aws-stickler-decision on field '{field_path}' must be an object "
+                f"with a 'type' (choice, score or noul), got {question!r}"
+            )
+        comparator = extra.get("x-aws-stickler-comparator", "ExactComparator")
+        threshold = extra.get("x-aws-stickler-threshold", 1.0)
+        if comparator != "ExactComparator" or threshold != 1.0:
+            raise ValueError(
+                f"Field '{field_path}' is a {question['type']} decision field, which is "
+                "scored by exact match at threshold 1.0; remove its "
+                "x-aws-stickler-comparator and x-aws-stickler-threshold"
+            )
+        try:
+            spec = spec_from_question(question["type"], question.get("criteria"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid x-aws-stickler-decision on field '{field_path}': {exc}") from exc
+        kwargs: Dict[str, Any] = {"default": None}
+        if field_info.description:
+            kwargs["description"] = field_info.description
+        field = _decision_field(spec, extra.get("x-aws-stickler-weight", 1.0), kwargs)
+        python_type = {"choice": str, "score": int, "noul": bool}[spec.kind]
+        return Optional[python_type], field
+
     def _convert_field(
         self,
         field_name: str,
@@ -735,6 +774,10 @@ class JsonSchemaImporter:
         field_path: str,
         building: set[Type[BaseModel]],
     ) -> Tuple[Type, Any]:
+        decision = self._decision_field(field_info, field_path)
+        if decision is not None:
+            return decision
+
         annotation, annotation_nullable = unwrap_optional(field_info.annotation)
         nullable = annotation_nullable or not field_info.is_required()
         origin = get_origin(annotation)

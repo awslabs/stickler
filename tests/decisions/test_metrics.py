@@ -190,7 +190,8 @@ def test_four_tickets_queue():
     assert c["coverage"] == {"ratio": 0.75, "ok": 3, "missing": 1}
     assert c["per_class"] == {
         "billing": {"precision": 0.5, "recall": 0.5, "f1": pytest.approx(0.5), "support": 2},
-        "sales": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "support": 1},
+        # Never predicted: precision has nothing to divide by.
+        "sales": {"precision": None, "recall": 0.0, "f1": 0.0, "support": 1},
         "retail": {"precision": 1.0, "recall": 1.0, "f1": 1.0, "support": 1},
     }
     assert c["macro_f1"] == pytest.approx(0.5)
@@ -281,9 +282,9 @@ def test_single_class_auroc_is_none():
     assert cal["auroc_label"] is None  # every gold yes
 
 
-def test_choice_recall_with_no_support_is_zero():
+def test_choice_class_never_seen_is_undefined_not_zero():
     a = DecisionArrays.from_records(QUEUE, [{"doc": 1, "gold": 0, "probs": [0.1, 0.8, 0.1]}])
-    assert correctness(a)["per_class"]["retail"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0, "support": 0}
+    assert correctness(a)["per_class"]["retail"] == {"precision": None, "recall": None, "f1": None, "support": 0}
 
 
 # Bootstrap
@@ -303,7 +304,9 @@ def test_bootstrap_bounds_bracket_point_estimate():
     for key in ("accuracy", "answered_accuracy", "qwk", "mae_argmax", "mae_expected"):
         assert ci[key]["low"] <= point[key] <= ci[key]["high"], key
         assert ci[key]["low"] < ci[key]["high"], key
-    assert set(ci) == {"accuracy", "answered_accuracy", "coverage", "qwk", "mae_argmax", "mae_expected"}
+    assert set(ci) == {
+        "accuracy", "answered_accuracy", "balanced_accuracy", "coverage", "qwk", "mae_argmax", "mae_expected"
+    }
 
 
 def test_bootstrap_resamples_documents_not_rows():
