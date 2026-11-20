@@ -56,6 +56,11 @@ Each release links to full notes on the
 
 ### Fixed
 
+- The docs recipe for silencing the `auroc_confidence_metric`
+  `DeprecationWarning` never matched it (it filtered on the comparison engine
+  module). It now filters by message, adds the pytest `filterwarnings` form, and
+  names the second `UserWarning` that `compare_with(add_confidence_metrics=True)`
+  emits.
 - `StructuredModel.from_json` no longer forces the first model arm of a
   `Union[A, B, None]` field: a dict is now left for pydantic's union validation,
   so it resolves to the same arm as `model_validate`
