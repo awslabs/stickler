@@ -369,6 +369,13 @@ Each release links to full notes on the
   `stickler.evaluate`) or a JSON Schema `string`
   ([#492](https://github.com/awslabs/stickler/issues/492)).
 
+- Understanding Results now documents both `non_matches` record shapes
+  ([#486](https://github.com/awslabs/stickler/issues/486)). List-item records
+  carry `reason` at the top level instead of in `details`, and only false
+  discoveries have `similarity_score`, so code written from the old table
+  (`nm["details"]["reason"]`) raised `KeyError` on the first list-item record.
+  The debugging snippet now reads the reason from either place.
+
 - Corrected introductory example scores, the default text comparator description,
   and the sample amount in the documentation and README
   ([#478](https://github.com/awslabs/stickler/issues/478)).
