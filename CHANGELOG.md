@@ -9,6 +9,8 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-20
+
 ### Changed
 
 - The three changes that 1.0.1 announced for 1.0.2 now land in 1.1.0, because
@@ -441,6 +443,12 @@ Each release links to full notes on the
   (`"(-1250)"`). A minus sign after a word keeps its old reading
   (`"Total – 1250"` reads 1250)
   ([#559](https://github.com/awslabs/stickler/issues/559))
+
+- Quoted the `pip install "stickler-eval[...]"` commands in the docs, examples and the
+  `LLMComparator` `ImportError`, since zsh reads unquoted brackets as a glob,
+  and the comparator guides now install BERT and Semantic through their extras
+  ([#482](https://github.com/awslabs/stickler/issues/482), based on
+  [#533](https://github.com/awslabs/stickler/pull/533) by @HarshRajSinghania)
 
 ### Security
 
@@ -3325,7 +3333,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.1...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.2...dev
+[1.0.2]: https://github.com/awslabs/stickler/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/awslabs/stickler/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/awslabs/stickler/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0
