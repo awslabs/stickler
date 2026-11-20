@@ -4,12 +4,17 @@ title: Postal Codes and Addresses
 
 # Postal Codes and Addresses
 
-Stickler compares postal codes **exactly**. `"98101-1234"` does not match
-`"98101 1234"`, and `"98101"` does not match `"98101-1234"`.
+With `stickler.evaluate` on a plain Pydantic `BaseModel`, a field named `zip`,
+`zip_code`, `postal_code`, `postcode` or `postal` is compared **exactly**:
+`"98101-1234"` does not match `"98101 1234"`, and `"98101"` does not match
+`"98101-1234"`. On a `StructuredModel`, even one passed to `stickler.evaluate`,
+a field without a comparator is compared by edit distance, and so is a JSON
+Schema `string`: `"98101-1234"` matches `"98102-1234"`, a different code.
+Either way, name a comparator for your country.
 
-That is deliberate, and it is probably not what you want for your data. This
-page explains why the library refuses to guess, and how to get the behaviour
-your country and pipeline need.
+The exact match is deliberate, and it is probably not what you want for your
+data. This page explains why the library refuses to guess, and how to get the
+behaviour your country and pipeline need.
 
 ## Why there is no `PostalCodeComparator`
 
@@ -62,6 +67,8 @@ class USZipComparator(BaseComparator):
     collapsing them hides a real difference in what was extracted.
     """
 
+    DEFAULT_THRESHOLD = 1.0
+
     def _compare(self, gt, pred) -> float:
         return 1.0 if self._canonical(gt) == self._canonical(pred) else 0.0
 
@@ -79,6 +86,8 @@ class UKPostcodeComparator(BaseComparator):
     and inward parts are re-joined canonically rather than concatenated, so
     the structural split survives.
     """
+
+    DEFAULT_THRESHOLD = 1.0
 
     def _compare(self, gt, pred) -> float:
         return 1.0 if self._canonical(gt) == self._canonical(pred) else 0.0
@@ -123,6 +132,8 @@ from stickler import BaseComparator
 
 class ZipLookupComparator(BaseComparator):
     """Compare US ZIPs by the 5-digit code they resolve to."""
+
+    DEFAULT_THRESHOLD = 1.0
 
     def _compare(self, gt, pred) -> float:
         return 1.0 if self._resolve(gt) == self._resolve(pred) else 0.0

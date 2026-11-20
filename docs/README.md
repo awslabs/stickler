@@ -8,7 +8,7 @@ Documentation source files are in `docs/` (Markdown), configuration is in `mkdoc
 
 ## Prerequisites
 
-- Python 3.12 or higher
+- Python 3.10 or later
 
 ## Installation
 

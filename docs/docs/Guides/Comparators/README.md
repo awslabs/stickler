@@ -134,6 +134,8 @@ class Contact(StructuredModel):
 
 Extracts numeric values from strings or numbers and compares them with configurable tolerance. Handles currency symbols, commas, and accounting notation (e.g., `(123)` for negative values). Returns 1.0 if the numbers match within tolerance, 0.0 otherwise.
 
+String values may use decimal digits in other scripts: `"١٬٢٥٠٫٥٠"` reads 1250.50, as `"1,250.50"` does. A value whose digits are all outside ASCII reads as no number unless it holds one unambiguous number. A value that also has ASCII digits reads its ASCII number and ignores its other-script digits (`"1,250.00 (١٬٢٥٠٫٠٠)"` reads 1250.00), but a number whose digits switch script, such as `"١٢٥٠.50"`, reads as no number unless it is the same amount written twice. A minus sign such as U+2212 marks a negative when it opens the value or follows a currency symbol (`"−1250"`, `"$−1250"`), as do accounting parentheses that are fullwidth or have spaces around them (`"（1250）"`, `" (1250) "`); `"(-1250)"` reads -1250. A compact form such as `"١٫٣ ألف"` reads the number shown (1.3), as `"1.3K"` does; one with a CJK numeral (`"１２万円"`) reads as no number. Declare the field `str`: a `float`, `int` or `Decimal` field rejects `"١٬٢٥٠٫٥٠"` before the comparator runs.
+
 **When to use:** Prices, quantities, measurements, or any numeric field where small differences are acceptable.
 
 ```python
@@ -355,7 +357,7 @@ incidental character overlap.
 
     | key | ground truth | prediction | score |
     |---|---|---|---|
-    | `account` | `DE89370400440532013000` | `DE8937040044053201300`**`1`** | 0.9545 |
+    | `account` | `DE00000000000000000000` | `DE0000000000000000000`**`1`** | 0.9545 |
     | `invoice_date` | `2024-01-15` | `2024-01-1`**`6`** | 0.9000 |
     | `amount` | `1000000` | **`2`**`000000` | 0.8571 |
     | `total` | `1234.56` | `1234.5`**`7`** | 0.8571 |
@@ -485,7 +487,7 @@ The default model is `distilbert-base-uncased`, loaded globally via the `evaluat
 
 ### LLMComparator
 
-Uses a Large Language Model (via AWS Bedrock and the `strands-agents` library) to perform intelligent semantic comparisons. The LLM receives both values and optional evaluation guidelines, then returns a binary equivalence judgment. This is the most flexible comparator but also the most expensive.
+Uses a Large Language Model (via AWS Bedrock and the `strands-agents` library) to perform intelligent semantic comparisons. The LLM receives both values and optional evaluation guidelines, then returns a binary equivalence judgment: 1.0 only when the normalized reply is exactly `true`, otherwise 0.0 (with a `UserWarning` when the reply is neither `true` nor `false`). See [LLM-as-a-Judge](llm-as-a-judge.md#llmcomparator) for the exact rule. This is the most flexible comparator but also the most expensive.
 
 **When to use:** Complex comparisons that require reasoning, domain-specific logic, or understanding of abbreviations and conventions. See [LLM-as-a-Judge Comparators](llm-as-a-judge.md) for a detailed guide.
 
@@ -527,14 +529,21 @@ ends up a plain `str`. Read the result back with `to_json_schema()`, not from `m
 | JSON Schema Type | Default Comparator | Default Threshold | Rationale |
 |---|---|---|---|
 | `string` | LevenshteinComparator | 0.5 | Handles typos and minor variations |
-| `number` | NumericComparator | 0.5 | Tolerates small numeric differences |
-| `integer` | NumericComparator | 0.5 | Tolerates small numeric differences |
+| `number` | NumericComparator | 0.5 | Exact match unless a tolerance is set |
+| `integer` | NumericComparator | 0.5 | Exact match unless a tolerance is set |
 | `boolean` | ExactComparator | 0.5 | Must be exactly true or false (Exact returns only 0.0 or 1.0, so the threshold is immaterial) |
 | `string` + `"format": "date"` or `"date-time"` | DateComparator | 1.0 | Parses as `date`/`datetime`, so the field compares across formats |
 | `string` + `"enum"` or a single-value `const` | ExactComparator | 1.0 | Parses as an `Enum`/`Literal`, so only a listed value is valid |
 | `array` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
+
+`NumericComparator` defaults to a tolerance of 0, so a plain `{"type": "number"}` scores `100` vs
+`100.01` as 0.0. Set a tolerance to accept small differences; this scores the same pair 1.0:
+
+```json
+{"type": "number", "x-aws-stickler-comparator-config": {"tolerance": 0.01}}
+```
 
 A `format` the schema library does not map to a distinct type (`"email"`, `"hostname"`, `"duration"`)
 parses as `str`, so the field keeps LevenshteinComparator at 0.5. To check any of this on your own
