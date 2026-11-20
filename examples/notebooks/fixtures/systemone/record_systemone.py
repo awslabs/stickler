@@ -11,11 +11,17 @@ returned. Any server with the System One interface works: strands-decider,
 OpenJev or Jev. For a hosted Jev, pass ``--url https://api.typesafe.ai/v1/systemone``
 and ``--model``, with the API key in ``TYPESAFE_API_KEY``.
 
-Stdlib only. Nothing is written until every ticket has a response, so a failed
-run leaves the fixture untouched. Exit codes:
+A refusal (HTTP 422, the server declining the request) is recorded as a
+ticket with no answers, so the evaluation counts its questions as missing.
 
-    1  a request failed: server not running, wrong URL, HTTP error, timeout
+Stdlib only. Nothing is written until every ticket has a response, so a failed
+run leaves the fixture untouched. The provenance records the model and version,
+never the endpoint URL, which can name a private host or carry a token. Exit
+codes:
+
+    1  a request failed: server not running, wrong URL, HTTP error other than 422, timeout
     2  a response was not a System One response, or answered a question it was not asked
+    3  a 200 response answered none of its questions, or the run has no answers at all
 """
 
 import argparse
@@ -30,6 +36,7 @@ import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 DEFAULT_URL = "http://localhost:8000/v1/systemone"
+REFUSED = 422  # the server declined the request; its questions count as missing
 
 
 def read_jsonl(path):
@@ -71,13 +78,19 @@ def main(argv=None):
         "--decider-version",
         help="strands-decider version the server runs; defaults to the version installed here, if any",
     )
+    ap.add_argument(
+        "--out-dir",
+        type=pathlib.Path,
+        default=HERE,
+        help="where to write responses.jsonl and provenance.json (default: next to this script)",
+    )
     args = ap.parse_args(argv)
 
     questions = json.loads((HERE / "questions.json").read_text())
     tickets = read_jsonl(HERE / "tickets.jsonl")
     api_key = os.environ.get("TYPESAFE_API_KEY")
 
-    lines, models = [], []
+    lines, models, refused, answered = [], [], 0, 0
     for n, ticket in enumerate(tickets, 1):
         body = {
             "state": ticket["state"],
@@ -89,6 +102,15 @@ def main(argv=None):
             response = post(args.url, body, args.timeout, api_key)
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")[:500]
+            if exc.code == REFUSED:
+                print(f"{ticket['id']}: refused (HTTP 422); recorded as missing: {detail[:200]}")
+                refused += 1
+                lines.append(json.dumps({
+                    "id": ticket["id"],
+                    "response": {"answers": {}},
+                    "refusal": {"http_status": exc.code, "detail": detail},
+                }))
+                continue
             print(
                 f"{ticket['id']}: HTTP {exc.code} from {args.url}: {detail}",
                 file=sys.stderr,
@@ -118,13 +140,24 @@ def main(argv=None):
                 file=sys.stderr,
             )
             return 2
+        if ticket["asked"] and not answers:
+            print(
+                f"{ticket['id']}: the server answered none of {ticket['asked']} without refusing. "
+                "That is a broken server or model, not a measurement; nothing was written.",
+                file=sys.stderr,
+            )
+            return 3
         missing = sorted(set(ticket["asked"]) - set(answers))
         if missing:
             print(f"{ticket['id']}: no answer for {missing}; recorded as missing")
+        answered += len(answers)
         models.append(response.get("model"))
         lines.append(json.dumps({"id": ticket["id"], "response": response}))
         print(f"[{n}/{len(tickets)}] {ticket['id']}", end="\r", flush=True)
     print()
+    if answered == 0:
+        print("no ticket got any answer; nothing was written", file=sys.stderr)
+        return 3
 
     names = sorted({m for m in models if m})
     model = names[0] if len(names) == 1 else (names or None)
@@ -138,15 +171,15 @@ def main(argv=None):
             timespec="seconds"
         ),
         "strands_decider_version": version,
-        "endpoint": args.url,
+        "refused": refused,
         "note": (
-            f"Recorded from a live System One server at {args.url} with record_systemone.py. "
+            "Recorded from a live System One server with record_systemone.py. "
             f"strands_decider_version is {'the version given or installed on the recording machine' if version else 'unknown'}."
         ),
     }
-    (HERE / "responses.jsonl").write_text("\n".join(lines) + "\n")
-    (HERE / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
-    print(f"recorded {len(lines)} responses from {model} to responses.jsonl")
+    (args.out_dir / "responses.jsonl").write_text("\n".join(lines) + "\n")
+    (args.out_dir / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+    print(f"recorded {len(lines)} responses from {model} to responses.jsonl ({refused} refused)")
     print(
         "review the diff before committing it; it changes every number the notebook prints."
     )

@@ -36,7 +36,10 @@ from .primitives import DecisionSpec, decision_paths
 ACCUMULATOR_NAME = "decision_metrics"
 # Below this many answered decisions a field's calibration metrics are mostly
 # noise: a perfectly calibrated model shows an ece_mass near 0.2 at n = 20.
-MIN_CALIBRATION_N = 100
+MIN_CALIBRATION_N = 30
+# warn -> compute -> BulkStructuredModelEvaluator._build_process_evaluation ->
+# compute() / get_current_metrics() / save_metrics() -> the caller's line.
+_SMALL_SAMPLE_STACKLEVEL = 4
 
 _INDEX = re.compile(r"\[\d+\]")
 _PART = re.compile(r"([^.\[\]]+)(?:\[(\d+)\])?")
@@ -253,7 +256,7 @@ class DecisionAccumulator(PostComparisonAccumulator):
                     f"metrics below {MIN_CALIBRATION_N} are mostly noise; read them with "
                     "confidence_intervals().",
                     UserWarning,
-                    stacklevel=2,
+                    stacklevel=_SMALL_SAMPLE_STACKLEVEL,
                 )
             spec = self.specs[path]
             fields[path] = {

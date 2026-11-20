@@ -372,4 +372,5 @@ def test_small_sample_warns():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         ev.compute()
-    assert any(f"below {MIN_CALIBRATION_N}" in str(w.message) for w in caught)
+    small = [w for w in caught if f"below {MIN_CALIBRATION_N}" in str(w.message)]
+    assert small and small[0].filename == __file__  # points at the caller, not at stickler

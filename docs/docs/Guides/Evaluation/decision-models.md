@@ -6,7 +6,10 @@ title: Evaluating Decision Models
 
 A decision model answers a typed question with a probability distribution instead of free text. Strands Decider, OpenJev and Jev speak the [System One](https://docs.typesafe.ai/primitives) format, built on three question types: **Choice** (one option out of a set), **Score** (a level on an ordered scale) and **Noul** (yes or no).
 
-Stickler scores those answers against your gold labels: per-class and ordinal correctness, calibration, and what a confidence threshold buys. For a runnable walkthrough on 100 support tickets, see [`Evaluate_A_Decider_Model.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Evaluate_A_Decider_Model.ipynb).
+Stickler scores those answers against your gold labels. It answers the deployment question first: if you accept every decision above a confidence threshold and escalate the rest, how much is handled automatically, and how much of that is wrong. Correctness and calibration explain the answer. For a runnable walkthrough on 100 support tickets, see [`Evaluate_A_Decider_Model.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Evaluate_A_Decider_Model.ipynb).
+
+!!! warning "Experimental"
+    `stickler.decisions` and `stickler.integrations.systemone` are experimental. Their names and result keys may change in a minor release.
 
 ## The questions are the schema
 
@@ -42,7 +45,7 @@ class Triage(StructuredModel):
     severity: Optional[int] = Score(criteria=["low", "medium", "high"])
 ```
 
-Decision fields mix freely with ordinary `ComparableField`s.
+Decision fields mix freely with ordinary `ComparableField`s. `to_json_schema()` records each one's question under `x-aws-stickler-decision`, and `from_json_schema()` rebuilds it.
 
 ## Gold labels
 
@@ -79,7 +82,8 @@ The predicted side of `Triage.from_json(...)` is a System One answer object per 
 
 - **Only `probabilities` (Choice, Score) or `noul` is read.** `choice`, `score`, `confidence` and `legend` may be present and are ignored. The predicted answer is the argmax, in question order on ties; a Noul is yes when `noul >= 0.5`.
 - **Confidence is the probability of the predicted answer**: the top value in `probabilities`, or `max(p, 1 - p)` for a Noul. An answer's own `confidence` field measures how peaked the distribution is, not P(correct), so it is never used. The same value feeds `res.confidence_metrics`.
-- **Score keys** may be level numbers (`"0"`) or level names (`"low"`).
+- **Score keys** may be level numbers (`"0"`) or level names (`"low"`). A key of ASCII digits is always a level number, so a level may be named after a number only if it is its own position: `Score(["2", "1", "0"])` raises.
+- **A prediction must be an answer object.** A bare value such as `{"queue": "billing"}` has no probabilities to score, so the bulk evaluator rejects it (`AnswerError`, recorded in `res.errors`) rather than scoring it as a certain answer.
 
 `stickler.decisions.AnswerError` (a `ValueError`) is raised by `from_json` when an answer cannot be scored against its question:
 
@@ -89,7 +93,7 @@ AnswerError: field 'queue': probabilities are missing for ['retail']
 AnswerError: field 'queue': probabilities sum to 0.900000, not 1
 ```
 
-It also raises for an unknown option key, a probability outside 0 to 1, an unknown Score level, and the same answer given twice (`"0"` and `"low"`). Sums off 1 by rounding (up to 0.01, more for many options) are renormalised; sums within 1e-9 of 1 are used as given.
+It also raises for an unknown option key, a probability outside 0 to 1, an unknown Score level, and the same answer given twice (`"0"` and `"low"`). Servers round each probability, so a sum off 1 by at most `max(0.01, 0.0005 × options)` is renormalised; a sum within 1e-9 of 1 is used as given.
 
 ## Unasked vs missing
 
@@ -104,7 +108,7 @@ r["field_scores"]   # {'queue': 0.0, 'urgent': 0.0}
 
 `queue` is wrong and `urgent` is missing; `severity` does not appear.
 
-## Reading the results
+## Running the evaluator
 
 The examples use four tickets; the fourth has no `queue` answer.
 
@@ -133,16 +137,7 @@ q["correctness"]["confusion"]         # {'billing': {'billing': 1, '(no answer)'
 q["calibration"]["nll"]               # 0.524
 ```
 
-Each field holds `kind`, `labels`, `correctness`, `calibration` and the per-decision `records`:
-
-| Type | `correctness` | `calibration` |
-|---|---|---|
-| every type | `accuracy`, `answered_accuracy`, `coverage` | `auroc` (confidence vs. correct), `ece_mass` (equal-mass bins, ties kept together; bins in `ece_mass_bins`), `coverage` |
-| Choice | `per_class` (precision, recall, f1, support), `macro_f1`, `confusion` | `brier_multiclass`, `nll` |
-| Noul | `precision`, `recall`, `f1` of yes at `threshold` 0.5 | `auroc_label` (P(yes) vs. gold), `brier`, `log_loss` |
-| Score | `qwk`, `mae_argmax`, `mae_expected` (from the probability-weighted level) | `rps` |
-
-A metric that is undefined on the data (one class only, no answered rows) is `None`. `macro_f1` averages over the options seen in gold or predictions, as sklearn does by default.
+Each `doc_id` is one document, the unit the confidence intervals resample. Passing the same `doc_id` twice is an error recorded in `res.errors`, because repeated runs of one item are not independent documents. To pool repeats, pass `accumulators=[DecisionAccumulator(Triage, repeated_doc_ids="group")]` (from `stickler.decisions`), which keeps every row of a `doc_id` in one document. `save_metrics()` writes the decision metrics once, under `accumulator_metrics["decision_metrics"]`.
 
 ## Accept or escalate
 
@@ -156,18 +151,23 @@ print(ops.table())
 ```
 
 ```
-queue  (n=4, AURC=0.04)
+queue  (n=4, AURC=0.208, answered only 0.111)
   tau   coverage  accuracy_accepted  errors_escalated
   0.60  0.75      0.67               1 / 2
   0.70  0.50      1.00               2 / 2
   0.80  0.25      1.00               2 / 2
   coverage at accuracy >= 0.95: 0.50 (tau = 0.770)
 
-urgent  (n=4, AURC=0.03)
+urgent  (n=4, AURC=0.062)
   ...
 ```
 
-`ops.fields[name]` holds the same numbers (`rows`, `aurc`, `coverage_at_target`, `tau_at_target`); `ops.to_dict()` is JSON-serialisable. `pool=True` pools all fields into one entry, and `fields=[...]` selects some.
+`coverage` and `coverage_at_target` divide by every asked decision, and a missing answer is never accepted. AURC, the area under the risk-coverage curve, summarises every threshold at once (lower is better). It is the mean selective risk over coverage, with tied confidences cut together:
+
+- `aurc` runs over every asked decision, with missing answers accepted last as errors, so a model cannot improve it by not answering;
+- `aurc_answered` is the standard selective-prediction AURC over answered decisions only. The two are equal when nothing is missing.
+
+`ops.fields[name]` holds the same numbers (`rows`, `aurc`, `aurc_answered`, `coverage_at_target`, `tau_at_target`); `ops.to_dict()` is JSON-serialisable. `taus` may be a dict of field to thresholds. `pool=True` pools all fields into one entry, and `fields=[...]` selects some.
 
 Stickler measures at the thresholds you give it; it does not choose one. A `tau_at_target` read off the run it is reported on is optimistic, so pick it on a dev run and report it on a held-out test run:
 
@@ -178,19 +178,36 @@ print(accept_or_escalate(res_test, taus=[tau], fields=["queue"]).table())
 
 `tau_at_target` is `None` when no threshold reaches the target.
 
+## Correctness and calibration
+
+Each field holds `kind`, `labels`, `correctness`, `calibration` and the per-decision `records`:
+
+| Type | `correctness` | `calibration` |
+|---|---|---|
+| every type | `accuracy`, `balanced_accuracy` (mean recall over gold classes), `answered_accuracy`, `coverage` | `auroc` (confidence vs. correct), `ece_mass` (equal-mass bins, ties kept together; bins in `ece_mass_bins`), `coverage` |
+| Choice | `per_class` (precision, recall, f1, support), `macro_f1`, `confusion` | `brier_multiclass`, `nll`, `nll_median` |
+| Noul | `precision`, `recall`, `f1` of yes at `threshold` 0.5, and `recall_no` | `auroc_label` (P(yes) vs. gold), `brier`, `log_loss`, `log_loss_median` |
+| Score | `qwk`, `mae_argmax`, `mae_expected` (from the probability-weighted level) | `rps` |
+
+`accuracy` and `balanced_accuracy` count a missing answer as wrong. A metric that is undefined on the data is `None`, not 0.0: a precision for an option never predicted, a recall for one never in gold, an AUROC on one class. `macro_f1` averages over the options seen in gold or predictions, as sklearn does by default. The medians sit beside the mean log losses because one confident wrong answer can dominate a mean.
+
+Confidences are compared after rounding to 12 decimals, so a Noul "no" sent as P(yes) = 0.43 ties with a "yes" at 0.57. Below 30 answered decisions a field's calibration metrics are mostly noise, and the evaluator warns; read them with confidence intervals.
+
 ## Confidence intervals
 
-`confidence_intervals` bootstraps every numeric decision metric of one run. It resamples documents, not decisions, because decisions about one document are correlated.
+`confidence_intervals` bootstraps the rates and scores of one run: every metric in the tables above except counts, confusion cells and bins. It resamples documents, not decisions, because decisions about one document are correlated.
 
 ```python
 from stickler.decisions import confidence_intervals
 
 ci = confidence_intervals(res, n_boot=1000, seed=0)
 ci["urgent"]["calibration"]["brier"]   # {'low': 0.0148, 'high': 0.2749}
-ci["settings"]                         # {'n_boot': 1000, 'seed': 0, 'alpha': 0.05, 'unit': 'document'}
+ci["settings"]                         # {'n_boot': 1000, 'seed': 0, 'alpha': 0.05, 'n_bins': 10, 'unit': 'document'}
 ```
 
-Every metric keeps its place in the nested result, as `{"low", "high"}`. The same seed gives the same intervals. It runs after `compute()`, on the stored records, so it needs only `res`.
+Every bounded metric keeps its place in the nested result, as `{"low", "high"}`. `metrics=["accuracy", "ece_mass"]` bounds only those. `ece_mass` uses the same bins as the run (`n_bins` overrides them). The same seed gives the same intervals. It runs after `compute()`, on the stored records, so it needs only `res`.
+
+These are percentile intervals. `ece_mass` is biased upward under resampling, so on a small run its interval can sit above the estimate.
 
 ## Nested and list fields
 

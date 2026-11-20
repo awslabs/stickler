@@ -65,13 +65,16 @@ lists the extras each device needs. Keep the server on localhost.
 `--url` (default `http://localhost:8000/v1/systemone`). It works with any System One server
 (strands-decider, OpenJev, Jev); for hosted Jev pass `--url` and `--model` and set `TYPESAFE_API_KEY`.
 It writes `responses.jsonl` and `provenance.json` (model name from the responses, timestamp,
-`hand_authored: false`) only after every ticket has a response. The strands-decider version is read
-from the local install, or pass `--decider-version` when the server runs elsewhere.
+`hand_authored: false`, the refusal count) only after every ticket has a response. The provenance
+never records the URL, which can name a private host or carry a token. The strands-decider version
+is read from the local install, or pass `--decider-version` when the server runs elsewhere. A
+refusal (HTTP 422) is recorded as a ticket with no answers, so its questions score as missing.
 
 | exit | meaning (fixture untouched) |
 |---|---|
-| 1 | a request failed: server down, wrong URL, HTTP error, timeout |
+| 1 | a request failed: server down, wrong URL, an HTTP error other than 422, timeout |
 | 2 | a response was not a System One response, or answered a question it was not asked |
+| 3 | a 200 response answered none of its questions, or no ticket got any answer |
 
 Review the diff before committing a recording. It changes every number the notebook prints, so
 re-execute the notebook in the same commit.
