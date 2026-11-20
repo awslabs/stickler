@@ -89,6 +89,8 @@ evaluator = BulkStructuredModelEvaluator(
 
 Each metric returns `{"value": float | None}` with optional extra keys. `None` means the metric couldn't be computed (no data, single class for AUROC, etc.).
 
+If an error-capture budget splits a confidence tie, `errors_found` is the fractional expected count across the tied fields so the result does not depend on their input order.
+
 ## Coverage
 
 Not every field has a confidence score. Coverage tracks how many fields were evaluated vs. total fields compared. A ratio of 0.5 means half your fields lack confidence data, and the metrics only reflect the half that has it.

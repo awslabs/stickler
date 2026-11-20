@@ -894,8 +894,31 @@ class TestErrorCaptureAtBudget:
         b30 = result["budgets"]["0.30"]
         assert b30["fields_reviewed"] == 3
         assert b30["errors_found"] == 3
+        assert isinstance(b30["errors_found"], int)
         assert b30["pct_errors_caught"] == 1.0
         assert b30["gain"] > 1.0
+
+    def test_tied_cutoff_is_order_independent(self):
+        """A tie split by the budget uses its expected error count."""
+        import random
+
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+
+        pairs = [cp(False, 0.2), cp(True, 0.3)]
+        pairs += [cp(i % 2 == 0, 0.9) for i in range(8)]
+        metric = ErrorCaptureAtBudgetMetric(budgets=[0.30])
+
+        for seed in range(20):
+            shuffled = pairs[:]
+            random.Random(seed).shuffle(shuffled)
+            entry = metric.compute(shuffled)["budgets"]["0.30"]
+
+            assert entry["fields_reviewed"] == 3
+            assert entry["errors_found"] == pytest.approx(1.5)
+            assert entry["pct_errors_caught"] == pytest.approx(0.3)
+            assert entry["gain"] == pytest.approx(1.0)
 
     def test_random_confidence_gain_near_one(self):
         """Random confidence should produce gain near 1.0."""
