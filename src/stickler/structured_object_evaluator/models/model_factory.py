@@ -84,9 +84,13 @@ class ModelFactory:
                    Field configuration format:
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
-                       "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
+                       "comparator": "LevenshteinComparator|ExactComparator|auto|etc.",
+                           # Required for a primitive field, unless
+                           # infer_unspecified_fields is true or the value is "auto"
+                       "comparator_config": {"key": "value"},  # Optional, comparator options
                        "threshold": 0.8,  # Optional, default 0.5
                        "weight": 2.0,     # Optional, default 1.0
+                       "clip_under_threshold": true,  # Optional, default true
                        "required": true,  # Optional, default false
                        "default": "value", # Optional
                        "description": "Field description",  # Optional

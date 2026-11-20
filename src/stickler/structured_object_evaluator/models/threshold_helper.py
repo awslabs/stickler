@@ -115,7 +115,7 @@ def warn_if_threshold_is_zero(
         value: The configured threshold, or None if unset.
         context: Where it was set, e.g. ``"Invoice.vendor"``. Appears in the
             message and keys the warn-once bookkeeping, so it must distinguish
-            configuration sites -- see ``ModelFactory._config_identity`` for why
+            configuration sites, see ``model_identity`` for why
             a bare ``"DynamicModel"`` does not.
         parameter: The parameter name to name in the message.
     """

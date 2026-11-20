@@ -92,7 +92,10 @@ def ComparableField(
     enabling both comparison functionality and native Pydantic features like aliases.
 
     Args:
-        comparator: Comparator to use for field comparison (default: LevenshteinComparator)
+        comparator: Comparator to use for field comparison (default:
+                  LevenshteinComparator, or ANLSStarComparator for a field
+                  annotated as a mapping, a plain pydantic model, or a list of
+                  either)
         threshold: Minimum similarity score to consider a match. ``None`` means
                   "not specified", in which case a threshold the caller set on
                   the comparator applies, since a threshold is only meaningful
@@ -117,9 +120,11 @@ def ComparableField(
                  pydantic ignores beside a factory, leaving the field optional.
         clip_under_threshold: Whether to zero out scores below threshold
                   (effective default: True). ``None`` means "not specified",
-                  which lets a dict-annotated field default it to False so
-                  partial credit survives, while an explicit True or False is
-                  always honoured. See StructuredModel.__init_subclass__.
+                  which lets a field annotated as a mapping, a plain pydantic
+                  model, or a list of either default it to False so partial
+                  credit survives, while an explicit True or False is always
+                  honoured. See ``StructuredModel._install_object_grade_comparators``
+                  and ``ConfigurationHelper.object_grade_clip``.
         alias: Pydantic field alias for serialization (default: None)
         description: Field description for documentation (default: None)
         examples: Example values for the field (default: None)
@@ -155,10 +160,11 @@ def ComparableField(
     # Whether the CALLER named a comparator. Recorded because the default is
     # resolved here, before the field's annotation is known, so this is the only
     # place the distinction survives. ConfigurationHelper needs it to give a
-    # dict-annotated field a comparator that can actually score a mapping
-    # without overriding a choice the user made deliberately.
+    # field annotated as a mapping, a plain pydantic model, or a list of either
+    # a comparator that can actually score it, without overriding a choice the
+    # user made deliberately.
     comparator_was_explicit = comparator is not None
-    # Same reasoning for clip: the dict substitution turns it off so partial
+    # Same reasoning for clip: that substitution turns it off so partial
     # credit survives, but must not overwrite a value the caller chose.
     clip_was_explicit = clip_under_threshold is not None
     if clip_under_threshold is None:
