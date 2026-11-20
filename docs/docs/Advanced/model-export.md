@@ -23,7 +23,7 @@ not coerce values. A list of lists exports as nested arrays; `to_stickler_config
 with a model arm (`Union[Card, Bank]`, `Union[Plain, str]`) or for a `StructuredModel` inside a
 nested list (`List[List[Card]]`). Both methods still write these as 1.0.0 did, typed as a string,
 which does not re-import as the original field, and emit a `UserWarning` naming the field. From
-1.0.2 both raise `ValueError` for them
+1.1.0 both raise `ValueError` for them
 ([#349](https://github.com/awslabs/stickler/issues/349)).
 
 A `Dict` field exports as `{"type": "object"}`, with `additionalProperties` for a primitive value

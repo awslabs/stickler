@@ -9,7 +9,7 @@ A plain model is scored as one object, as a mapping is, so it now exports as a
 free-form object and comes back as `dict`, and a list of lists exports as nested
 arrays. `to_stickler_config()` has no type for a union with a model arm or for a
 StructuredModel inside a nested list. 1.0.1 ships no breaking change, so both
-exporters write those as 1.0.0 did and warn; 1.0.2 raises. `Optional` and
+exporters write those as 1.0.0 did and warn; 1.1.0 raises. `Optional` and
 `Annotated` are stripped first, so a nested model under `Field(...)` on an
 optional field exports as the model.
 
@@ -281,7 +281,7 @@ def _export(model, path):
         else:
             exported = model.to_stickler_config()["fields"]
     legacy = [
-        w for w in caught if "This becomes a ValueError in 1.0.2" in str(w.message)
+        w for w in caught if "This becomes a ValueError in 1.1.0" in str(w.message)
     ]
     return exported, legacy
 
@@ -361,14 +361,14 @@ def test_the_legacy_export_warning_points_at_the_callers_line(path):
         warnings.simplefilter("always")
         this_line = inspect.currentframe().f_lineno + 1
         export()
-    legacy = [w for w in caught if "becomes a ValueError in 1.0.2" in str(w.message)]
+    legacy = [w for w in caught if "becomes a ValueError in 1.1.0" in str(w.message)]
     # One per field per call: an export runs once, so it is not memoised.
     assert [w.filename for w in legacy] == [__file__, __file__]
     assert [w.lineno for w in legacy] == [this_line, this_line]
     with warnings.catch_warnings(record=True) as again:
         warnings.simplefilter("always")
         export()
-    assert len([w for w in again if "1.0.2" in str(w.message)]) == 2
+    assert len([w for w in again if "1.1.0" in str(w.message)]) == 2
 
 
 def test_a_union_built_from_a_schema_exports_as_1_0_0_did_and_warns():

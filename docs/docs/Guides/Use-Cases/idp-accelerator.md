@@ -59,7 +59,7 @@ For IDP pipelines where the extraction schema may change across document types, 
     "total_amount": {
       "type": ["number", "null"],
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95,
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
       "x-aws-stickler-weight": 2.5
     }
   },

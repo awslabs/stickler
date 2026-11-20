@@ -102,6 +102,8 @@ cov = results.confidence_metrics["coverage"]
 Subclass `ConfidenceMetric`:
 
 ```python
+from typing import Any, Dict
+
 from stickler.structured_object_evaluator.models.confidence import ConfidenceMetric, ConfidencePairs
 
 class MyMetric(ConfidenceMetric):

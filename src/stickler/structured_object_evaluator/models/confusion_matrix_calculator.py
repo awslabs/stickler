@@ -1,9 +1,11 @@
-"""Confusion matrix calculation for structured model comparisons.
+"""Deprecated: confusion matrix calculation for a single field.
 
-This module provides the ConfusionMatrixCalculator class for calculating
-confusion matrix metrics (TP, FP, TN, FN, FD, FA) for field comparisons.
+Kept so that an import of this module keeps working in 1.0.x. Nothing in
+Stickler calls it any more: ``compare_with(include_confusion_matrix=True)``
+reports the counts. It will be removed in 1.1.0.
 """
 
+import warnings
 from typing import TYPE_CHECKING, Any, Dict
 
 from .field_helper import FieldHelper
@@ -12,6 +14,14 @@ from .threshold_helper import ThresholdHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
+
+warnings.warn(
+    "stickler.structured_object_evaluator.models.confusion_matrix_calculator is "
+    "deprecated and will be removed in 1.1.0. Nothing in Stickler uses it; "
+    "compare_with(include_confusion_matrix=True) reports the counts.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 class ConfusionMatrixCalculator:

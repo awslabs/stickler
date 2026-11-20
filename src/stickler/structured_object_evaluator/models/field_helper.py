@@ -85,32 +85,6 @@ class FieldHelper:
         return False
 
     @staticmethod
-    def is_immediate_child(nested_path: str, field_name: str) -> bool:
-        """Determines if nested_path is an immediate child of field_name.
-
-        Args:
-            nested_path: The nested path to check, e.g., 'owner.contact.phone'
-            field_name: The potential parent path, e.g., 'owner.contact'
-
-        Returns:
-            True if nested_path is an immediate child of field_name, False otherwise
-        """
-        # Check if field_name is a prefix of nested_path
-        if not nested_path.startswith(field_name):
-            return False
-
-        # If field_name is a prefix, it should be followed by a dot
-        if len(field_name) >= len(nested_path):
-            return False
-
-        if nested_path[len(field_name)] != ".":
-            return False
-
-        # The remaining part after field_name and the dot should not contain any more dots
-        remaining = nested_path[len(field_name) + 1 :]
-        return "." not in remaining
-
-    @staticmethod
     def get_field_value_safely(obj: Any, field_name: str, default: Any = None) -> Any:
         """Get field value from object safely using getattr.
 

@@ -290,7 +290,7 @@ def test_match_threshold_on_a_primitive_warns_and_is_ignored():
     """It is the object-level threshold; on a leaf it was accepted and dropped.
 
     1.0.1 keeps 1.0.0's result (the key is ignored, so the field keeps its
-    0.5 default) and warns; 1.0.2 raises, matching the JSON Schema path.
+    0.5 default) and warns; 1.1.0 raises, matching the JSON Schema path.
     """
     model, messages = build(MATCH_THRESHOLD_ON_LEAF)
     assert match_threshold_warnings(messages) == [
@@ -299,7 +299,7 @@ def test_match_threshold_on_a_primitive_warns_and_is_ignored():
         "object-level threshold, so it is ignored and the field scores at its "
         "'threshold'. Use 'threshold' for this field, or set 'match_threshold' "
         "on the model or on a 'structured_model' field. This becomes a "
-        "ValueError in 1.0.2."
+        "ValueError in 1.1.0."
     ]
     assert unknown_key_warnings(messages) == []
     # What 1.0.0 built for this config, measured on v1.0.0.

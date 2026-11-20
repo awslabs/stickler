@@ -14,22 +14,24 @@ cannot have their localization recovered (the GT boxes aren't in
 ``prediction_raw``), so such rows contribute coverage only.
 """
 
-import warnings
 from typing import Any, Dict, Iterable, Optional, Union
 
+from stickler.structured_object_evaluator.models._keyed_pairs_accumulator import (
+    _KeyedPairsAccumulator,
+)
 from stickler.structured_object_evaluator.models.bbox.calculator import (
     DEFAULT_IOU_THRESHOLDS,
     BBoxObservation,
-    KeyedBBoxPairs,
     MAPCalculator,
 )
-from stickler.structured_object_evaluator.models.post_comparison_accumulator import (
-    PostComparisonAccumulator,
-)
 
 
-class BBoxMAPAccumulator(PostComparisonAccumulator):
+class BBoxMAPAccumulator(_KeyedPairsAccumulator):
     """Accumulates bbox observations and computes aggregate mAP metrics."""
+
+    _pair_type = BBoxObservation
+    _state_keys = ("keyed_bbox_pairs", "bbox_fields_with", "bbox_fields_total")
+    _warn_label = "BBoxMAPAccumulator"
 
     def __init__(
         self, iou_thresholds: Union[float, Iterable[float]] = DEFAULT_IOU_THRESHOLDS
@@ -41,29 +43,15 @@ class BBoxMAPAccumulator(PostComparisonAccumulator):
     def name(self) -> str:
         return "bbox_map_metrics"
 
-    def reset(self) -> None:
-        self._keyed_pairs: KeyedBBoxPairs = {}
-        self._fields_with: int = 0
-        self._fields_total: int = 0
-
     def accumulate(
         self,
         comparison_result: Dict[str, Any],
         prediction_raw: Optional[Dict[str, Any]],
     ) -> None:
-        field_comparisons = comparison_result.get("field_comparisons", [])
-        if not field_comparisons:
-            # prediction_raw present but no field_comparisons signals the
-            # caller wanted bbox metrics but forgot document_field_comparisons.
-            if prediction_raw is not None:
-                warnings.warn(
-                    "BBoxMAPAccumulator got prediction_raw but no "
-                    "field_comparisons; re-run compare_with("
-                    "document_field_comparisons=True).",
-                    UserWarning,
-                    stacklevel=2,
-                )
+        if not self._has_field_comparisons(comparison_result, prediction_raw):
             return
+
+        field_comparisons = comparison_result.get("field_comparisons", [])
 
         # mAP needs ground-truth boxes, which are not recoverable from
         # prediction_raw. compare_with stashes all three maps; when they are
@@ -77,11 +65,11 @@ class BBoxMAPAccumulator(PostComparisonAccumulator):
             field_comparisons, gt_bboxes, pred_bboxes, confidences
         )
 
-        for field_path, observations in extraction.keyed_pairs.items():
-            self._keyed_pairs.setdefault(field_path, []).extend(observations)
-
-        self._fields_with += extraction.fields_with_bbox
-        self._fields_total += extraction.fields_total
+        self._extend(
+            extraction.keyed_pairs,
+            extraction.fields_with_bbox,
+            extraction.fields_total,
+        )
 
     def compute(self) -> Optional[Dict[str, Any]]:
         # Coverage-only (fields seen but none carried a bbox) still surfaces a
@@ -93,29 +81,3 @@ class BBoxMAPAccumulator(PostComparisonAccumulator):
             fields_with_bbox=self._fields_with,
             fields_total=self._fields_total,
         )
-
-    def get_state(self) -> Dict[str, Any]:
-        return {
-            "keyed_bbox_pairs": {
-                field_path: [o.model_dump() for o in observations]
-                for field_path, observations in self._keyed_pairs.items()
-            },
-            "bbox_fields_with": self._fields_with,
-            "bbox_fields_total": self._fields_total,
-        }
-
-    def load_state(self, state: Dict[str, Any]) -> None:
-        self._keyed_pairs = {
-            field_path: [BBoxObservation(**o) for o in observations]
-            for field_path, observations in state.get("keyed_bbox_pairs", {}).items()
-        }
-        self._fields_with = state.get("bbox_fields_with", 0)
-        self._fields_total = state.get("bbox_fields_total", 0)
-
-    def merge_state(self, other_state: Dict[str, Any]) -> None:
-        for field_path, observations in other_state.get("keyed_bbox_pairs", {}).items():
-            self._keyed_pairs.setdefault(field_path, []).extend(
-                [BBoxObservation(**o) for o in observations]
-            )
-        self._fields_with += other_state.get("bbox_fields_with", 0)
-        self._fields_total += other_state.get("bbox_fields_total", 0)
