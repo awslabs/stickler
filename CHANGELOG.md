@@ -9,6 +9,15 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- Scalar-union lists such as `List[Union[int, str]]` now round-trip through
+  `to_stickler_config()` and `model_from_json()`. The exported type keeps each
+  built-in scalar arm, including nullable elements. Before, `List[Union[int, str]]`
+  exported the unusable `List[Union]`, and the `list[int | str]` spelling raised
+  `AttributeError` at export
+  ([#476](https://github.com/awslabs/stickler/issues/476)).
+
 ## [1.0.2] - 2026-11-20
 
 ### Changed
@@ -377,13 +386,6 @@ Each release links to full notes on the
 
 - Pretty printers restore stdout when rendering fails, propagate rendering errors,
   and include the bulk summary in confusion-matrix file output.
-
-- Scalar-union lists such as `List[Union[int, str]]` now round-trip through
-  `to_stickler_config()` and `model_from_json()`. The exported type keeps each
-  built-in scalar arm, including nullable elements. Before, `List[Union[int, str]]`
-  exported the unusable `List[Union]`, and the `list[int | str]` spelling raised
-  `AttributeError` at export
-  ([#476](https://github.com/awslabs/stickler/issues/476)).
 
 - **The HTML report's PDF viewer loads documents whose IDs contain spaces
   or CSS punctuation.** It found its canvas, loading, error, page-label and paging
