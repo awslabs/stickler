@@ -25,6 +25,7 @@ from stickler.structured_object_evaluator.bulk_structured_model_evaluator import
     BulkStructuredModelEvaluator,
     aggregate_from_comparisons,
 )
+from stickler.structured_object_evaluator.models.bbox import BBoxMAPAccumulator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
@@ -50,6 +51,11 @@ class Customer(StructuredModel):
 class Order(StructuredModel):
     order_id: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
     items: List[Product] = ComparableField()
+
+
+class Boxed(StructuredModel):
+    name: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+    total: float = ComparableField(comparator=NumericComparator(), threshold=0.5)
 
 
 # ── 1. compare_with includes prediction_raw ──
@@ -561,6 +567,74 @@ class TestBulkVsJsonlReplay:
 
         assert accumulator_errors(result_a) == [("doc0", "confidence_metrics")]
         assert accumulator_errors(result_b) == accumulator_errors(result_a)
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_bbox_replays_like_update(self, tmp_path, bad):
+        """A scalar non-finite box stays invalid-but-present after replay."""
+        ordinary_box = [[0, 0], [10, 10]]
+        gts = [
+            Boxed.from_json({
+                "name": {"_value": "A", "_bbox": ordinary_box},
+                "total": {"_value": 1.0, "_bbox": bad},
+            }),
+            Boxed.from_json({
+                "name": {"_value": "B", "_bbox": ordinary_box},
+                "total": {"_value": 2.0, "_bbox": ordinary_box},
+            }),
+            Boxed.from_json({
+                "name": {"_value": "C", "_bbox": ordinary_box},
+                "total": {"_value": 3.0, "_bbox": ordinary_box},
+            }),
+        ]
+        preds = [
+            Boxed.from_json({
+                "name": {"_value": "A", "_bbox": ordinary_box},
+                "total": {"_value": 1.0, "_bbox": ordinary_box},
+            }),
+            Boxed.from_json({
+                "name": {"_value": "B", "_bbox": ordinary_box},
+                "total": {"_value": 2.0, "_bbox": ordinary_box},
+            }),
+            Boxed.from_json({
+                "name": {"_value": "C", "_bbox": ordinary_box},
+                "total": {"_value": 3.0, "_bbox": bad},
+            }),
+        ]
+
+        jsonl_path = tmp_path / "results.jsonl"
+        eval_a = BulkStructuredModelEvaluator(
+            target_schema=Boxed,
+            accumulators=[BBoxMAPAccumulator(0.5)],
+            individual_results_jsonl=str(jsonl_path),
+        )
+        for i, (gt, pred) in enumerate(zip(gts, preds)):
+            eval_a.update(gt, pred, doc_id=f"doc{i}")
+        eval_a.close()
+        result_a = eval_a.compute()
+
+        eval_b = BulkStructuredModelEvaluator(
+            target_schema=Boxed,
+            accumulators=[BBoxMAPAccumulator(0.5)],
+        )
+
+        def reject(constant):
+            raise ValueError(f"non-JSON constant {constant}")
+
+        with open(jsonl_path) as f:
+            for line in f:
+                record = json.loads(line, parse_constant=reject)
+                eval_b.update_from_comparison_result(
+                    record["comparison_result"], doc_id=record["doc_id"]
+                )
+        result_b = eval_b.compute()
+
+        expected = result_a.accumulator_metrics["bbox_map_metrics"]
+        assert expected["coverage"] == {
+            "fields_with_bbox": 6,
+            "fields_total": 6,
+            "ratio": 1.0,
+        }
+        assert result_b.accumulator_metrics["bbox_map_metrics"] == expected
 
     def test_bulk_update_matches_aggregate_from_comparisons(self):
         """aggregate_from_comparisons() produces same confidence metrics
