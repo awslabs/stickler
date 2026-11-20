@@ -322,7 +322,18 @@ class TestEvaluationHTMLReporter:
             title = self.reporter._generate_title(mock_process_eval, True)
         
         assert title == "Evaluation Report - 15 Documents"
-    
+
+    def test_bulk_title_and_metadata_never_show_none_document_count(self):
+        """A ProcessEvaluation without document_count counts as 1, not None (#467)."""
+        results = ProcessEvaluation(metrics={})
+
+        assert self.reporter._generate_title(results, True) == "Evaluation Report - 1 Documents"
+        assert self.reporter._get_document_count(results) == 1
+
+    def test_get_document_count_reads_a_results_dict_key(self):
+        """The title and ReportResult.metadata use a dict's document_count (#467)."""
+        assert self.reporter._get_document_count({'overall': {}, 'document_count': 7}) == 7
+
     def test_generate_title_individual_results(self):
         """Test title generation for individual results."""
         individual_results = {'overall': {'cm_f1': 0.85}}
