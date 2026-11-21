@@ -31,7 +31,7 @@ Stickler's core comparators (Exact, Levenshtein, Numeric, Fuzzy, Date, Phone, No
 Uses AWS Bedrock Titan embeddings for cosine similarity.
 
 ```bash
-pip install stickler-eval[semantic]
+pip install "stickler-eval[semantic]"
 ```
 
 - AWS credentials configured (`aws configure` or environment variables)
@@ -42,7 +42,7 @@ pip install stickler-eval[semantic]
 Uses BERTScore for contextual similarity. Runs locally, but downloads `roberta-large` (about 1.4 GB) from Hugging Face on first use.
 
 ```bash
-pip install stickler-eval[bert]
+pip install "stickler-eval[bert]"
 ```
 
 - Network access to Hugging Face on first use
@@ -53,7 +53,7 @@ pip install stickler-eval[bert]
 Uses AWS Bedrock via strands-agents for LLM-powered comparison.
 
 ```bash
-pip install stickler-eval[llm]
+pip install "stickler-eval[llm]"
 ```
 
 - AWS credentials configured

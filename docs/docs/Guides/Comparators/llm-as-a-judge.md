@@ -17,9 +17,11 @@ The `SemanticComparator` generates vector embeddings for both values using AWS B
 
 ### Setup
 
-Requires AWS credentials with Bedrock access. The default embedding model is `amazon.titan-embed-text-v2:0`.
+Requires the `semantic` extra and AWS credentials with Bedrock access. The default embedding model is `amazon.titan-embed-text-v2:0`.
 
 ```bash
+pip install "stickler-eval[semantic]"
+
 # Ensure AWS credentials are configured
 aws configure
 # Or set environment variables
@@ -97,10 +99,10 @@ The `BERTComparator` uses BERTScore to evaluate contextual similarity between te
 
 ### Setup
 
-BERTComparator runs entirely locally. It requires the `evaluate`, `torch`, and `bert-score` packages.
+BERTComparator runs entirely locally and needs the `bert` extra:
 
 ```bash
-pip install evaluate torch bert-score
+pip install "stickler-eval[bert]"
 ```
 
 No AWS credentials or API keys are needed.
@@ -157,7 +159,7 @@ The `LLMComparator` sends both values to a Large Language Model and asks it to d
 Requires AWS credentials with Bedrock access and the `strands-agents` package.
 
 ```bash
-pip install stickler-eval[llm]
+pip install "stickler-eval[llm]"
 ```
 
 ```bash
@@ -261,7 +263,7 @@ print(details["comparison_result"])   # Final score (1.0 or 0.0)
 | **AWS required?** | Yes (Bedrock) | No | Yes (Bedrock) |
 | **Custom logic** | No | No | Yes (eval_guidelines) |
 | **Best for** | General semantic similarity | Contextual similarity without cloud | Domain-specific rules, abbreviations, reasoning |
-| **Install** | `pip install boto3 scipy` | `pip install evaluate torch bert-score` | `pip install stickler-eval[llm]` |
+| **Install** | `pip install "stickler-eval[semantic]"` | `pip install "stickler-eval[bert]"` | `pip install "stickler-eval[llm]"` |
 
 ---
 
