@@ -66,7 +66,9 @@ comparator = LevenshteinComparator()
 ])
 def test_levenshtein_calibration(gt, pred, expected_match):
     score = comparator.compare(gt, pred)
-    threshold = 0.75  # Calibrated with SME labels
+    threshold = 0.5  # Calibrated with SME labels
+
+FILE: docs/docs/Guides/Best-Practices/README.md
     assert (score >= threshold) == expected_match
 ```
 
