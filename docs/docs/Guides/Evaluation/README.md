@@ -169,8 +169,9 @@ print(f"F1:        {cm['derived']['cm_f1']:.3f}")
 
 # Inspect non-matches for debugging
 for nm in result.get('non_matches', []):
-    print(f"  {nm['field_path']}: {nm['non_match_type']} "
-          f"(score={nm['similarity_score']:.3f})")
+    score = nm.get('similarity_score')  # false discoveries only
+    print(f"  {nm['field_path']}: {nm['non_match_type']}"
+          + (f" (score={score:.3f})" if score is not None else ""))
 ```
 
 ---

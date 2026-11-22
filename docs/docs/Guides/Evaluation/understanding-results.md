@@ -327,14 +327,16 @@ Which keys an entry has depends on the field and the non-match type:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `field_path` | string | Path to the field (`"contact.phone"`, `"products[0]"`). |
+| `field_path` | string | Path to the field (`"contact.phone"`, `"products[0]"`, `"products[0].name"`). |
 | `non_match_type` | string | `"false_discovery"`, `"false_alarm"` or `"false_negative"`. |
 | `ground_truth_value` | any | The expected value (null for false alarms). |
 | `prediction_value` | any | The predicted value (null for false negatives). |
 | `similarity_score` | float | False discoveries only. |
 | `details` | dict | Scalar and nested fields: holds `"reason"` (e.g., `"below threshold (0.300 < 1.0)"`). |
-| `reason` | string | List items: the reason, in place of `details`. |
-| `similarity` | float | List-item false discoveries: the same value as `similarity_score`. |
+| `reason` | string | List records: the reason, in place of `details`. |
+| `similarity` | float | Whole list-item false discoveries: the same value as `similarity_score`. |
+
+A list item that matches overall but has a sub-field below its threshold produces a record at the sub-field (`"products[0].name"`), not at the item. That record has `reason` (currently always `"field mismatch"`) and `similarity_score`, with no `similarity` and no `details`.
 
 ### Non-Match Types
 
