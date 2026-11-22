@@ -9,6 +9,8 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-20
+
 ### Changed
 
 - The three changes that 1.0.1 announced for 1.0.2 now land in 1.1.0, because
@@ -43,7 +45,42 @@ Each release links to full notes on the
   at the positions no doc names for these keys (see Fixed)
   ([#340](https://github.com/awslabs/stickler/issues/340))
 
+### Deprecated
+
+- `stickler.structured_object_evaluator.models.confusion_matrix_calculator` is
+  back as a deprecated shim, so an import of it keeps working in 1.0.x.
+  Importing it emits a `DeprecationWarning`, and
+  `ConfusionMatrixCalculator.classify_field_for_confusion_matrix` classifies a
+  field as it did in 1.0.1. Nothing in Stickler uses it any more, and it will be
+  removed in 1.1.0 ([#406](https://github.com/awslabs/stickler/pull/406))
+
 ### Fixed
+
+- `StructuredModel.from_json` no longer forces the first model arm of a
+  `Union[A, B, None]` field: a dict is now left for pydantic's union validation,
+  so it resolves to the same arm as `model_validate`
+  ([#505](https://github.com/awslabs/stickler/issues/505)). Before, data shaped
+  like `B` was built as `A`, and two different `B` values could score 1.0.
+  This also fixes a `ValidationError` that `from_json` raised on `dev` when the
+  first arm had a required field or a `Literal` tag the data did not fit. Scores
+  can change for pairs whose two sides resolve to different arms, and some go
+  up, because two `StructuredModel`s of different classes are not yet scored as
+  a false discovery.
+- **The individual-results JSONL file and the HTML report's embedded document
+  data are now valid JSON when a value is NaN or infinite.** A blank numeric
+  cell from pandas (NaN) was written as a bare `NaN` token, which JavaScript
+  evaluates but `JSON.parse` and other strict parsers reject. The
+  `individual_results_jsonl` writer now writes NaN, `inf` and `-inf` as `null`,
+  with two exceptions written as the string `"nan"`, `"inf"` or `"-inf"`: a
+  `doc_id`, which matches the id the report's tables show, and a confidence
+  (`_confidence` in `prediction_raw`, and `prediction_confidences`), so
+  replaying the file still rejects that document's confidences as `update()`
+  does rather than counting it as having none. The report reads any such token
+  left in an older file as `null`, except a `doc_id`, which keeps its string so
+  the document stays selectable. The per-document view shows these values as an empty cell, as it
+  already did for `None`, instead of `NaN` or `Infinity`. A NaN or infinite
+  `ComparableField` threshold is left out of the report's threshold data
+  ([#450](https://github.com/awslabs/stickler/issues/450)).
 
 - `from_json_schema()` now reads `x-aws-stickler-model-name`,
   `x-aws-stickler-match-threshold` and `x-aws-stickler-infer-unspecified` on a
@@ -407,6 +444,12 @@ Each release links to full notes on the
   (`"Total – 1250"` reads 1250)
   ([#559](https://github.com/awslabs/stickler/issues/559))
 
+- Quoted the `pip install "stickler-eval[...]"` commands in the docs, examples and the
+  `LLMComparator` `ImportError`, since zsh reads unquoted brackets as a glob,
+  and the comparator guides now install BERT and Semantic through their extras
+  ([#482](https://github.com/awslabs/stickler/issues/482), based on
+  [#533](https://github.com/awslabs/stickler/pull/533) by @HarshRajSinghania)
+
 ### Security
 
 - **`print_confusion_matrix_html` now escapes its output.** It wrapped the
@@ -471,6 +514,13 @@ Each release links to full notes on the
   `x-aws-stickler-comparator-config`) instead of `threshold=0.95`, and amounts
   are out of the threshold tables
   ([#479](https://github.com/awslabs/stickler/issues/479))
+
+- Corrected the install docs. They said Python 3.12+, but `requires-python` is
+  `>=3.10` and CI tests 3.10 to 3.14. The Installation page now lists the
+  `docsplit`, `reporting` and `all` extras, says `BERTComparator` downloads a
+  model on first use, names every core comparator, and keeps only the import
+  check under Verify, since `examples/` and `tests/` are not in the wheel
+  ([#483](https://github.com/awslabs/stickler/issues/483))
 
 ## [1.0.1] - 2026-11-02
 
@@ -1228,7 +1278,6 @@ Each release links to full notes on the
   `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
   adds only pandas; SciPy remains isolated to the `semantic` extra
   ([#216](https://github.com/awslabs/stickler/issues/216)).
-
 
 - **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
   defined directly rather than read from the removed `all_fields_matched` key.
@@ -3284,7 +3333,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.1...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.2...dev
+[1.0.2]: https://github.com/awslabs/stickler/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/awslabs/stickler/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/awslabs/stickler/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0

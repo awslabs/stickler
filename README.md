@@ -25,7 +25,7 @@ That installs the comparison engine and confidence calibration, which is everyth
 | `[llm]` | strands-agents, jinja2 | `LLMComparator` (LLM-as-judge comparison) |
 | `[bert]` | evaluate, torch, bert-score | `BERTComparator` (BERTScore similarity) |
 | `[docsplit]` | pandas | Document packet splitting metrics |
-| `[reporting]` | pandas | Confusion-matrix tables in HTML reports |
+| `[reporting]` | pandas | Passing a DataFrame as `ProcessEvaluation.matrix` (HTML reports need no extra) |
 | `[all]` | all of the above except the ML stack | Convenience |
 
 Importing a feature without its extra raises an error naming the extra to install.
@@ -95,7 +95,7 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hung
 ```
 
 ### Requirements
-- Python 3.12+
+- Python 3.10 or later
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended)
 
 ### Quick Install
