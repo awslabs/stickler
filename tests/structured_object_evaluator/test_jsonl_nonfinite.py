@@ -3,8 +3,9 @@
 ``json.dumps`` writes non-finite floats as bare ``NaN``/``Infinity`` tokens,
 which JavaScript ``JSON.parse`` and other strict parsers reject. A blank pandas cell is
 NaN, so this is the ordinary case. The writer now writes ``null``, except a
-confidence, written as ``"nan"``/``"inf"``/``"-inf"`` so replay still rejects it
-(replay parity is tested in ``test_prediction_raw_roundtrip.py``).
+confidence or bbox-map value, written as ``"nan"``/``"inf"``/``"-inf"`` so
+replay preserves the direct path's invalid-but-present value (replay parity is
+tested in ``test_prediction_raw_roundtrip.py``).
 
 Python's ``json.loads`` accepts ``NaN`` by default, so these tests parse with
 ``parse_constant`` raising, which is what a strict parser does.
@@ -141,6 +142,21 @@ def test_the_copy_alone_is_not_limited_by_recursion():
 def test_a_non_finite_confidence_is_written_as_a_string(value, expected):
     """Null would read back as "no confidence"; a string still fails validation."""
     assert strict_loads(_jsonl_line(value)) == expected
+
+
+def test_a_non_finite_bbox_map_value_is_written_as_a_string():
+    """Null would read back as no box; a string remains an invalid box."""
+    value = {
+        "ground_truth_bboxes": {"total": NAN},
+        "prediction_bboxes": {"total": -INF},
+        "unrelated": INF,
+    }
+
+    assert strict_loads(_jsonl_line(value)) == {
+        "ground_truth_bboxes": {"total": "nan"},
+        "prediction_bboxes": {"total": "-inf"},
+        "unrelated": None,
+    }
 
 
 @pytest.mark.parametrize("member", [1.0, NAN], ids=["finite", "nan"])

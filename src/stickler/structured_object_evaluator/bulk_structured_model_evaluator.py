@@ -34,22 +34,27 @@ from stickler.utils.process_evaluation import ProcessEvaluation
 logger = logging.getLogger(__name__)
 
 
-# Keys under which a float is a confidence. prediction_confidences is the
-# {field path: confidence} map compare_with() adds; _confidence is the
-# rich-value key in prediction_raw.
-_CONFIDENCE_KEYS = frozenset(
-    {RichValueHelper.CONFIDENCE_KEY, "prediction_confidences"}
+# Keys under which replacing a non-finite float with null would change replay
+# semantics. Confidence strings still fail validation, and bbox strings still
+# count as present but fail parsing, matching the direct update() path.
+_STRINGIFIED_NON_FINITE_KEYS = frozenset(
+    {
+        RichValueHelper.CONFIDENCE_KEY,
+        "prediction_confidences",
+        "ground_truth_bboxes",
+        "prediction_bboxes",
+    }
 )
 
 
 def _replace_non_finite(value: Any) -> Any:
     """Copy ``value`` with every NaN or infinite float *value* replaced.
 
-    A non-finite float becomes ``None``, except a confidence (anything under a
-    ``_CONFIDENCE_KEYS`` key), which becomes its string: ``"nan"``, ``"inf"`` or
-    ``"-inf"``. Replay reads a null confidence as "no confidence" and counts
-    the document's other confidences, but rejects a string as ``update()``
-    rejects the float, so both paths record the same accumulator error.
+    A non-finite float becomes ``None``, except a value under a
+    ``_STRINGIFIED_NON_FINITE_KEYS`` key, which becomes its string: ``"nan"``,
+    ``"inf"`` or ``"-inf"``. For confidence and bbox maps, null would mean
+    "absent" on replay while a string preserves the direct path's invalid-but-
+    present value.
 
     Walks with an explicit stack, so depth is not limited by the recursion
     limit. Keys are left alone: ``json.dumps`` already writes a float key as a
@@ -60,26 +65,30 @@ def _replace_non_finite(value: Any) -> Any:
     memo: Dict[int, Any] = {}
     pending: List[Tuple[Any, Any, bool]] = []
 
-    def copy(item: Any, is_confidence: bool) -> Any:
+    def copy(item: Any, stringify_non_finite: bool) -> Any:
         if isinstance(item, float):
             if math.isfinite(item):
                 return item
-            return str(item) if is_confidence else None
+            return str(item) if stringify_non_finite else None
         if not isinstance(item, (dict, list, tuple)):
             return item
         if id(item) not in memo:
             memo[id(item)] = {} if isinstance(item, dict) else []
-            pending.append((item, memo[id(item)], is_confidence))
+            pending.append((item, memo[id(item)], stringify_non_finite))
         return memo[id(item)]
 
     result = copy(value, False)
     while pending:
-        source, target, is_confidence = pending.pop()
+        source, target, stringify_non_finite = pending.pop()
         if isinstance(source, dict):
             for key, item in source.items():
-                target[key] = copy(item, is_confidence or key in _CONFIDENCE_KEYS)
+                target[key] = copy(
+                    item,
+                    stringify_non_finite
+                    or key in _STRINGIFIED_NON_FINITE_KEYS,
+                )
         else:
-            target.extend([copy(item, is_confidence) for item in source])
+            target.extend([copy(item, stringify_non_finite) for item in source])
     return result
 
 

@@ -226,7 +226,7 @@ class Product(StructuredModel):
 
 **Matching methods explained:**
 
-- `ratio` -- Standard Levenshtein distance ratio (similar to `LevenshteinComparator` but using rapidfuzz's optimized implementation).
+- `ratio` -- Indel similarity normalized by combined length, via RapidFuzz's `fuzz.ratio`. It differs from `LevenshteinComparator`, which also counts substitutions and normalizes by the longer string ("kitten" vs "sitting": 0.62 vs 0.57).
 - `partial_ratio` -- Finds the best partial match within the longer string. Good when one value is a substring of the other.
 - `token_sort_ratio` -- Splits strings into tokens, sorts them, then compares. Handles reordered words (e.g., "John Smith" vs "Smith John").
 - `token_set_ratio` -- Splits into token sets, comparing the intersection and remainder. Handles extra or missing words.

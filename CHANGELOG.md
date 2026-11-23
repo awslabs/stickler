@@ -180,6 +180,31 @@ Each release links to full notes on the
   nested-model warning
   ([#348](https://github.com/awslabs/stickler/issues/348))
 
+- Scalar-union lists such as `List[Union[int, str]]` now round-trip through
+  `to_stickler_config()` and `model_from_json()`. The exported type keeps each
+  built-in scalar arm, including nullable elements. Before, `List[Union[int, str]]`
+  exported the unusable `List[Union]`, and the `list[int | str]` spelling raised
+  `AttributeError` at export
+  ([#476](https://github.com/awslabs/stickler/issues/476)).
+
+### Performance
+
+- `LevenshteinComparator` uses RapidFuzz's edit distance, accelerating string
+  comparisons and ANLS* leaf scoring while preserving public similarity scores.
+  [#510](https://github.com/awslabs/stickler/issues/510)
+
+### Documentation
+
+- Understanding Results now documents the three `non_matches` record shapes
+  ([#486](https://github.com/awslabs/stickler/issues/486)). Whole list-item
+  records and sub-field records of matched list items carry `reason` at the top
+  level instead of in `details`, and only false discoveries have
+  `similarity_score`, so code written from the old table
+  (`nm["details"]["reason"]`) raised `KeyError` on the first list record. The
+  Understanding Results snippet now reads the reason from either place, and
+  the Evaluation guide's snippet no longer reads `similarity_score` on false
+  alarms and false negatives.
+
 ## [1.0.2] - 2026-11-20
 
 ### Changed
