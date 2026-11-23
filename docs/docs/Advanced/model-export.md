@@ -241,8 +241,14 @@ so a prediction element that is not a mapping raises instead of scoring `0.0`. A
 inside `Annotated` (`List[Annotated[Optional[Dict], ...]]`) loses its `null`; write
 `Optional[Annotated[...]]` instead.
 
-A mapping field that is not in a list, and a list whose element is a union such as
-`List[Union[Dict, str]]`, still export as a string ([#349](https://github.com/awslabs/stickler/issues/349)).
+A mapping field that is not in a list still exports as a string. A list whose element is a union
+of built-in scalars, such as `List[Union[int, str]]`, including an `Optional` element, round-trips
+through `to_stickler_config()`. `to_json_schema()` still exports its items as `string`, so that
+re-import rejects non-string elements. A list whose element is any other union, such as
+`List[Union[Dict, str]]`, exports `string` items from `to_json_schema()` and `List[Union]` from
+`to_stickler_config()`, which `model_from_json()` rejects. The config format cannot carry a
+`union_mode` set on the element, so `List[Annotated[Union[int, str], Field(union_mode=...)]]`
+rebuilds with Pydantic's default smart mode.
 
 ## Round-Trip Examples
 
