@@ -25,7 +25,9 @@ Each release links to full notes on the
   missing answers counted as errors (`aurc`) or left out (`aurc_answered`).
   `confidence_intervals()` bootstraps the rates by document. Decision fields
   work in nested models and lists of models, must be `Optional`, and export
-  to JSON Schema as `x-aws-stickler-decision`. A decision field whose gold is
+  to JSON Schema as `x-aws-stickler-decision`. `on_invalid="missing"` on a
+  field scores a malformed answer as no answer, counted as `rejected`,
+  instead of raising for the whole document. A decision field whose gold is
   `None` was not asked: it is left out of every decision metric, the
   confusion matrix, `field_comparisons`, `field_scores` and the weight of
   `overall_score`. Models without decision fields score and save as before

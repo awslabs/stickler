@@ -83,7 +83,7 @@ The predicted side of `Triage.from_json(...)` is a System One answer object per 
 - **Only `probabilities` (Choice, Score) or `noul` is read.** `choice`, `score`, `confidence` and `legend` may be present and are ignored. The predicted answer is the argmax, in question order on ties; a Noul is yes when `noul >= 0.5`.
 - **Confidence is the probability of the predicted answer**: the top value in `probabilities`, or `max(p, 1 - p)` for a Noul. An answer's own `confidence` field measures how peaked the distribution is, not P(correct), so it is never used. The same value feeds `res.confidence_metrics`.
 - **Score keys** may be level numbers (`"0"`) or level names (`"low"`). A key of ASCII digits is always a level number, so a level may be named after a number only if it is its own position: `Score(["2", "1", "0"])` raises.
-- **A prediction must be an answer object.** A bare value such as `{"queue": "billing"}` has no probabilities to score, so the bulk evaluator rejects it (`AnswerError`, recorded in `res.errors`) rather than scoring it as a certain answer.
+- **A prediction must be an answer object.** A bare value such as `{"queue": "billing"}` has no probabilities to score, so the bulk evaluator rejects it (`AnswerError`, recorded in `res.errors`) rather than scoring it as a certain answer. With `on_invalid="missing"` it counts as rejected instead (see below).
 
 `stickler.decisions.AnswerError` (a `ValueError`) is raised by `from_json` when an answer cannot be scored against its question:
 
@@ -95,10 +95,20 @@ AnswerError: field 'queue': probabilities sum to 0.900000, not 1
 
 It also raises for an unknown option key, a probability outside 0 to 1, an unknown Score level, and the same answer given twice (`"0"` and `"low"`). Servers round each probability, so a sum off 1 by at most `max(0.01, 0.0005 × options)` is renormalised; a sum within 1e-9 of 1 is used as given.
 
+One malformed answer raises for the whole document by default. To keep the document's other answers, set `on_invalid="missing"` on the field (`Choice(..., on_invalid="missing")`), or on every field with `model_from_questions(questions, on_invalid="missing")`. The malformed answer then scores as no answer, and `coverage` counts it as `rejected`, apart from answers that never came back.
+
+An answer must give a probability for every option. A converter that reads only the top few options of another model, such as a top-k log-prob readout, has to give the rest of the probability mass to the omitted options itself, since only it knows how that mass is spread. One way is to split the remainder evenly:
+
+```python
+rest = [o for o in options if o not in top_k]
+probabilities = {**top_k, **{o: (1 - sum(top_k.values())) / len(rest) for o in rest}}
+```
+
 ## Unasked vs missing
 
 - **Unasked**: gold is `None`. The field is left out of every decision metric, the coverage denominator, and the document's `field_scores` and `overall_score`.
 - **Missing**: gold exists but no answer came back (refused, errored, timed out). It counts as wrong for `accuracy`, is excluded from calibration and from `answered_accuracy`, and is counted in `coverage`.
+- **Rejected**: an answer came back but could not be scored, on a field with `on_invalid="missing"`. It is treated like a missing answer, and counted separately in `coverage`.
 
 ```python
 gold = Triage(queue="sales", urgent=True, severity=None)   # severity not asked
@@ -132,7 +142,7 @@ res = ev.compute()
 q = res.decision_metrics["fields"]["queue"]
 q["correctness"]["accuracy"]          # 0.5
 q["correctness"]["answered_accuracy"] # 0.667
-q["correctness"]["coverage"]          # {'ratio': 0.75, 'ok': 3, 'missing': 1}
+q["correctness"]["coverage"]          # {'ratio': 0.75, 'ok': 3, 'missing': 1, 'rejected': 0}
 q["correctness"]["confusion"]         # {'billing': {'billing': 1, '(no answer)': 1}, 'sales': {'billing': 1}, 'retail': {'retail': 1}}
 q["calibration"]["nll"]               # 0.524
 ```

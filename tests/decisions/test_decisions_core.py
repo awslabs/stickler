@@ -147,7 +147,7 @@ class TestBulk:
         c, k = q["correctness"], q["calibration"]
         assert c["accuracy"] == approx(0.5)
         assert c["answered_accuracy"] == approx(2 / 3)
-        assert c["coverage"] == {"ratio": approx(0.75), "ok": 3, "missing": 1}
+        assert c["coverage"] == {"ratio": approx(0.75), "ok": 3, "missing": 1, "rejected": 0}
         assert c["macro_f1"] == approx(0.5)
         assert c["confusion"]["billing"] == {"billing": 1, "(no answer)": 1}
         assert k["auroc"] == approx(1.0)
@@ -289,7 +289,7 @@ class TestNested:
         # Hungarian pairs gold "a" with predicted item 1 and gold "b" with item 0.
         assert [(r["gold"], r["probs"]) for r in intent["records"][:2]] == [
             (0, approx([0.4, 0.6])), (1, approx([0.1, 0.9]))]
-        assert intent["correctness"]["coverage"] == {"ratio": approx(0.5), "ok": 2, "missing": 2}
+        assert intent["correctness"]["coverage"] == {"ratio": approx(0.5), "ok": 2, "missing": 2, "rejected": 0}
 
     def test_nested_unasked_has_no_weight(self):
         Msg, Thread = self._models()

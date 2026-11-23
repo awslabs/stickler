@@ -11,7 +11,9 @@ so every item of a list contributes to one set of metrics. A decision whose gold
 is ``None`` was not asked and is not recorded. ``probs`` is ``None`` when the
 answer is missing. A prediction given as a bare value rather than a System One
 answer has no probabilities to score, so it raises ``AnswerError`` instead of
-entering calibration as a certain answer.
+entering calibration as a certain answer. On a field with
+``on_invalid="missing"``, a bare value or a malformed answer is recorded as
+``{"probs": None, "rejected": True}`` instead.
 
 Documents are identified by the evaluator's ``doc_id``. A ``doc_id`` seen twice
 raises, because the bootstrap resamples documents and a repeated document would
@@ -219,7 +221,14 @@ class DecisionAccumulator(PostComparisonAccumulator):
                 continue  # not asked for this document
             spec = self.specs[path]
             raw = _lookup(prediction_raw, pred_key)
-            pending.append((path, {"gold": spec.index_of_value(gold), "probs": self._probs(spec, path, raw, pred_value)}))
+            record = {"gold": spec.index_of_value(gold)}
+            try:
+                record["probs"] = self._probs(spec, path, raw, pred_value)
+            except AnswerError:
+                if spec.on_invalid != "missing":
+                    raise
+                record.update(probs=None, rejected=True)
+            pending.append((path, record))
         if doc is None:  # called without start_document (not through the evaluator)
             doc = self._new_doc(None)
         for path, record in pending:

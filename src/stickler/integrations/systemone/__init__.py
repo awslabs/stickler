@@ -83,6 +83,7 @@ def model_from_questions(
     questions: Mapping[str, Any],
     *,
     weights: Optional[Mapping[str, float]] = None,
+    on_invalid: str = "raise",
     model_name: str = "SystemOneModel",
 ) -> Type[StructuredModel]:
     """Build a StructuredModel from a System One ``questions`` dict.
@@ -100,6 +101,9 @@ def model_from_questions(
             object's type is its ``type`` attribute, else its class name.
         weights: Optional weight per question id, used in ``overall_score``.
             Questions not named weigh 1.0.
+        on_invalid: For every field: ``"raise"`` (default) raises
+            ``AnswerError`` for an answer that cannot be scored, ``"missing"``
+            scores it as no answer, counted as ``rejected``. See ``Choice``.
         model_name: Name of the generated class.
 
     Returns:
@@ -108,8 +112,8 @@ def model_from_questions(
     Raises:
         ValueError: For an unknown question type, invalid criteria, an id that
             is not a valid field name or collides with a StructuredModel
-            attribute (such as ``extra_fields``), or a weight for a question
-            that does not exist.
+            attribute (such as ``extra_fields``), a weight for a question
+            that does not exist, or an unknown ``on_invalid``.
     """
     if not isinstance(questions, Mapping) or not questions:
         raise ValueError(
@@ -135,6 +139,7 @@ def model_from_questions(
         field_kwargs: Dict[str, Any] = {
             "default": None,
             "weight": float(weights.get(qid, 1.0)),
+            "on_invalid": on_invalid,
         }
         instructions = _get(question, "instructions")
         if isinstance(instructions, str):

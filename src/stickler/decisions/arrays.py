@@ -7,7 +7,7 @@ probabilities, so accuracy can count them as wrong while calibration skips them.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -29,12 +29,16 @@ class DecisionArrays:
         P: ``n x k`` probabilities in label order. A missing answer's row is NaN.
         y: ``n`` gold label indexes.
         groups: ``n`` document indexes, the bootstrap's resampling unit.
+        rejected: ``n`` booleans: the answer came back but could not be scored
+            (a field with ``on_invalid="missing"``). Its ``P`` row is NaN too.
+            None means no row was rejected.
     """
 
     spec: DecisionSpec
     P: np.ndarray
     y: np.ndarray
     groups: np.ndarray
+    rejected: Optional[np.ndarray] = None
 
     @property
     def n_total(self) -> int:
@@ -54,9 +58,21 @@ class DecisionArrays:
         return int(self.answered.sum())
 
     @property
+    def rejected_mask(self) -> np.ndarray:
+        """Boolean mask of rows whose answer was rejected."""
+        if self.rejected is None:
+            return np.zeros(self.n_total, dtype=bool)
+        return self.rejected
+
+    @property
+    def n_rejected(self) -> int:
+        """Number of asked decisions whose answer could not be scored."""
+        return int(self.rejected_mask.sum())
+
+    @property
     def n_missing(self) -> int:
-        """Number of asked decisions with no answer."""
-        return self.n_total - self.n_ok
+        """Number of asked decisions with no answer at all (not counting rejected ones)."""
+        return self.n_total - self.n_ok - self.n_rejected
 
     @property
     def pred(self) -> np.ndarray:
@@ -87,21 +103,24 @@ class DecisionArrays:
 
     def subset(self, rows: np.ndarray) -> "DecisionArrays":
         """A copy with only the given row indexes (used by the bootstrap)."""
-        return DecisionArrays(self.spec, self.P[rows], self.y[rows], self.groups[rows])
+        rejected = None if self.rejected is None else self.rejected[rows]
+        return DecisionArrays(self.spec, self.P[rows], self.y[rows], self.groups[rows], rejected)
 
     @classmethod
     def from_records(cls, spec: DecisionSpec, records: Sequence[Dict[str, Any]]) -> "DecisionArrays":
-        """Build from accumulator records ``{"doc": int, "gold": int, "probs": list | None}``."""
+        """Build from accumulator records ``{"doc": int, "gold": int, "probs": list | None, "rejected"?: True}``."""
         n, k = len(records), spec.k
         P = np.full((n, k), np.nan)
         y = np.zeros(n, dtype=int)
         groups = np.zeros(n, dtype=int)
+        rejected = np.zeros(n, dtype=bool)
         for i, rec in enumerate(records):
             y[i] = rec["gold"]
             groups[i] = rec["doc"]
+            rejected[i] = bool(rec.get("rejected"))
             if rec.get("probs") is not None:
                 P[i] = rec["probs"]
-        return cls(spec, P, y, groups)
+        return cls(spec, P, y, groups, rejected if rejected.any() else None)
 
 
 def empty_arrays(spec: DecisionSpec) -> DecisionArrays:

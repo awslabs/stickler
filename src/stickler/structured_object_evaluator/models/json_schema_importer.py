@@ -762,7 +762,12 @@ class JsonSchemaImporter:
         kwargs: Dict[str, Any] = {"default": None}
         if field_info.description:
             kwargs["description"] = field_info.description
-        field = _decision_field(spec, extra.get("x-aws-stickler-weight", 1.0), kwargs)
+        try:
+            field = _decision_field(
+                spec, extra.get("x-aws-stickler-weight", 1.0), kwargs, question.get("on_invalid", "raise")
+            )
+        except ValueError as exc:
+            raise ValueError(f"Invalid x-aws-stickler-decision on field '{field_path}': {exc}") from exc
         python_type = {"choice": str, "score": int, "noul": bool}[spec.kind]
         return Optional[python_type], field
 

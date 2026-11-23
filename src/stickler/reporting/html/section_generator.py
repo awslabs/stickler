@@ -255,9 +255,10 @@ class SectionGenerator:
             if metric_name and headline != "-":
                 headline += f" ({metric_name})"
             ok, missing = _finite(cov.get("ok")), _finite(cov.get("missing"))
+            rejected = _finite(cov.get("rejected")) or 0
             coverage = _fmt(cov.get("ratio"))
             if ok is not None and missing is not None:
-                coverage += f" ({int(ok)} of {int(ok + missing)})"
+                coverage += f" ({int(ok)} of {int(ok + missing + rejected)})"
             aurc = (curves.get(name) or {}).get("aurc")
             out += (
                 "<tr>"

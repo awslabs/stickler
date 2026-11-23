@@ -168,9 +168,13 @@ def answers_to_rich_values(model_cls: Any, json_data: Any, _path: str = "") -> A
 
     Walks nested models and lists of models, so a decision field at any depth
     is read. Every other value is returned as given; the input is not modified.
+    An answer that does not fit its question becomes None on a field with
+    ``on_invalid="missing"``; the answer stays in the raw JSON, so the
+    accumulator counts it as rejected.
 
     Raises:
-        AnswerError: If an answer does not fit its question.
+        AnswerError: If an answer does not fit its question, on a field with
+            ``on_invalid="raise"`` (the default).
     """
     from .primitives import _model_shape, field_decision_spec, has_decision_fields
 
@@ -184,7 +188,12 @@ def answers_to_rich_values(model_cls: Any, json_data: Any, _path: str = "") -> A
         spec = field_decision_spec(info)
         if spec is not None:
             if is_systemone_answer(value):
-                out[name] = answer_to_rich_value(spec, value, path)
+                try:
+                    out[name] = answer_to_rich_value(spec, value, path)
+                except AnswerError:
+                    if spec.on_invalid != "missing":
+                        raise
+                    out[name] = None
             continue
         child, is_list = _model_shape(info.annotation)
         if child is None:

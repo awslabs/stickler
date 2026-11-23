@@ -10,7 +10,10 @@ Rules shared by every kind:
 - ``accuracy`` counts a missing answer as wrong; ``answered_accuracy`` and
   every calibration metric use answered rows only.
 - Confidence is ``a.conf``, the probability of the predicted (argmax) answer.
-- ``coverage`` is ``{"ratio", "ok", "missing"}`` over asked decisions.
+- ``coverage`` is ``{"ratio", "ok", "missing", "rejected"}`` over asked
+  decisions: answered, no answer, and an answer that could not be scored (a
+  field with ``on_invalid="missing"``). The three add up to the asked count,
+  and ``ratio`` is ``ok`` over it.
 - A precision or recall with nothing to divide by (no predictions of a class,
   no gold of a class) is None, not 0.0. F1 is ``2 tp / (n_pred + n_gold)``, so
   it is defined whenever the class was predicted or in gold.
@@ -67,7 +70,12 @@ def _balanced_accuracy(y: np.ndarray, pred: np.ndarray, k: int) -> Optional[floa
 
 def _coverage(a: DecisionArrays) -> Dict[str, Any]:
     n_ok, n_total = a.n_ok, a.n_total
-    return {"ratio": _ratio(n_ok, n_total) if n_total else None, "ok": n_ok, "missing": a.n_missing}
+    return {
+        "ratio": _ratio(n_ok, n_total) if n_total else None,
+        "ok": n_ok,
+        "missing": a.n_missing,
+        "rejected": a.n_rejected,
+    }
 
 
 # Helpers

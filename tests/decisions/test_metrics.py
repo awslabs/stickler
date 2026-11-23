@@ -187,7 +187,7 @@ def test_four_tickets_queue():
     c, cal = correctness(queue), calibration(queue)
     assert c["accuracy"] == pytest.approx(0.5)
     assert c["answered_accuracy"] == pytest.approx(2 / 3)
-    assert c["coverage"] == {"ratio": 0.75, "ok": 3, "missing": 1}
+    assert c["coverage"] == {"ratio": 0.75, "ok": 3, "missing": 1, "rejected": 0}
     assert c["per_class"] == {
         "billing": {"precision": 0.5, "recall": 0.5, "f1": pytest.approx(0.5), "support": 2},
         # Never predicted: precision has nothing to divide by.
@@ -249,13 +249,14 @@ def test_zero_rows(spec):
     a = empty_arrays(spec)
     c, cal = correctness(a), calibration(a)
     assert c["accuracy"] is None and c["answered_accuracy"] is None
-    assert c["coverage"] == {"ratio": None, "ok": 0, "missing": 0}
+    assert c["coverage"] == {"ratio": None, "ok": 0, "missing": 0, "rejected": 0}
     assert cal["auroc"] is None and cal["ece_mass"] is None
     _assert_plain(c)
     _assert_plain(cal)
     assert bootstrap_ci(a, correctness, n_boot=5)["coverage"] == {
         "ok": {"low": None, "high": None},
         "missing": {"low": None, "high": None},
+        "rejected": {"low": None, "high": None},
     }
 
 
@@ -265,7 +266,7 @@ def test_all_answers_missing(spec):
     c, cal = correctness(a), calibration(a)
     assert c["accuracy"] == 0.0
     assert c["answered_accuracy"] is None
-    assert c["coverage"] == {"ratio": 0.0, "ok": 0, "missing": 3}
+    assert c["coverage"] == {"ratio": 0.0, "ok": 0, "missing": 3, "rejected": 0}
     for key in ("auroc", "ece_mass", "brier_multiclass", "nll", "auroc_label", "brier", "log_loss", "rps"):
         assert cal.get(key) is None
     _assert_plain(c)

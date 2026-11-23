@@ -374,3 +374,66 @@ def test_small_sample_warns():
         ev.compute()
     small = [w for w in caught if f"below {MIN_CALIBRATION_N}" in str(w.message)]
     assert small and small[0].filename == __file__  # points at the caller, not at stickler
+
+
+# Parmida 5 (decided as a field setting): one bad answer need not drop the document.
+
+
+class Lenient(StructuredModel):
+    queue: Optional[str] = Choice(["billing", "tech"], on_invalid="missing")
+    urgent: Optional[bool] = Noul()
+
+
+GOOD_NOUL = {"type": "noul", "noul": 0.8}
+BAD_CHOICE = {"type": "choice", "probabilities": {"billing": 1.7, "tech": 0.0}}
+
+
+def test_on_invalid_missing_keeps_the_other_answers():
+    pred = Lenient.from_json({"queue": BAD_CHOICE, "urgent": GOOD_NOUL})
+    assert (pred.queue, pred.urgent) == (None, True)
+
+
+def test_on_invalid_defaults_to_raise():
+    class Strict(StructuredModel):
+        queue: Optional[str] = Choice(["billing", "tech"])
+
+    with pytest.raises(AnswerError, match="between 0 and 1"):
+        Strict.from_json({"queue": BAD_CHOICE})
+
+
+def test_rejected_answers_are_counted_apart_from_missing():
+    ev = BulkStructuredModelEvaluator(target_schema=Lenient)
+    ev.update(Lenient(queue="billing", urgent=True), Lenient.from_json({"queue": BAD_CHOICE, "urgent": GOOD_NOUL}), doc_id="a")
+    ev.update(Lenient(queue="billing", urgent=True), Lenient.from_json({"queue": "billing", "urgent": GOOD_NOUL}), doc_id="b")
+    ev.update(Lenient(queue="tech", urgent=True), Lenient.from_json({"urgent": GOOD_NOUL}), doc_id="c")
+    ev.update(Lenient(queue="tech", urgent=True), Lenient.from_json(
+        {"queue": {"type": "choice", "probabilities": {"billing": 0.2, "tech": 0.8}}, "urgent": GOOD_NOUL}), doc_id="d")
+    res = ev.compute()
+    assert res.errors == []
+    queue = res.decision_metrics["fields"]["queue"]
+    # a: malformed answer, b: bare value, c: no answer, d: answered and right.
+    assert queue["correctness"]["coverage"] == {"ratio": 0.25, "ok": 1, "missing": 1, "rejected": 2}
+    assert queue["correctness"]["accuracy"] == 0.25  # rejected and missing count as wrong
+    assert queue["calibration"]["coverage"]["ok"] == 1
+    assert res.decision_metrics["fields"]["urgent"]["correctness"]["coverage"]["ok"] == 4
+    rows = accept_or_escalate(res, taus=[0.0]).fields["queue"]["rows"]
+    assert rows[0]["accepted"] == 1  # a rejected answer is never accepted
+
+
+def test_model_from_questions_applies_on_invalid_to_every_field():
+    M = model_from_questions(
+        {"q": {"type": "noul", "instructions": "?"}, "r": {"type": "choice", "criteria": ["a", "b"]}},
+        on_invalid="missing",
+        model_name="M",
+    )
+    assert {s.on_invalid for s in decision_paths(M).values()} == {"missing"}
+    with pytest.raises(ValueError, match="on_invalid"):
+        model_from_questions({"q": {"type": "noul"}}, on_invalid="skip")
+
+
+def test_on_invalid_round_trips_through_json_schema():
+    schema = Lenient.to_json_schema()
+    assert schema["properties"]["queue"]["x-aws-stickler-decision"]["on_invalid"] == "missing"
+    assert "on_invalid" not in schema["properties"]["urgent"]["x-aws-stickler-decision"]
+    rebuilt = StructuredModel.from_json_schema(schema)
+    assert {p: s.on_invalid for p, s in decision_paths(rebuilt).items()} == {"queue": "missing", "urgent": "raise"}

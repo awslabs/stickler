@@ -6,6 +6,7 @@ its options or ordered levels. The spec comes from the question, never from
 the answer, so the model under test cannot change how it is scored.
 """
 
+import dataclasses
 import re
 import weakref
 from dataclasses import dataclass
@@ -48,12 +49,15 @@ class DecisionSpec:
             Choice: the option keys. Score: the level numbers ``0..k-1``.
             Noul: ``(False, True)``.
         criteria: The ``criteria`` as given, kept for export and reports.
+        on_invalid: What a malformed predicted answer becomes: ``"raise"``
+            (``AnswerError``) or ``"missing"`` (counted as ``rejected``).
     """
 
     kind: DecisionKind
     labels: Tuple[str, ...]
     values: Tuple[Any, ...]
     criteria: Any = None
+    on_invalid: str = "raise"
 
     @property
     def k(self) -> int:
@@ -88,6 +92,8 @@ class DecisionSpec:
         out: Dict[str, Any] = {"type": self.kind}
         if self.criteria is not None:
             out["criteria"] = self.criteria
+        if self.on_invalid != "raise":
+            out["on_invalid"] = self.on_invalid
         return out
 
 
@@ -151,7 +157,13 @@ def spec_from_question(kind: str, criteria: Any = None) -> DecisionSpec:
     raise ValueError(f"Unknown System One question type {kind!r}; expected choice, score or noul")
 
 
-def _decision_field(spec: DecisionSpec, weight: float, field_kwargs: Dict[str, Any]):
+ON_INVALID = ("raise", "missing")
+
+
+def _decision_field(spec: DecisionSpec, weight: float, field_kwargs: Dict[str, Any], on_invalid: str = "raise"):
+    if on_invalid not in ON_INVALID:
+        raise ValueError(f"on_invalid must be 'raise' or 'missing', got {on_invalid!r}")
+    spec = dataclasses.replace(spec, on_invalid=on_invalid)
     if field_kwargs.get("alias") is not None:
         # Answers and records are matched by field name throughout; an alias
         # would silently break both. Name the field after the question id.
@@ -178,7 +190,13 @@ def _decision_field(spec: DecisionSpec, weight: float, field_kwargs: Dict[str, A
     return field
 
 
-def Choice(criteria: Union[Dict[str, Any], Sequence[str]], *, weight: float = 1.0, **field_kwargs):
+def Choice(
+    criteria: Union[Dict[str, Any], Sequence[str]],
+    *,
+    weight: float = 1.0,
+    on_invalid: Literal["raise", "missing"] = "raise",
+    **field_kwargs,
+):
     """A Choice decision field: one option out of a fixed, unordered set.
 
     Args:
@@ -186,38 +204,56 @@ def Choice(criteria: Union[Dict[str, Any], Sequence[str]], *, weight: float = 1.
             option key to description (descriptions may be None), or a list
             of option keys.
         weight: The field's weight in ``overall_score``.
+        on_invalid: ``"raise"`` (default) raises ``AnswerError`` for a
+            predicted answer that cannot be scored. ``"missing"`` scores it as
+            no answer instead, counted as ``rejected`` in ``coverage``, so the
+            document's other answers are kept.
         **field_kwargs: Passed to ``ComparableField`` (``description``, ...). ``alias`` is not supported.
 
     Gold is an option key. The prediction is a System One Choice answer.
     """
-    return _decision_field(_choice_spec(criteria), weight, field_kwargs)
+    return _decision_field(_choice_spec(criteria), weight, field_kwargs, on_invalid)
 
 
-def Score(criteria: Sequence[Any], *, weight: float = 1.0, **field_kwargs):
+def Score(
+    criteria: Sequence[Any],
+    *,
+    weight: float = 1.0,
+    on_invalid: Literal["raise", "missing"] = "raise",
+    **field_kwargs,
+):
     """A Score decision field: a position on ordered levels.
 
     Args:
         criteria: The levels, lowest first, as in a System One Score question.
             A level's number is its position.
         weight: The field's weight in ``overall_score``.
+        on_invalid: As for ``Choice``.
         **field_kwargs: Passed to ``ComparableField``.
 
     Gold is a level number (``int``). The prediction is a System One Score answer.
     """
-    return _decision_field(_score_spec(criteria), weight, field_kwargs)
+    return _decision_field(_score_spec(criteria), weight, field_kwargs, on_invalid)
 
 
-def Noul(criteria: Any = None, *, weight: float = 1.0, **field_kwargs):
+def Noul(
+    criteria: Any = None,
+    *,
+    weight: float = 1.0,
+    on_invalid: Literal["raise", "missing"] = "raise",
+    **field_kwargs,
+):
     """A Noul decision field: yes or no.
 
     Args:
         criteria: Optional description of what yes and no mean. Not used for scoring.
         weight: The field's weight in ``overall_score``.
+        on_invalid: As for ``Choice``.
         **field_kwargs: Passed to ``ComparableField``.
 
     Gold is ``True`` or ``False``. The prediction is a System One Noul answer.
     """
-    return _decision_field(_noul_spec(criteria), weight, field_kwargs)
+    return _decision_field(_noul_spec(criteria), weight, field_kwargs, on_invalid)
 
 
 def field_decision_spec(field_info: Any) -> Optional[DecisionSpec]:

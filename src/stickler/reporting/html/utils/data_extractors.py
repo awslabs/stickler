@@ -345,6 +345,6 @@ class DataExtractor:
                 "points": points,
                 "aurc": report.fields[name]["aurc"],
                 "n_total": int(n_total),
-                "n_missing": int(a.n_missing),
+                "n_missing": int(a.n_total - a.n_ok),  # missing or rejected: never accepted
             }
         return out

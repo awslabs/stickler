@@ -93,7 +93,7 @@ def test_list_inside_missing_nested_object_counts_as_missing():
     ev.update(gold, Doc.from_json({}))
     fields = ev.compute().decision_metrics["fields"]
     assert fields["cust.vip"]["correctness"]["coverage"]["missing"] == 1
-    assert fields["cust.msgs[].intent"]["correctness"]["coverage"] == {"ratio": 0.0, "ok": 0, "missing": 2}
+    assert fields["cust.msgs[].intent"]["correctness"]["coverage"] == {"ratio": 0.0, "ok": 0, "missing": 2, "rejected": 0}
 
 
 def test_alias_is_rejected():
