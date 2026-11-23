@@ -1097,3 +1097,98 @@ class TestNestedModelWarningsReachEveryModel:
         assert "field 'f.addr' of model 'Sch'" in str(
             caught[0].message
         )
+
+
+class TestAnUnnamedModelIsNamedAsTheErrorsNameIt:
+    """Not by the `(fields: ...)` identity that keys warn-once.
+
+    An untitled schema's warning said `of model 'DynamicModel(fields:
+    address)'`, a name the author never wrote, where its error says `of an
+    unnamed model` and how to name it.
+    """
+
+    @staticmethod
+    def _warning_and_error(build, keys, bad_keys):
+        _, caught = _recorded(lambda: build(keys))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with pytest.raises(ValueError) as error:
+                build(bad_keys)
+        (warning,) = [str(w.message) for w in caught]
+        return warning, str(error.value)
+
+    def test_on_the_schema_path(self):
+        def build(keys):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "object",
+                            "properties": {"a": _SLEAF},
+                            **keys,
+                        }
+                    },
+                }
+            )
+
+        warning, error = self._warning_and_error(
+            build,
+            {"x-aws-stickler-comparator": "ExactComparator"},
+            {"x-aws-stickler-comparator-config": {"threshold": 85}},
+        )
+        named = (
+            "field 'address' of an unnamed model (set title or "
+            "x-aws-stickler-model-name to name it)"
+        )
+        assert named in warning
+        assert named in error
+        assert "DynamicModel" not in warning
+
+    def test_on_the_config_path(self):
+        def build(keys):
+            StructuredModel.model_from_json(
+                {
+                    "fields": {
+                        "address": {
+                            "type": "structured_model",
+                            "fields": {"a": _LEAF},
+                            **keys,
+                        }
+                    }
+                }
+            )
+
+        warning, error = self._warning_and_error(
+            build,
+            {"comparator": "ExactComparator"},
+            {"comparator_config": {"threshold": 85}},
+        )
+        named = "field 'address' of an unnamed model (set model_name to name it)"
+        assert named in warning
+        assert named in error
+        assert "DynamicModel" not in warning
+
+    def test_a_title_names_it_in_both(self):
+        def build(keys):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "title": "Invoice",
+                    "properties": {
+                        "address": {
+                            "type": "object",
+                            "properties": {"a": _SLEAF},
+                            **keys,
+                        }
+                    },
+                }
+            )
+
+        warning, error = self._warning_and_error(
+            build,
+            {"x-aws-stickler-comparator": "ExactComparator"},
+            {"x-aws-stickler-comparator-config": {"threshold": 85}},
+        )
+        assert "field 'address' of model 'Invoice'" in warning
+        assert "field 'address' of model 'Invoice'" in error

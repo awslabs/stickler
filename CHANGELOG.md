@@ -160,9 +160,12 @@ Each release links to full notes on the
   written on a field or a property and not read now emits a `UserWarning`
   naming it, the model, and where the effective setting goes (`threshold` /
   `x-aws-stickler-threshold` on an object, `match_threshold` /
-  `x-aws-stickler-match-threshold` on a list). On a `$defs` definition that
-  a property references, they are still ignored without a warning; beside
-  the `$ref`, they are treated as on any property. A threshold
+  `x-aws-stickler-match-threshold` on a list). The model is named as the
+  threshold errors name it: by its `model_name`, `x-aws-stickler-model-name`
+  or `title`, or else as an unnamed model, with the key that names one. On a
+  `$defs` definition that a property references, they are still ignored
+  without a warning; beside the `$ref`, they are treated as on any property.
+  A threshold
   the comparator names on a single nested model, in its config or its own
   constructor, is read (see Changed), and the warning gives its value. A named
   comparator stays on the field, as on the Python path, so `explain()` reports

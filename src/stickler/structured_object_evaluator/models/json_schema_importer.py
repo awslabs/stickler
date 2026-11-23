@@ -46,7 +46,6 @@ from .field_converter import (
 )
 from .model_factory import ModelFactory
 from .optional_annotation import is_union, unwrap_optional
-from .threshold_helper import model_identity
 from .threshold_rule import (
     SCHEMA,
     as_threshold,
@@ -634,18 +633,13 @@ class JsonSchemaImporter:
     ):
         self.schema = schema
         self.field_path = field_path
-        # Names the root model in this importer's warnings, as the config path
-        # does. `warnings.warn` shows a message once per text and line, so two
-        # schemas warning about the same property showed one warning between
-        # them. A non-identifier name is refused later, by the caller.
-        root_name = schema.get("x-aws-stickler-model-name", "DynamicModel")
-        properties = schema.get("properties")
-        self.model_id = model_identity(
-            root_name if isinstance(root_name, str) else "DynamicModel",
-            [str(k) for k in properties] if isinstance(properties, dict) else (),
-        )
-        # The name an error, and a warning, gives the model: its title when it
-        # has no x-aws-stickler-model-name. See `schema_model_label`.
+        # The name an error, and a warning, gives the root model: its title when
+        # it has no x-aws-stickler-model-name. In the text, because
+        # `warnings.warn` shows a message once per text and line, so two named
+        # schemas warning about the same property would otherwise show one
+        # warning between them. An unnamed one is called an unnamed model, as
+        # in the errors. A non-identifier name is refused later, by the caller.
+        # See `schema_model_label`.
         self.model_label = schema_model_label(schema)
         # The object-level match threshold, which inference uses as the FIELD
         # threshold for a mapping field (a dict declines to name its keys, so it
@@ -837,7 +831,8 @@ class JsonSchemaImporter:
                         is_list=False,
                         members="properties",
                         threshold_key="'x-aws-stickler-threshold'",
-                        model_id=self.model_label or self.model_id,
+                        model=self.model_label,
+                        spelling=SCHEMA,
                         adopted=comparator_threshold
                         if named is not None and not stated
                         else None,
@@ -1167,7 +1162,8 @@ class JsonSchemaImporter:
                     is_list=True,
                     members="properties",
                     threshold_key="'x-aws-stickler-match-threshold' in its 'items'",
-                    model_id=self.model_label or self.model_id,
+                    model=self.model_label,
+                    spelling=SCHEMA,
                 ),
                 UserWarning,
                 stacklevel=_stacklevel_outside_stickler(),

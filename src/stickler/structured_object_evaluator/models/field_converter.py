@@ -22,6 +22,7 @@ from .threshold_rule import (
     CONFIG,
     ComparatorSource,
     Spelling,
+    _of_model,
     is_threshold_error,
     is_valid_threshold,
     threshold_error,
@@ -206,16 +207,6 @@ def _stacklevel_outside_stickler(*, through_warn_once: bool = False) -> int:
     return level + 1 if through_warn_once else level
 
 
-def _of_model(model_id: str) -> str:
-    """`` of model 'Invoice'`` for a warning, or ``""`` when there is no name.
-
-    In the text, not only in the warn-once key: Python's default filter shows a
-    message once per text and line, so two models with the same field would
-    otherwise show one warning between them.
-    """
-    return f" of model {model_id!r}" if model_id else ""
-
-
 def _nested_model_comparator_threshold(
     comparator: Any, comparator_config: Mapping, *, reads_threshold: bool
 ) -> Tuple[Optional[float], List[str], Any]:
@@ -330,7 +321,8 @@ def _nested_model_keys_warning(
     is_list: bool,
     members: str,
     threshold_key: str,
-    model_id: str = "",
+    model: Optional[str],
+    spelling: Spelling,
     adopted: Optional[float] = None,
 ) -> str:
     """The warning for comparator keys a nested-model field does not read.
@@ -343,12 +335,19 @@ def _nested_model_keys_warning(
     ``adopted`` is a threshold the named comparator carries and the field reads.
     The warning then says so and gives the value, since removing the comparator
     as advised would otherwise drop the gate and move the verdict.
+
+    ``model`` and ``spelling`` name the model as the threshold errors do: by its
+    name, or as an unnamed model with how to name it, never by the
+    ``(fields: ...)`` identity that keys warn-once. The name is in the text
+    because Python's default filter shows a message once per text and line, so
+    two named models with the same field would otherwise show one warning
+    between them.
     """
     subject = " and ".join(keys)
     # A phrase from _config_keys_phrase can name several keys on its own.
     plural = len(keys) > 1 or any(" keys " in k for k in keys)
     verb, be = ("have", "are") if plural else ("has", "is")
-    where = f"field '{field_path}'{_of_model(model_id)}"
+    where = f"field '{field_path}'{_of_model(model, spelling)}"
     if is_list:
         return (
             f"{subject} {verb} no effect on {where} and "
@@ -838,7 +837,8 @@ class FieldConverter:
                     threshold_key="'match_threshold' on this field"
                     if is_list
                     else "'threshold'",
-                    model_id=model_id,
+                    model=_model_label(model_id),
+                    spelling=CONFIG,
                     adopted=comparator_threshold
                     if named_comparator is not None and not stated
                     else None,
