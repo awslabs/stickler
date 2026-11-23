@@ -233,7 +233,7 @@ class TestModelMatchThreshold:
         assert _user_warnings(recorded) == []
 
     @pytest.mark.parametrize("wrong_type", [False, True])
-    def test_bool_is_not_reported_as_a_zero_threshold(self, wrong_type):
+    def test_bool_threshold_is_refused_not_reported_as_zero(self, wrong_type):
         """`bool` is an `int` and `False == 0.0`, so an unguarded check lies.
 
         Reporting "sets match_threshold=0.0" for `match_threshold = False`
