@@ -147,7 +147,7 @@ Field threshold, then a threshold named on the comparator, then a default that d
 
 Bare `dict`, list-of-dict, plain `BaseModel` and list-of-plain-model fields are scored by ANLS* and do not zero low scores (`clip_under_threshold=False`): at a raw 0.6 they score 0.6 but still count as a false discovery against the 0.7 threshold. A bare `addr: Address` does clip: at 0.875 it scores 0.0 and is a false discovery, while the same pair in `addrs: List[Address]` is a TP scoring 0.875.
 
-A bare `int` or `float` field is compared as text by `LevenshteinComparator`, not as a number. For a `float`, `inf` against `-inf` scores 0.75 and `1000` against `-1000` scores 0.857, and both clear the 0.7 default threshold; a bare `int` pair of `1000` and `-1000` scores 0.8. Declare `ComparableField(comparator=NumericComparator())` to compare numbers as numbers. Whether the default should change is tracked in [#579](https://github.com/awslabs/stickler/issues/579).
+A bare `int` or `float` field is compared as text by `LevenshteinComparator`, not as a number. For a `float`, `inf` against `-inf` scores 0.75 and `1000` against `-1000` scores 0.857, and both clear the 0.7 default threshold; a bare `int` pair of `1000` and `-1000` scores 0.8. Declare `ComparableField(comparator=NumericComparator())` to compare numbers as numbers.
 
 On the zero-config path, `stickler.evaluate` infers a threshold per field; `result.explain()` shows each one. For JSON Schema and Stickler config defaults, see [Dynamic Model Creation](../Advanced/dynamic-models.md).
 
