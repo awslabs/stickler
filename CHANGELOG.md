@@ -9,6 +9,15 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- `model_from_json()` raises `ValueError` for `match_threshold` on a
+  primitive field, naming the field and the model. It is the object-level
+  threshold, so 1.0.x ignored it there with a warning; use `threshold` on
+  the field, or set `match_threshold` on the model or a `structured_model`
+  field. The JSON Schema importer already refused the same misplacement
+  ([#607](https://github.com/awslabs/stickler/issues/607)).
+
 ### Fixed
 
 - Scalar-union lists such as `List[Union[int, str]]` now round-trip through

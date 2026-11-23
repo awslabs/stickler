@@ -316,7 +316,7 @@ Person = StructuredModel.model_from_json(person_config)
 
 A primitive or `list_structured_model` field that is not `required` and has no `default`, or `"default": null`, is built as `Optional[T]` with a `None` default, so it accepts `null`. A non-`None` default such as `"default": []` keeps the field non-nullable, and a `structured_model` field is never widened: it rejects `null` with or without a default (use `optional_structured_model`).
 
-A key that is not listed above is not read. Rather than being dropped in silence, it emits a `UserWarning` naming the key, the full field path (`billing.city`), and the keys that position does accept; the model still builds, without the key. `match_threshold` is accepted on any field but read only on the model and a `structured_model` field. On a primitive field it is ignored with its own `UserWarning`, as 1.0.0 ignored it; use `threshold` there. It becomes a `ValueError` in 1.1.0.
+A key that is not listed above is not read. Rather than being dropped in silence, it emits a `UserWarning` naming the key, the full field path (`billing.city`), and the keys that position does accept; the model still builds, without the key. `match_threshold` is accepted on any field but read only on the model and a `structured_model` field. On a primitive field it raises a `ValueError`; use `threshold` there.
 
 ### Nested Model Example
 
@@ -630,6 +630,7 @@ Every `model_from_json()` failure raises `ValueError`, and all but one are prefi
 | `Unknown comparator: 'x'. Available: [...]` | Comparator name not registered | Use a class name from the list; `BERTComparator` and `LLMComparator` appear only when the `[bert]` and `[llm]` extras are installed |
 | `Field 'x' with type 'structured_model' requires a 'fields' configuration` | Nested model without its own `fields` | Add the nested `fields` block |
 | `Field 'x' configuration must be a mapping, got int` | A field's value is not a config object | Wrap it: `{"x": {"type": "str", ...}}` |
+| `'match_threshold' is not read on primitive field 'x'; ...` | Object-level threshold written on a leaf | Use `threshold` on the field, or move `match_threshold` to the model or a `structured_model` field |
 
 These diagnostics are a `UserWarning` rather than a `ValueError`, because the key they name is not applied and the model still builds:
 
@@ -637,7 +638,6 @@ These diagnostics are a `UserWarning` rather than a `ValueError`, because the ke
 |-------|-------|-----|
 | `Field 'billing.city' does not accept 'threshhold' in its config; ignored.` | Unrecognized key on a field | Use one of the accepted keys the message lists |
 | `Model config does not accept 'match_threshhold'; ignored.` | Unrecognized key at the top level | Use one of `fields`, `model_name`, `match_threshold`, `infer_unspecified_fields` |
-| `'match_threshold' is not read on primitive field 'x'; ... ignored` | Object-level threshold written on a leaf; becomes a `ValueError` in 1.1.0 | Use `threshold` on the field, or move `match_threshold` to the model or a `structured_model` field |
 
 Each fires once per model, path and key, so repeated loads of the same config do not flood a batch run. Turn them into errors with `python -W error::UserWarning` to fail a build on a misspelled or misplaced key.
 
