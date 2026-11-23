@@ -56,7 +56,6 @@ Specialized Components (selected — ~36 modules total in models/):
 │   ├── PrimitiveListComparator       - Lists of primitives
 │   └── StructuredListComparator      - Lists of StructuredModels (Hungarian)
 ├── Metrics
-│   ├── ConfusionMatrixBuilder        - Runs the aggregate and derived calculators
 │   ├── AggregateMetricsCalculator    - Rolls up child metrics
 │   └── DerivedMetricsCalculator      - Precision / recall / F1 / accuracy
 ├── Reporting
@@ -95,8 +94,8 @@ Specialized Components (selected — ~36 modules total in models/):
             ┌───────────────┼───────────────────────────┐
             │               │               │           │
             ▼               ▼               ▼           ▼
-   ComparisonDispatcher  NonMatchCollector  FieldComparison  ConfusionMatrixBuilder
-   (Type-based routing)  (Non-matches)      Collector        (Metrics orchestration)
+   ComparisonDispatcher  NonMatchCollector  FieldComparison  Metrics calculators
+   (Type-based routing)  (Non-matches)      Collector        (confusion matrix)
             │                              (per-field log)        │
   ┌─────────┼─────────┐                                ┌──────────┼──────────┐
   ▼         ▼         ▼                                ▼          ▼          ▼
@@ -225,7 +224,7 @@ PersonModel = StructuredModel.from_json_schema(schema)
 - `compare_recursive(other)` - Single-pass recursive comparison (scores + confusion-matrix counts in one traversal)
 - `compare_with(other, **options)` - Full comparison; layers on confusion matrix, non-matches, field-comparison logging, evaluator formatting, and confidence calibration metrics depending on flags
 
-The engine lazily instantiates `ComparisonDispatcher`, `NonMatchCollector`, `FieldComparisonCollector`, and `ConfusionMatrixBuilder` on first access via properties.
+The engine lazily instantiates `ComparisonDispatcher`, `NonMatchCollector`, and `FieldComparisonCollector` on first access via properties. `compare_with` calls `AggregateMetricsCalculator` and `DerivedMetricsCalculator` directly.
 
 ### 4. ComparisonDispatcher
 
@@ -251,7 +250,7 @@ See the docstring on `StructuredModel` (`structured_model.py`) for the in-code c
 - `FieldComparator` - primitive & nested-StructuredModel field comparison
 - `PrimitiveListComparator` - lists of primitives via Hungarian matching
 - `StructuredListComparator` - lists of StructuredModels via Hungarian + threshold-gated nested analysis
-- `ConfusionMatrixBuilder` / `AggregateMetricsCalculator` / `DerivedMetricsCalculator`
+- `AggregateMetricsCalculator` / `DerivedMetricsCalculator`
 - `NonMatchCollector` and `FieldComparisonCollector`
 - `EvaluatorFormatHelper`
 - `models/confidence/` - the confidence-calibration pipeline used when `compare_with(add_confidence_metrics=True, ...)`
@@ -392,7 +391,9 @@ Maintained — one pass through the tree:
 ```python
 result = engine.compare_recursive(other)        # Single traversal
 if include_confusion_matrix:
-    result = builder.build_confusion_matrix(result)  # No re-traversal
+    confusion_matrix = AggregateMetricsCalculator().calculate_aggregate_metrics(result)  # No re-traversal
+    if add_derived_metrics:
+        confusion_matrix = DerivedMetricsCalculator().add_derived_metrics_to_result(...)
 ```
 
 ### Performance Validation
