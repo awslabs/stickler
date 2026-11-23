@@ -25,6 +25,7 @@ from stickler.reporting.html.html_reporter import (
     EvaluationHTMLReporter,
     _json_for_script,
 )
+from stickler.reporting.html.utils.data_extractors import DataExtractor
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
@@ -162,13 +163,24 @@ def test_escaping_still_holds_alongside_a_value_read_as_none(tmp_path):
         assert ch not in out
 
 
-def test_a_non_finite_threshold_is_dropped_rather_than_failing_the_report(tmp_path):
-    """``ComparableField`` accepts ``threshold=nan``; the report treats it as unset."""
+def test_a_non_finite_threshold_is_dropped_rather_than_failing_the_report(tmp_path, monkeypatch):
+    """A NaN threshold that reaches the report is treated as unset.
+
+    ``ComparableField(threshold=nan)`` raises at class definition, but a field
+    the class check cannot read yet (a string ``Annotated`` annotation naming a
+    type defined further down) still loads one. The thresholds are patched in
+    here so the test does not depend on that gap staying open.
+    """
 
     class Odd(StructuredModel):
-        vendor: str = ComparableField(threshold=NAN)
+        vendor: str = ComparableField(threshold=0.9)
         total: Optional[float] = ComparableField(threshold=0.5)
 
+    monkeypatch.setattr(
+        DataExtractor,
+        "extract_all_field_thresholds",
+        staticmethod(lambda schema: {"vendor": NAN, "total": 0.5}),
+    )
     jsonl = tmp_path / "results.jsonl"
     evaluator = BulkStructuredModelEvaluator(target_schema=Odd, individual_results_jsonl=str(jsonl))
     evaluator.update(Odd(vendor="Acme", total=1.0), Odd(vendor="Acme", total=1.0), doc_id="d")
