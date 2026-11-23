@@ -18,6 +18,12 @@ Each release links to full notes on the
   `AttributeError` at export
   ([#476](https://github.com/awslabs/stickler/issues/476)).
 
+### Performance
+
+- `LevenshteinComparator` uses RapidFuzz's edit distance, accelerating string
+  comparisons and ANLS* leaf scoring while preserving public similarity scores.
+  [#510](https://github.com/awslabs/stickler/issues/510)
+
 ## [1.0.2] - 2026-11-20
 
 ### Changed
