@@ -9,9 +9,10 @@ on:
 
 # No `concurrency` here, deliberately. `security-pr-comment.yaml` wakes on this
 # workflow's completion, a cancellation included, and downloads the
-# `security-reports` artifact. A cancelled scan uploads none, and that consumer
-# fails rather than skipping when the artifact is missing. Limiting `push`
-# already removes the duplicate run, which is what this was for.
+# `security-reports` artifact. A cancelled scan uploads none, so the consumer
+# skips a cancelled run, and a cancelled PR scan would leave the PR without its
+# report comment. Limiting `push` already removes the duplicate run, which is
+# what this was for.
 
 permissions:
   contents: read
