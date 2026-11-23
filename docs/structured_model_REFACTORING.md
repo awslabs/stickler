@@ -57,7 +57,6 @@ Specialized Components (selected — ~36 modules total in models/):
 │   └── StructuredListComparator      - Lists of StructuredModels (Hungarian)
 ├── Metrics
 │   ├── ConfusionMatrixBuilder        - Runs the aggregate and derived calculators
-│   ├── ConfusionMatrixCalculator     - TP/FP/TN/FN/FD/FA
 │   ├── AggregateMetricsCalculator    - Rolls up child metrics
 │   └── DerivedMetricsCalculator      - Precision / recall / F1 / accuracy
 ├── Reporting
@@ -156,9 +155,9 @@ class StructuredModel(BaseModel):
 
 ### Legacy private methods are kept as delegating shims
 
-Older callers (and many tests) reach for private methods on `StructuredModel` such as `_dispatch_field_comparison`, `compare_recursive`, `_collect_enhanced_non_matches`, `_add_derived_metrics_to_result`, `_format_for_evaluator`, etc. The ones that still have callers are kept as short wrappers that forward the call to the component that does the work. They are retained for backward compatibility; new code should call the component directly. Four private methods that nothing called have been removed, as listed below.
+Older callers (and many tests) reach for private methods on `StructuredModel` such as `_dispatch_field_comparison`, `compare_recursive`, `_collect_enhanced_non_matches`, `_add_derived_metrics_to_result`, `_format_for_evaluator`, etc. The ones that still have callers are kept as short wrappers that forward the call to the component that does the work. They are retained for backward compatibility; new code should call the component directly. Five private methods that nothing called have been removed, as listed below.
 
-Three wrappers that nothing called were removed in [#390](https://github.com/awslabs/stickler/pull/390): `_calculate_list_confusion_matrix`, `_calculate_nested_field_metrics` and `_calculate_single_nested_field_metrics`. Their work is done by `StructuredListComparator` for a list of models, including the fields inside matched items, and by `FieldComparator.compare_structured_field` for a single nested model. [#398](https://github.com/awslabs/stickler/pull/398) removed `_calculate_object_level_metrics`, an uncalled copy of `StructuredListComparator._calculate_object_level_metrics`.
+Three wrappers that nothing called were removed in [#390](https://github.com/awslabs/stickler/pull/390): `_calculate_list_confusion_matrix`, `_calculate_nested_field_metrics` and `_calculate_single_nested_field_metrics`. Their work is done by `StructuredListComparator` for a list of models, including the fields inside matched items, and by `FieldComparator.compare_structured_field` for a single nested model. [#398](https://github.com/awslabs/stickler/pull/398) removed `_calculate_object_level_metrics`, an uncalled copy of `StructuredListComparator._calculate_object_level_metrics`. [#406](https://github.com/awslabs/stickler/pull/406) removed `_classify_field_for_confusion_matrix` and `confusion_matrix_calculator.py`, which held only the method it delegated to: `StructuredListComparator` now classifies a matched item's sub-fields through `_dispatch_field_comparison`. In a sub-field that is neither nested nor list-annotated, such as `Any`, `StructuredListComparator._dispatch_pairs` first reads an empty list as null, and scores two models of different classes with `compare_with()` rather than the dispatcher. If the dispatcher raises there, which only an item whose `compare_with()` does not recurse reaches, the pair counts as the removed classifier counted it: two lists from the field's comparator (`_comparator_result`), and two models of one class from their own `compare_with()` (`_compare_with_result`, which also scores two models of different classes). So does a pair in a nested or list-annotated sub-field that the list's first element's class does not declare that way (`may_fall_back`), since the removed classifier read only that class's fields. When the first element's pair is not a match, each pair is read by its own class's annotation (`reader=None`).
 
 ## Component Responsibilities
 
@@ -252,7 +251,7 @@ See the docstring on `StructuredModel` (`structured_model.py`) for the in-code c
 - `FieldComparator` - primitive & nested-StructuredModel field comparison
 - `PrimitiveListComparator` - lists of primitives via Hungarian matching
 - `StructuredListComparator` - lists of StructuredModels via Hungarian + threshold-gated nested analysis
-- `ConfusionMatrixBuilder` / `ConfusionMatrixCalculator` / `AggregateMetricsCalculator` / `DerivedMetricsCalculator`
+- `ConfusionMatrixBuilder` / `AggregateMetricsCalculator` / `DerivedMetricsCalculator`
 - `NonMatchCollector` and `FieldComparisonCollector`
 - `EvaluatorFormatHelper`
 - `models/confidence/` - the confidence-calibration pipeline used when `compare_with(add_confidence_metrics=True, ...)`
@@ -376,7 +375,6 @@ These methods still exist on `StructuredModel` as thin delegating shims for back
 | `_handle_list_field_dispatch`         | `ComparisonDispatcher.handle_list_field_dispatch`                |
 | `compare_recursive`                   | `ComparisonEngine.compare_recursive`                             |
 | `compare_with`                        | `ComparisonEngine.compare_with`                                  |
-| `_classify_field_for_confusion_matrix`| `ConfusionMatrixCalculator.classify_field_for_confusion_matrix`  |
 | `_add_derived_metrics_to_result`      | `DerivedMetricsCalculator.add_derived_metrics_to_result`         |
 | `_collect_enhanced_non_matches`       | `NonMatchCollector.collect_enhanced_non_matches`                 |
 | `_format_for_evaluator`               | `EvaluatorFormatHelper.format_for_evaluator`                     |

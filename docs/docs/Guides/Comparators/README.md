@@ -231,9 +231,6 @@ class Product(StructuredModel):
 - `token_sort_ratio` -- Splits strings into tokens, sorts them, then compares. Handles reordered words (e.g., "John Smith" vs "Smith John").
 - `token_set_ratio` -- Splits into token sets, comparing the intersection and remainder. Handles extra or missing words.
 
-!!! note "Dependency"
-    FuzzyComparator requires the `rapidfuzz` package. Install it with: `pip install rapidfuzz`
-
 ---
 
 ### ANLSStarComparator
@@ -365,7 +362,7 @@ incidental character overlap.
 
     | key | ground truth | prediction | score |
     |---|---|---|---|
-    | `account` | `DE89370400440532013000` | `DE8937040044053201300`**`1`** | 0.9545 |
+    | `account` | `DE00000000000000000000` | `DE0000000000000000000`**`1`** | 0.9545 |
     | `invoice_date` | `2024-01-15` | `2024-01-1`**`6`** | 0.9000 |
     | `amount` | `1000000` | **`2`**`000000` | 0.8571 |
     | `total` | `1234.56` | `1234.5`**`7`** | 0.8571 |
@@ -464,6 +461,9 @@ class Review(StructuredModel):
 | `sim_function` | `"cosine_similarity"` | Similarity function to use |
 | `embedding_function` | `None` | Optional custom embedding function (bypasses Bedrock) |
 
+!!! note "Dependency"
+    SemanticComparator needs the `semantic` extra: `pip install "stickler-eval[semantic]"`
+
 ---
 
 ### BERTComparator
@@ -490,6 +490,9 @@ class Document(StructuredModel):
 | `threshold` | `0.7` | Similarity threshold for binary classification |
 
 The default model is `distilbert-base-uncased`, loaded globally via the `evaluate` library.
+
+!!! note "Dependency"
+    BERTComparator needs the `bert` extra: `pip install "stickler-eval[bert]"`
 
 ---
 
@@ -521,7 +524,7 @@ class Address(StructuredModel):
 | `eval_guidelines` | `None` | Custom guidelines for the LLM to follow during comparison |
 
 !!! note "Dependency"
-    LLMComparator requires the `strands-agents` package. Install it with: `pip install stickler-eval[llm]`
+    LLMComparator needs the `llm` extra: `pip install "stickler-eval[llm]"`
 
 ---
 
@@ -537,14 +540,21 @@ ends up a plain `str`. Read the result back with `to_json_schema()`, not from `m
 | JSON Schema Type | Default Comparator | Default Threshold | Rationale |
 |---|---|---|---|
 | `string` | LevenshteinComparator | 0.5 | Handles typos and minor variations |
-| `number` | NumericComparator | 0.5 | Tolerates small numeric differences |
-| `integer` | NumericComparator | 0.5 | Tolerates small numeric differences |
+| `number` | NumericComparator | 0.5 | Exact match unless a tolerance is set |
+| `integer` | NumericComparator | 0.5 | Exact match unless a tolerance is set |
 | `boolean` | ExactComparator | 0.5 | Must be exactly true or false (Exact returns only 0.0 or 1.0, so the threshold is immaterial) |
 | `string` + `"format": "date"` or `"date-time"` | DateComparator | 1.0 | Parses as `date`/`datetime`, so the field compares across formats |
 | `string` + `"enum"` or a single-value `const` | ExactComparator | 1.0 | Parses as an `Enum`/`Literal`, so only a listed value is valid |
 | `array` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
+
+`NumericComparator` defaults to a tolerance of 0, so a plain `{"type": "number"}` scores `100` vs
+`100.01` as 0.0. Set a tolerance to accept small differences; this scores the same pair 1.0:
+
+```json
+{"type": "number", "x-aws-stickler-comparator-config": {"tolerance": 0.01}}
+```
 
 A `format` the schema library does not map to a distinct type (`"email"`, `"hostname"`, `"duration"`)
 parses as `str`, so the field keeps LevenshteinComparator at 0.5. To check any of this on your own

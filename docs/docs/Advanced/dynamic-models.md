@@ -111,6 +111,70 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 | `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
 
+A nested object typed `["object", "null"]` or `["object"]` reads the same keys as one
+typed `"object"`.
+Beside a `$ref`, `["object", "null"]` or `["array", "null"]` builds what `"object"` or
+`"array"` builds there, and fails to import where that does. The root must be
+`"object"`: it is the document being scored, so a nullable root (or a root
+`anyOf`/`oneOf`, or a root `$ref` to either) raises.
+
+A `$defs` (or `definitions`) entry is a type, not a property. A definition with
+`properties` generates a class, and its object-level keys configure that class for every
+property, `items` or `anyOf`/`oneOf` arm that `$ref`s it. Field-level keys describe one
+use of that type, so they go on the referencing property: beside the `$ref`, or beside the
+`anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms (for `allOf`, only an object
+with `properties`, directly or through an alias, where it and each alias hop to it are typed
+`"object"` or untyped: a one-arm `allOf` of anything else fails to import). Inside a
+definition they raise, as a misspelled key does. When the definition is an array's `items`, or an arm of them, they go
+on the array property, which for an array of objects reads only `x-aws-stickler-weight`;
+the elements pair by the definition's `x-aws-stickler-match-threshold`. The root is not a
+field, so a definition used as the root reads none. Any other definition (a scalar, an array, a
+combiner, an alias, a mapping) generates no class, so it accepts neither set. For example:
+
+```python
+{
+    "type": "object",
+    "properties": {
+        "billing": {"$ref": "#/$defs/Address", "x-aws-stickler-weight": 2.0},
+        "shipping": {"$ref": "#/$defs/Address"}
+    },
+    "$defs": {
+        "Address": {
+            "type": "object",
+            "x-aws-stickler-match-threshold": 0.8,
+            "properties": {"street": {"type": "string"}}
+        }
+    }
+}
+```
+
+A definition that no `$ref` reaches builds nothing, so its own keys are not checked. Its
+properties and other nested schemas still are, and so are the contents of whatever its
+`$ref`s point to. A `$ref` to one node of an entry, such as
+`#/$defs/Wrap/properties/inner`, builds only that node, and the rest of the entry builds
+nothing in the same way. Only a `$defs` or `definitions` keyword of the root, or of a schema
+nested in it through schema keywords, holds definitions. One under `components`, inside an
+`x-*` key or a data keyword such as `default`, or a property named so, holds none.
+
+Object-level keys also raise at three positions where no class reads them. Beside a `$ref`
+(except at the root), the class is built from the target, so they go on the target. An
+`allOf` arm (inline or `$ref`) is merged into one class that nothing configures, and a root
+`$ref` builds the root class, which reads the keys beside that `$ref`; these two raise only
+if no other position builds the same object (a `$ref` under `not`, `additionalProperties`
+or `if` builds nothing). On an object-typed property at these positions, such as
+`{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold": 0.93}` or a
+property that only a root `"$ref": "#/$defs/Wrap/properties/inner"` reaches, they are
+ignored with a `UserWarning` instead; it becomes a `ValueError` in 1.1.0. The same
+holds inside any `$ref` target that a position building a class references, wherever it
+sits, for example under `#/components/schemas/...`, or under `not`, `then`,
+`additionalProperties` or an `x-*` key in a `$defs` entry.
+
+A `$ref` target that is not a whole entry has the keys beside its own `$ref` checked only on
+a property or `items` node anywhere in a `$defs` entry, outside an `x-*` key, such as
+`#/$defs/List/items` or `#/$defs/W/not/items`. Elsewhere they are dropped: at the top of
+another node of an entry (`#/$defs/W/not`), under an `x-*` key, and outside `$defs`
+(`#/components/R`).
+
 With no extension specified, the property is parsed to a strict Python annotation and the comparator
 is chosen from that annotation, which is then widened back to the JSON value type so an invalid
 extraction scores `0.0` instead of raising. So `format`, `enum` and `const` participate in the

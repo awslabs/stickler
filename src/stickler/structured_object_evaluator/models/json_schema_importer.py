@@ -26,7 +26,7 @@ from typing import (
 from uuid import UUID
 
 from json_schema_to_pydantic import create_model as create_pydantic_model
-from pydantic import AnyUrl, BaseModel, TypeAdapter
+from pydantic import AnyUrl, BaseModel, PydanticUserError, TypeAdapter
 from pydantic.fields import FieldInfo
 
 from .comparable_field import (
@@ -196,6 +196,7 @@ def _reject_unknown_extensions(
     field_path: str,
     *,
     scope: str = "field",
+    merges: bool = True,
 ) -> None:
     """Raise for any extension-shaped key this importer does not honour here.
 
@@ -210,27 +211,89 @@ def _reject_unknown_extensions(
     the same key on a scalar field is dropped. Accepting both everywhere made the
     check pass on keys that do nothing, so a valid-but-misplaced key was exactly
     as silent as the typo it was mistaken for.
+
+    `merges` says whether a one-arm `allOf` of this definition imports, so
+    whether the advice for a field key may offer one. It does only when the
+    definition, and each alias hop to its end, is typed `"object"` or untyped.
     """
     if not isinstance(extra, dict):
         return
 
-    if scope == "model":
+    # Each entry names a set of real keys that are not read here and where they
+    # belong instead, so a misplaced key is answered with its position.
+    misplaced: Tuple[Tuple[str, FrozenSet[str]], ...]
+    # Field keys are read on the property, never on a combiner arm or `items`,
+    # so the message names the property for each way a definition is used. An
+    # array of objects reads only the weight there, and pairs its elements by
+    # the definition's match threshold. The root is no field, so it reads none.
+    # A one-arm `allOf` fails to import unless it names an object typed
+    # `"object"` or untyped, so only such a definition, or an alias of one, is
+    # offered the `allOf`.
+    beside = "property that uses this definition: beside its '$ref', or beside the "
+    arm = "when the '$ref' is one of its arms"
+    no_root = ". A definition used as the root reads no field keys"
+    beside_ref = (
+        f"{beside}'anyOf' or 'oneOf' {arm}, or on the array property when the "
+        f"definition is its 'items' or an arm of them{no_root}"
+    )
+    combiners = "'anyOf', 'oneOf' or 'allOf'" if merges else "'anyOf' or 'oneOf'"
+    of_objects = (
+        f"{beside}{combiners} {arm}. When the definition is an "
+        "array's 'items' or an arm of them, the array property reads only "
+        "'x-aws-stickler-weight', and the elements pair by "
+    )
+    beside_ref_object = (
+        f"{of_objects}this definition's 'x-aws-stickler-match-threshold'{no_root}"
+    )
+    beside_ref_alias = (
+        f"{of_objects}the 'x-aws-stickler-match-threshold' of the object it "
+        f"aliases{no_root}"
+    )
+    # Removed in #226 and ignored wherever it appears, so an older schema that
+    # carries it in a definition still imports, as it does on a field.
+    removed = frozenset({"x-aws-stickler-aggregate"})
+    if scope in ("model", "definition"):
+        # A definition is a type that several positions can `$ref`, and not all
+        # of them read field keys (`items` does not). Honouring them there would
+        # make one key work at one reference and vanish at the next, so they go
+        # on the property that uses the definition.
         accepted = _KNOWN_MODEL_EXTENSIONS
         suggestible = _KNOWN_MODEL_EXTENSIONS
-        other_scope, other_keys = "field", _DOCUMENTED_FIELD_EXTENSIONS
-        where = f"object '{field_path}'"
+        if scope == "model":
+            misplaced = (("field", _DOCUMENTED_FIELD_EXTENSIONS),)
+            where = f"object '{field_path}'"
+        else:
+            accepted = accepted | removed
+            misplaced = ((beside_ref_object, _DOCUMENTED_FIELD_EXTENSIONS),)
+            where = f"definition '{field_path}'"
+    elif scope in ("value_definition", "alias_definition"):
+        # A definition that generates no class (a scalar, an array, a combiner,
+        # an alias `$ref`, a mapping) reads neither set. Accepting the model keys
+        # here passed the check and then dropped them. An alias of an object is
+        # used wherever the object is, so its field keys go where the object's do.
+        accepted = removed
+        suggestible = frozenset()
+        misplaced = (
+            (
+                beside_ref_alias if scope == "alias_definition" else beside_ref,
+                _DOCUMENTED_FIELD_EXTENSIONS,
+            ),
+            ("object definition with 'properties'", _KNOWN_MODEL_EXTENSIONS),
+        )
+        where = f"definition '{field_path}'"
     elif scope == "field_or_model":
         # An object-typed property honours both sets, so there is no misplacement
         # to report and nothing to route elsewhere.
         accepted = _KNOWN_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS
         suggestible = _DOCUMENTED_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS
-        other_scope, other_keys = "", frozenset()
+        misplaced = ()
         where = f"field '{field_path}'"
     else:
         accepted = _KNOWN_FIELD_EXTENSIONS
         suggestible = _DOCUMENTED_FIELD_EXTENSIONS
-        other_scope, other_keys = "object", _KNOWN_MODEL_EXTENSIONS
+        misplaced = (("object", _KNOWN_MODEL_EXTENSIONS),)
         where = f"field '{field_path}'"
+    valid_here = ", ".join(sorted(suggestible)) or "none"
 
     for key in extra:
         if not isinstance(key, str):
@@ -242,12 +305,13 @@ def _reject_unknown_extensions(
 
         # A real key in the wrong position. Naming the position is the whole
         # answer here, so say that instead of offering a spelling correction.
-        if key in other_keys:
-            raise ValueError(
-                f"Stickler extension '{key}' is not read on {where}. It belongs "
-                f"on the {other_scope}. Left in place it would be dropped "
-                f"silently. Valid keys here: {', '.join(sorted(suggestible))}."
-            )
+        for other_scope, other_keys in misplaced:
+            if key in other_keys:
+                raise ValueError(
+                    f"Stickler extension '{key}' is not read on {where}. It "
+                    f"belongs on the {other_scope}. Left in place it would be "
+                    f"dropped silently. Valid keys here: {valid_here}."
+                )
 
         suggestion = _closest_known_key(key, suggestible)
         hint = f" Did you mean '{suggestion}'?" if suggestion else ""
@@ -255,11 +319,268 @@ def _reject_unknown_extensions(
             f"Unrecognized Stickler extension '{key}' on {where}."
             f"{hint} It would otherwise be dropped silently, leaving the "
             "configuration to fall back while its correctly-spelled siblings "
-            f"were honoured. Valid keys here: {', '.join(sorted(suggestible))}."
+            f"were honoured. Valid keys here: {valid_here}."
         )
 
 
+def _resolve_local_ref(
+    schema: Any, ref: Any
+) -> Tuple[Any, Tuple[str, ...], Optional[Tuple[str, ...]], Any]:
+    """Resolve a local `$ref`: its node, its pointer, and the innermost
+    definition entry that contains it, with that entry's body."""
+    if not isinstance(ref, str) or not ref.startswith("#"):
+        return None, (), None, None
+    pointer = ref[1:]
+    if pointer and not pointer.startswith("/"):
+        return None, (), None, None
+    parts = (
+        tuple(
+            part.replace("~1", "/").replace("~0", "~")
+            for part in pointer[1:].split("/")
+        )
+        if pointer
+        else ()
+    )
+    node: Any = schema
+    entry: Optional[Tuple[str, ...]] = None
+    entry_body: Any = None
+    position = "schema"
+    for index, part in enumerate(parts):
+        if not isinstance(node, dict) or part not in node:
+            return None, (), None, None
+        if position == "definitions":
+            entry, entry_body = parts[: index + 1], node[part]
+        position = _position_after(position, part)
+        node = node[part]
+    return node, parts, entry, entry_body
+
+
+def _ref_label(target: Tuple[str, ...], entry: Optional[Tuple[str, ...]]) -> str:
+    """A whole entry is a definition; a node inside one is an object."""
+    kind = "definition" if entry is not None and target == entry else "object"
+    return f"{kind} '{'.'.join(target)}'"
+
+
+def _ref_chain(
+    schema: Any, node: Any, where: str, pointer: Optional[Tuple[str, ...]] = None
+):
+    """The node, then each alias it `$ref`s: every hop is the same class. Each
+    hop comes with its label and its JSON pointer (`pointer` for the first,
+    None when that node is not a `$ref` target)."""
+    seen: set = set()
+    while isinstance(node, dict) and id(node) not in seen:
+        seen.add(id(node))
+        yield node, where, pointer
+        node, pointer, entry, _ = _resolve_local_ref(schema, node.get("$ref"))
+        where = _ref_label(pointer, entry)
+
+
+def _ref_end(schema: Any, ref: Any) -> Any:
+    """The node a `$ref` leads to through every alias hop, or None."""
+    hops = [hop for hop, _, _ in _ref_chain(schema, {"$ref": ref}, "")]
+    return hops[-1] if len(hops) > 1 else None
+
+
+_SCALAR_TYPES = frozenset({"boolean", "integer", "null", "number", "string"})
+
+
+def _is_scalar_schema(node: Any) -> bool:
+    """Whether a schema builds a scalar: it declares only scalar types, or
+    none with an `enum` or `const`, and no keyword that builds an object, an
+    array or a union."""
+    structural = ("$ref", "additionalProperties", "items", "prefixItems")
+    if not isinstance(node, dict) or any(
+        key in node for key in (*structural, "properties", *_COMBINERS)
+    ):
+        return False
+    declared = node.get("type")
+    if declared is None:
+        return "enum" in node or "const" in node
+    types = declared if isinstance(declared, list) else [declared]
+    return bool(types) and all(
+        isinstance(value, str) and value in _SCALAR_TYPES for value in types
+    )
+
+
+# Keywords whose value maps names to schemas, and those whose value lists them.
+_NAMED_SCHEMA_KEYWORDS = frozenset(
+    {"$defs", "definitions", "dependentSchemas", "patternProperties", "properties"}
+)
+_LISTED_SCHEMA_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf", "prefixItems"})
+# Keywords whose value is one schema.
+_SINGLE_SCHEMA_KEYWORDS = frozenset(
+    {
+        "additionalItems",
+        "additionalProperties",
+        "contains",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    }
+)
+
+
+def _map_holders(pointer: Tuple[str, ...]) -> List[Optional[str]]:
+    """How the walk reads each node along a JSON pointer, as if it entered
+    every key: for the root and then for the node after each segment, the
+    keyword whose map of schemas by name that node is, or None where it is
+    read as a schema. So `pointer[i]` is a name in the map `holders[i]`, or a
+    key of a schema where that is None.
+
+    One rule: a key is a keyword only where the node holding it is read as a
+    schema. The walk reads a `properties` key of every node it enters as a
+    map by name. The other map keywords (`$defs`, `definitions`,
+    `dependentSchemas`, `patternProperties`) hold names only as a keyword of
+    a schema reached from the root through schema keywords (see
+    `_position_after`), so a member named so under `components`, an `x-*`
+    payload or a data value is a schema, and so is a property named so. A
+    pointer passes only through objects (see `_resolve_local_ref`), so a list
+    keyword (`anyOf`, `allOf`, `oneOf`, `prefixItems`) before another segment
+    holds an object, which the walk reads as a schema, never as a list."""
+    holders: List[Optional[str]] = [None]
+    position = "schema"
+    for part in pointer:
+        holders.append(
+            part
+            if holders[-1] is None
+            and (
+                part == "properties"
+                or (position == "schema" and part in _NAMED_SCHEMA_KEYWORDS)
+            )
+            else None
+        )
+        position = _position_after(position, part)
+    return holders
+
+
+def _is_property_pointer(pointer: Optional[Tuple[str, ...]]) -> bool:
+    """Whether a JSON pointer ends at a property: a schema under some node's
+    `properties`. Read from the root, so a property NAMED `properties` is a
+    name, not the keyword.
+
+    It decides whether model keys there warn or raise, so it errs toward a
+    property. A property in the walk's reading (`_map_holders`) is one. So is
+    a node that ends at a property where a key no schema has, such as
+    `components` or an `x-*` payload, holds a map whose members are schemas
+    named like keywords (`#/components/schemas/properties/properties/inner`,
+    a property of the schema named `properties`)."""
+    if not pointer:
+        return False
+    if _map_holders(pointer)[-2] == "properties":
+        return True
+    # What the next segment can be in each reading: a key of a schema
+    # ("schema"), a member of a map this reader does not know ("member"), an
+    # index ("index"), or a name under the keyword held.
+    readings = {"schema"}
+    for part in pointer[:-1]:
+        readings = _next_readings(readings, part)
+    return "properties" in readings
+
+
+def _walk_position(pointer: Tuple[str, ...]) -> Tuple[str, Optional[str], bool]:
+    """Where the walk would meet the node at `pointer` if it entered every
+    key: the path it would name, "property" or "items" when the node is one,
+    and whether the pointer passes an `x-*` key of a schema.
+
+    Each segment is read as `_map_holders` reads it, so a property NAMED
+    `items` or `x-a` is a name, and so is a member named `definitions` or
+    `anyOf` of an `x-*` payload, whose own `properties` hold names."""
+    path, kind, under_x = "", None, False
+    for part, holder in zip(pointer, _map_holders(pointer)):
+        kind = None
+        if holder is not None:
+            kind = "property" if holder == "properties" else None
+            path = f"{path}.{part}" if path else part
+        elif part == "properties" or part in _COMBINERS:
+            pass  # the walk keeps the path for both
+        elif part == "items":
+            path, kind = f"{path}[]", "items"
+        else:
+            under_x = under_x or part.startswith("x-")
+            path = f"{path}.{part}" if path else part
+    return path, kind, under_x
+
+
+def _is_named_map(pointer: Tuple[str, ...]) -> bool:
+    """Whether the walk would meet the node at `pointer` as a map of schemas
+    by name, reading each segment as `_map_holders` does."""
+    return _map_holders(pointer)[-1] is not None
+
+
+def _is_entry_named_properties(pointer: Tuple[str, ...]) -> bool:
+    """Whether `pointer` names a `$defs` or `definitions` entry called
+    `properties`. Such an entry used to be read as the `properties` keyword
+    of its set of definitions, a map of properties, so its own shape
+    (`patternProperties`, a keyword beside a combiner) was never checked. It
+    is read as an entry now, with its keys and contents checked, and its own
+    shape still left alone."""
+    return pointer[-1:] == ("properties",) and _map_holders(pointer)[-2] in (
+        "$defs",
+        "definitions",
+    )
+
+
+def _position_after(position: str, key: Any) -> str:
+    """What the value under `key` is, in a node at `position`: a "schema", a
+    map of schemas by name ("names", or "definitions" for a set of
+    definitions), a "list" of schemas, or a "value" that is none of these.
+
+    Only the root, and a node reached from it through schema keywords, is a
+    schema. So a `$defs` or `definitions` key holds definitions only as a
+    keyword of one, never as a property name, a member of a map no schema
+    keyword holds (`components`), or anywhere inside an `x-*` payload or a
+    data keyword."""
+    if position in ("names", "definitions", "list"):
+        return "schema"
+    if position != "schema":
+        return "value"
+    if key in ("$defs", "definitions"):
+        return "definitions"
+    if key in _NAMED_SCHEMA_KEYWORDS:
+        return "names"
+    if key in _LISTED_SCHEMA_KEYWORDS:
+        return "list"
+    if key in _SINGLE_SCHEMA_KEYWORDS:
+        return "schema"
+    return "value"
+
+
+def _pointer_position(pointer: Tuple[str, ...]) -> str:
+    """What the node at a JSON pointer is, as `_position_after` reads it."""
+    position = "schema"
+    for part in pointer:
+        position = _position_after(position, part)
+    return position
+
+
+def _next_readings(readings: set, part: str) -> set:
+    """What the segment after `part` can be, in each reading of `part`."""
+    following = set()
+    for expect in readings:
+        if expect == "member" or (
+            expect == "schema"
+            and part not in _NAMED_SCHEMA_KEYWORDS
+            and part not in _LISTED_SCHEMA_KEYWORDS
+            and part not in _SINGLE_SCHEMA_KEYWORDS
+        ):
+            following.update(("schema", "member"))
+        elif expect == "schema" and part in _NAMED_SCHEMA_KEYWORDS:
+            following.add(part)
+        elif expect == "schema" and part in _LISTED_SCHEMA_KEYWORDS:
+            following.add("index")
+        else:
+            following.add("schema")
+    return following
+
+
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})
+# Keywords whose values are instance data, not schemas.
+_DATA_KEYWORDS = frozenset({"const", "default", "enum", "examples"})
 _NON_VALIDATING_SCHEMA_KEYWORDS = frozenset(
     {
         "const",
@@ -369,7 +690,7 @@ class JsonSchemaImporter:
         except Exception as exc:
             raise ValueError(f"Invalid JSON Schema: {exc}") from exc
 
-        self._validate_supported_shapes(schema)
+        unread_warnings = self._validate_supported_shapes(schema)
         if (
             not properties
             and "properties" in self.schema
@@ -387,6 +708,19 @@ class JsonSchemaImporter:
                 f"Could not import JSON Schema{location}: {message}"
             ) from exc
 
+        # A root typed `["object", "null"]`, or a root `anyOf`/`oneOf`, parses to
+        # a union rather than a class, and crashed below with
+        # `AttributeError: model_fields`. The root is the document being scored,
+        # so it cannot be null or one of several shapes.
+        if not (isinstance(source_model, type) and issubclass(source_model, BaseModel)):
+            raise ValueError(
+                "The root of a JSON Schema must be a single object. A root typed "
+                "['object', 'null'], a root anyOf/oneOf, or a root '$ref' to "
+                "either, is a union, and the document being scored cannot be null "
+                "or one of several shapes. Type the root, or what its '$ref' "
+                "names, 'object'."
+            )
+
         if not source_model.model_fields:
             if "patternProperties" in schema:
                 raise ValueError(
@@ -395,11 +729,19 @@ class JsonSchemaImporter:
                 )
             return {}
 
-        return self._convert_model_fields(
+        fields = self._convert_model_fields(
             source_model,
             field_path=self.field_path,
             building=set(),
         )
+        # Issued only once the import builds: one that fails anyway, such as a
+        # root `$ref` to a property typed `["object", "null"]`, would otherwise
+        # warn that a key "is ignored" with advice that cannot be followed. No
+        # fields fails the import at the caller.
+        if fields:
+            for message in unread_warnings:
+                warnings.warn(message, UserWarning)
+        return fields
 
     def _convert_model_fields(
         self,
@@ -513,6 +855,7 @@ class JsonSchemaImporter:
                 )
             comparison_field = self._make_comparison_field(
                 field_info,
+                field_path=field_path,
                 # Unused for scoring. Carries an adopted comparator threshold so
                 # `ComparableField` resolves it as on the Python path.
                 comparator=placeholder,
@@ -770,13 +1113,32 @@ class JsonSchemaImporter:
             # the element class's gate is a different number, so echoing it would
             # tell the reader to overwrite a working configuration with the value
             # being discarded.
+            #
+            # When `items` is a `$ref`, "inside that property's 'items'" read
+            # as beside the `$ref`, where the key is not read either and now
+            # raises, so the message names the class the `$ref` builds from.
+            # Where the property is not found in the raw schema, the advice
+            # must hold for either shape.
             if declared != _EXPORTED_ARRAY_THRESHOLD_SENTINEL:
+                sources = self._element_class_sources(field_path)
+                if sources:
+                    where = (
+                        f"declared on {' or '.join(sources)}, where its 'items' "
+                        "'$ref' leads"
+                    )
+                elif sources is None:
+                    where = (
+                        "declared on the class its 'items' builds, which for a "
+                        "'$ref' is the definition it leads to"
+                    )
+                else:
+                    where = "declared inside that property's 'items'"
                 warnings.warn(
                     f"'x-aws-stickler-threshold': {declared} has no effect on "
                     f"array property '{field_path}' and is ignored. Pairing of "
                     f"array elements is gated by the element class's own "
-                    f"'x-aws-stickler-match-threshold', declared inside that "
-                    f"property's 'items'; set it there if that is what you meant.",
+                    f"'x-aws-stickler-match-threshold', {where}; set it there "
+                    "if that is what you meant.",
                     UserWarning,
                 )
 
@@ -956,6 +1318,7 @@ class JsonSchemaImporter:
         clip_inferred = clip is None and inferred is not None
         field = self._make_comparison_field(
             field_info,
+            field_path=field_path,
             comparator=comparator,
             threshold=default_threshold if threshold_defaulted else declared_threshold,
             weight=extensions.get("weight", inferred.weight if inferred else 1.0),
@@ -995,6 +1358,7 @@ class JsonSchemaImporter:
     def _make_comparison_field(
         source: FieldInfo,
         *,
+        field_path: str = "",
         comparator=None,
         comparator_name: Optional[str] = None,
         threshold: Optional[float],
@@ -1010,7 +1374,18 @@ class JsonSchemaImporter:
             source_extra = dict(source_extra)
             examples = source_extra.pop(_PRESERVED_EXAMPLES_KEY, examples)
 
-        parsed_schema = TypeAdapter(source.rebuild_annotation()).json_schema()
+        try:
+            parsed_schema = TypeAdapter(source.rebuild_annotation()).json_schema()
+        except PydanticUserError as exc:
+            # The parser leaves a `$ref` back into a type it is still building
+            # as a name, the pointer's last segment. Where no model has that
+            # name (an array definition, `#/properties/type`), the type stays
+            # undefined, or a builtin of that name is read in its place.
+            location = f" at '{field_path}'" if field_path else ""
+            raise ValueError(
+                "Recursive JSON Schema models are not supported by the comparison "
+                f"engine{location}. Use a bounded, non-recursive schema."
+            ) from exc
         schema_metadata = {
             key: deepcopy(value)
             for key, value in parsed_schema.items()
@@ -1082,9 +1457,39 @@ class JsonSchemaImporter:
                     for key, value in prepared.items()
                     if key not in metadata and key != "type"
                 }
-                metadata["anyOf"] = [
-                    {**deepcopy(non_metadata), "type": value} for value in raw_type
-                ]
+                # The object arm generates the class, and `_build_nested_model`
+                # reads the class's own keys off that arm. Leaving them only as
+                # siblings of `anyOf` built `DynamicModel` at 0.7 for a node that
+                # declared a name and threshold, while its field keys, read off
+                # the property, were honoured. See #349.
+                model_keys = {
+                    key: deepcopy(value)
+                    for key, value in metadata.items()
+                    if key in _KNOWN_MODEL_EXTENSIONS
+                }
+
+                # Beside a `$ref` to a scalar, every arm parses as that scalar,
+                # the null arm too, so the node builds what the single type
+                # builds: `str`, required where the property is.
+                scalar = "$ref" in non_metadata and _is_scalar_schema(
+                    _ref_end(schema, non_metadata["$ref"])
+                )
+
+                def arm(value: Any) -> Dict[str, Any]:
+                    # The null arm takes no structural keywords: a `$ref` copied
+                    # onto it parsed as a second object arm, so the node became
+                    # a union of two classes scored with ExactComparator.
+                    if value == "null" and not scalar:
+                        return {"type": "null"}
+                    if value != "object":
+                        return {**deepcopy(non_metadata), "type": value}
+                    # An arm `type` beside a `$ref` makes the parser merge the
+                    # two into a new class. A property typed `"object"` builds
+                    # the referenced class, so the arm keeps only the `$ref`.
+                    typed = {} if "$ref" in non_metadata else {"type": value}
+                    return {**deepcopy(non_metadata), **model_keys, **typed}
+
+                metadata["anyOf"] = [arm(value) for value in raw_type]
                 prepared = metadata
 
             return prepared
@@ -1092,7 +1497,7 @@ class JsonSchemaImporter:
         return prepare(schema)
 
     @classmethod
-    def _validate_supported_shapes(cls, schema: Dict[str, Any]) -> None:
+    def _validate_supported_shapes(cls, schema: Dict[str, Any]) -> List[str]:
         """Reject shapes the comparison model cannot represent faithfully.
 
         Also where extension keys are checked, because this walk sees every node
@@ -1101,12 +1506,125 @@ class JsonSchemaImporter:
         that produce a field, so a typo on the root object, on `items`, or on a
         `["object", "null"]` node was silently dropped while the same typo one
         level down raised.
-        """
 
-        def walk(node: Any, path: str, scope: Optional[str] = "model") -> None:
+        A `$defs`/`definitions` entry is checked as a definition once a `$ref`
+        reaches it. A dereferenced schema keeps the originals beside their
+        inlined copies, and an entry nothing references builds nothing, so
+        checking its own keys raised for keys that were read on the copies. Such
+        an entry is walked as before, for its contents only, and so are the
+        targets of its `$ref`s. Data keywords and `x-*` payloads are values, not
+        schemas, and are not walked, except where a `$ref` points into one. Only
+        a `$defs` or `definitions` keyword of a schema holds entries (see
+        `_position_after`); one named so anywhere else is not a set of them.
+
+        Every `$ref` target is walked from the reference as well, so a class
+        built inside it reads model keys wherever it sits: under `not` or an
+        `x-*` key inside a definition, or outside `$defs` (`#/components/...`).
+        A target that is a map of schemas by name, such as
+        `#/$defs/W/properties`, is walked one member at a time, so a property
+        named like a keyword is a name there too. Only a whole definition
+        entry is checked as a definition. Any other target has its own keys,
+        model keys beside its `$ref` included, checked only where the walk
+        around it checks them: on a property or `items`
+        node anywhere in a definition entry, under `not` or `then` too. Under
+        an `x-*` key, which the walk does not enter, such a node has its own
+        keys checked from the reference, but not model keys beside its `$ref`.
+        A target that is no property or `items` node (`#/$defs/W/not`,
+        `#/x-models/T`) has only its contents checked. A field key on a
+        property node is valid there, but only the object holding the node
+        reads it: another property that `$ref`s the node does not. The rest of
+        the entry around a target builds nothing, as an unused entry does.
+
+        Model keys no class reads raise, except on an object-typed property,
+        a position the docs call valid for them: beside its `$ref`, or reached
+        only through the root `$ref` or an `allOf` arm. There they are dropped,
+        as before, with a warning until 1.1.0. The warnings are returned, for
+        the caller to issue once the import builds.
+        """
+        # Nodes whose model keys some class reads, by identity: every position
+        # except an `allOf` arm and the root's own `$ref` target. Over-counting
+        # here can only skip an error, never raise one.
+        read: set = set()
+        # `allOf` arms at positions that build a class, checked once every
+        # reader is known.
+        merged: List[Tuple[Any, str, str]] = []
+        # `$ref` targets, by JSON pointer, and whether a position that builds a
+        # class reached them. A target inside a definition entry is queued
+        # itself, and the entry that holds it is queued as built nothing, so the
+        # entry is checked as a definition but its other contents read nothing.
+        walked: Dict[Tuple[str, ...], bool] = {}
+        pending: List[Tuple[Tuple[str, ...], Any, bool, bool]] = []
+        # Model keys beside a `$ref` at a position that reads them but where
+        # nothing is built, by identity; the nodes inside a definition entry
+        # that a `$ref` targets; and every hop after the first of a `$ref`
+        # chain from a position that builds a class. A target is walked with
+        # no scope, so a node in all three is reported once the walk is done.
+        unbuilt: Dict[int, Tuple[Any, ...]] = {}
+        inner: set = set()
+        passed: List[int] = []
+        # Warnings for model keys no class reads, by node and key. Returned, and
+        # issued only once the import builds, so an import that raises here or
+        # later gives none.
+        deferred: Dict[Tuple[int, str], str] = {}
+        # Definition entries a `$ref` reached, and later every body walked as
+        # building nothing, by identity; and every set of definitions passed,
+        # so the rest can be walked last.
+        entries: set = set()
+        mappings: List[Tuple[str, Dict[str, Any]]] = []
+
+        def resolve(
+            ref: Any,
+        ) -> Tuple[Any, Tuple[str, ...], Optional[Tuple[str, ...]], Any]:
+            return _resolve_local_ref(schema, ref)
+
+        label = _ref_label
+
+        def chain(node: Any, where: str, pointer: Optional[Tuple[str, ...]] = None):
+            return _ref_chain(schema, node, where, pointer)
+
+        def unread(
+            node: Any,
+            declared: List[str],
+            subject: str,
+            reason: str,
+            advice: str,
+            warn: bool,
+        ) -> None:
+            """Raise for model keys no class reads. On an object-typed
+            property, where the docs call them valid, record a warning instead,
+            until 1.1.0, and let the import go on: it builds what it builds
+            without the keys, and warns, or it still fails and does not warn."""
+            if not warn:
+                raise ValueError(
+                    f"Stickler extension '{declared[0]}' {subject} is not "
+                    f"read{reason}. {advice} Left in place it would be dropped "
+                    "silently."
+                )
+            for key in declared:
+                deferred.setdefault(
+                    (id(node), key),
+                    f"Stickler extension '{key}' {subject} is not read{reason}. "
+                    f"{advice} It is ignored, and this becomes a ValueError in "
+                    "1.1.0.",
+                )
+
+        def walk(
+            node: Any,
+            path: str,
+            scope: Optional[str] = "model",
+            built: bool = True,
+            reads: bool = True,
+            position: str = "schema",
+            shapes: bool = True,
+        ) -> None:
+            # `position` is what the node is, as `_position_after` reads it,
+            # whatever scope the walk reads it with. With `shapes` False the
+            # node's own shape (`patternProperties`, a keyword beside a
+            # combiner) is not checked, only its keys and contents.
             if isinstance(node, list):
+                item = "value" if position == "value" else "schema"
                 for index, value in enumerate(node):
-                    walk(value, f"{path}[{index}]", scope)
+                    walk(value, f"{path}[{index}]", scope, built, reads, item)
                 return
             if not isinstance(node, dict):
                 return
@@ -1114,7 +1632,60 @@ class JsonSchemaImporter:
             if scope is not None:
                 _reject_unknown_extensions(node, path or "(root)", scope=scope)
 
-            if "patternProperties" in node:
+            ref = node.get("$ref")
+            target, target_parts, entry, entry_body = resolve(ref)
+            if entry is not None and target_parts == entry:
+                pending.append((entry, entry_body, built, True))
+            elif entry is not None:
+                # The reference builds the target, not the entry around it. The
+                # entry is still checked, but its other contents build nothing
+                # here, and the target may sit where the entry's walk does not
+                # build it (`not`, `x-*`), so it is walked from here as well.
+                pending.append((entry, entry_body, False, True))
+                pending.append((target_parts, target, built, False))
+                inner.add(id(target))
+            elif target is not None and target_parts:
+                # Outside `$defs` the target may sit where the walk does not
+                # build it (`components`) or does not go (`x-*`), so classes
+                # built inside it would not count as readers.
+                pending.append((target_parts, target, built, False))
+            # Only a position that builds a class reads the model keys it
+            # reaches: a `$ref` under `not` or `additionalProperties` builds
+            # nothing, so it must not excuse an `allOf` that drops them.
+            if reads and built:
+                hops = list(chain(node, ""))
+                read.update(id(hop) for hop, _, _ in hops)
+                passed.extend(id(hop) for hop, _, _ in hops[1:])
+            # The class is built from the `$ref` target, which reads its own
+            # model keys. Only the root reads the ones beside its `$ref`.
+            if reads and isinstance(ref, str) and scope in ("model", "field_or_model"):
+                declared = sorted(k for k in node if k in _KNOWN_MODEL_EXTENSIONS)
+                if declared:
+                    hops = list(chain(node, ""))
+                    # Through an alias, the class is the end of the chain.
+                    source = hops[-1][1] if len(hops) > 1 else f"'{ref}'"
+                    # `items` and a combiner arm are positions no doc names
+                    # for these keys, so they raise. An object-typed property
+                    # is one the docs call valid for them, so it warns.
+                    found = (
+                        node,
+                        declared,
+                        f"beside the '$ref' at '{path}'",
+                        f": the class is built from {source}, which reads only "
+                        "its own keys",
+                        "Put it there.",
+                        scope == "field_or_model",
+                    )
+                    if built:
+                        unread(*found)
+                    else:
+                        # Nothing is built here, but a `$ref` from a position
+                        # that builds a class may point at this node. Such a
+                        # reference walks it with no scope, so it is checked
+                        # once the walk is done.
+                        unbuilt.setdefault(id(node), found)
+
+            if shapes and "patternProperties" in node:
                 location = f" at '{path}'" if path else ""
                 raise ValueError(
                     "JSON Schema patternProperties cannot be represented as named "
@@ -1122,7 +1693,7 @@ class JsonSchemaImporter:
                 )
 
             combiners = [keyword for keyword in _COMBINERS if keyword in node]
-            if combiners:
+            if shapes and combiners:
                 allowed = set(_ANNOTATION_KEYWORDS)
                 allowed.update({"$defs", "definitions"})
                 allowed.update(combiners)
@@ -1142,8 +1713,20 @@ class JsonSchemaImporter:
                     )
 
             for key, value in node.items():
-                child_path = path
-                child_scope: Optional[str] = None
+                if key in _DATA_KEYWORDS or (
+                    isinstance(key, str) and key.startswith("x-")
+                ):
+                    continue  # a value, not a schema
+                inside = _position_after(position, key)
+                if key in ("$defs", "definitions") and isinstance(value, dict):
+                    at = f"{path}.{key}" if path else key
+                    if inside == "definitions":
+                        mappings.append((at, value))
+                    else:
+                        # Named like the keyword, but no schema holds it, so it
+                        # is walked as before and builds nothing.
+                        walk(value, at, "model", False, position=inside)
+                    continue
                 if key == "properties" and isinstance(value, dict):
                     for name, child in value.items():
                         # A property is scored as a field of this object, and if
@@ -1153,20 +1736,199 @@ class JsonSchemaImporter:
                             child,
                             f"{path}.{name}" if path else name,
                             "field_or_model" if _is_object_schema(child) else "field",
+                            built,
+                            position=_position_after(inside, name),
                         )
                     continue
+                if key == "allOf" and isinstance(value, list):
+                    # The arms are merged into one `AllOfModel`, so no arm, and
+                    # nothing an arm `$ref`s, has its model keys read here.
+                    for index, arm in enumerate(value):
+                        if built:
+                            merged.append(
+                                (
+                                    arm,
+                                    f"{path}.allOf[{index}]"
+                                    if path
+                                    else f"allOf[{index}]",
+                                    path or "(root)",
+                                )
+                            )
+                        walk(
+                            arm,
+                            f"{path}[{index}]",
+                            "model",
+                            built,
+                            reads=False,
+                            position=_position_after(inside, index),
+                        )
+                    continue
+                # Named in the path, so an error under `not` or `then` points
+                # at a node that exists (`$defs.W.not[]`, not `$defs.W[]`).
+                child_path = f"{path}.{key}" if path else key
+                child_scope: Optional[str] = None
+                # Only these positions build part of the model. Anything else,
+                # such as `not` or `if`, is walked for its shape but builds no
+                # class whose keys could be dropped.
+                child_built = False
                 if key == "items":
                     child_path = f"{path}[]" if path else "[]"
                     # Field keys are NOT read on `items`: weight, threshold and
                     # comparator there are all dropped, since the field they would
                     # configure is the array itself, one level up. Only the element
                     # class's own settings are read.
-                    child_scope = "model"
+                    child_scope, child_built = "model", built
                 elif key in _COMBINERS or key in ("$defs", "definitions"):
-                    child_scope = "model"
-                walk(value, child_path, child_scope)
+                    # A `$defs` that is not a mapping is not a set of definitions;
+                    # it is still walked, as before, rather than skipped.
+                    child_path = path
+                    child_scope, child_built = "model", built
+                walk(value, child_path, child_scope, child_built, position=inside)
 
-        walk(schema, "", "model")
+        def own_keys(pointer: Tuple[str, ...], body: Any) -> None:
+            """Check a property or `items` target under an `x-*` key, which the
+            walk does not enter, with the path and scope it would have there."""
+            at, kind, under_x = _walk_position(pointer)
+            if not under_x or not isinstance(body, dict):
+                return
+            if kind == "property":
+                scope = "field_or_model" if _is_object_schema(body) else "field"
+            elif kind == "items":
+                scope = "model"
+            else:
+                return
+            _reject_unknown_extensions(body, at, scope=scope)
+
+        def walk_target(pointer: Tuple[str, ...], body: Any, built: bool) -> None:
+            """Walk a `$ref` target for its contents. A map of schemas by name,
+            such as `#/$defs/W/properties`, is no schema, so it is walked one
+            member at a time, as the walk around it reads it: a property named
+            like a keyword (`oneOf`, `items`) is a name."""
+            at = ".".join(pointer)
+            if not (_is_named_map(pointer) and isinstance(body, dict)):
+                shapes = not _is_entry_named_properties(pointer)
+                position = _pointer_position(pointer)
+                walk(body, at, None, built, False, position, shapes)
+                return
+            for name, member in body.items():
+                position = _pointer_position((*pointer, name))
+                walk(member, f"{at}.{name}", None, built, False, position)
+
+        read.add(id(schema))
+        walk(schema, "", "model", reads=False)
+        while pending:
+            pointer, body, built, definition = pending.pop()
+            if pointer in walked and (walked[pointer] or not built):
+                continue
+            walked[pointer] = built
+            at = ".".join(pointer)
+            if definition and isinstance(body, dict):
+                entries.add(id(body))
+                # Checked like any other node. Walking a definition with no scope
+                # let a typo there import silently while the same typo inline
+                # raised. See #340. Only a body with `properties` generates a
+                # class: a `type: "object"` mapping becomes a `dict` field, judged
+                # against its parent's threshold, so it reads no model keys.
+                hops = [hop for hop, _, _ in chain(body, "")]
+                scope = "value_definition"
+                if "properties" in body:
+                    scope = "definition"
+                elif "$ref" in body and hops[-1] is not body:
+                    # An alias reads no keys either, but where it ends at an
+                    # object it can be used as one, so its advice says so.
+                    if "properties" in hops[-1]:
+                        scope = "alias_definition"
+                # A one-arm `allOf` builds the object only if no hop is typed
+                # otherwise: `["object", "null"]` fails to import there.
+                merges = all(hop.get("type", "object") == "object" for hop in hops)
+                _reject_unknown_extensions(body, at, scope=scope, merges=merges)
+            if not definition:
+                own_keys(pointer, body)
+            walk_target(pointer, body, built)
+
+        # A node inside an entry, such as `#/$defs/List/items`, is built from
+        # where it is referenced, but the entry's walk built nothing there, so
+        # model keys beside the node's own `$ref` passed unread.
+        for hop in passed:
+            if hop in inner and hop in unbuilt:
+                unread(*unbuilt[hop])
+
+        # An entry no `$ref` reaches is walked as it was before definitions were
+        # checked: its own keys are left alone, and its contents are checked
+        # like any other node, so a typo in one of its properties still raises.
+        # It builds nothing, but the `$ref`s it holds were followed before, so
+        # their targets are walked for their contents too: a typo in an `x-*`
+        # payload that only an unused entry references still raises.
+        while mappings or pending:
+            if mappings:
+                at, mapping = mappings.pop()
+                for name, body in mapping.items():
+                    if id(body) not in entries:
+                        entries.add(id(body))
+                        walk(
+                            body,
+                            f"{at}.{name}",
+                            None,
+                            False,
+                            reads=False,
+                            shapes=name != "properties",
+                        )
+                continue
+            pointer, body, _, _ = pending.pop()
+            if pointer in walked or id(body) in entries:
+                continue
+            walked[pointer] = False
+            entries.add(id(body))
+            own_keys(pointer, body)
+            walk_target(pointer, body, False)
+
+        # An object's model keys are read only where its class is built. An
+        # `allOf` arm is merged into `AllOfModel`, and a root `$ref` builds the
+        # root class from the root's own keys, so keys there are dropped unless
+        # another position builds the same object. See #340. An object-typed
+        # property is a position the docs call valid for these keys, so there
+        # it warns until 1.1.0.
+        def check(
+            node: Any,
+            where: str,
+            pointer: Optional[Tuple[str, ...]],
+            reached: str,
+            advice: str,
+        ) -> None:
+            for hop, hop_where, hop_pointer in chain(node, where, pointer):
+                declared = sorted(key for key in hop if key in _KNOWN_MODEL_EXTENSIONS)
+                if declared and id(hop) not in read:
+                    unread(
+                        hop,
+                        declared,
+                        f"on {hop_where}",
+                        f" when it is reached through {reached}",
+                        advice,
+                        _is_property_pointer(hop_pointer) and _is_object_schema(hop),
+                    )
+
+        for arm, arm_path, at in merged:
+            check(
+                arm,
+                f"object '{arm_path}'",
+                None,
+                f"'allOf' at '{at}'",
+                "The arms are merged into one class with the default name and "
+                "match threshold, and no position sets them. Reference the object "
+                "directly, without 'allOf', to configure it.",
+            )
+        root_target, root_target_parts, root_entry, _ = resolve(schema.get("$ref"))
+        if isinstance(root_target, dict):
+            check(
+                root_target,
+                label(root_target_parts, root_entry),
+                root_target_parts,
+                "the root '$ref'",
+                "The root class reads the root's own keys: put it on the root, "
+                "beside the '$ref'.",
+            )
+
+        return list(deferred.values())
 
     @staticmethod
     def _translate_import_error(message: str, schema: Dict[str, Any]) -> str:
@@ -1255,6 +2017,96 @@ class JsonSchemaImporter:
         if annotation is Decimal:
             return float
         return annotation
+
+    def _as_object(self, node: Any) -> Any:
+        """The object a raw node describes: through its `$ref` chain, and into
+        the one arm of an `anyOf`/`oneOf` that is not `null`."""
+        seen: set = set()
+        while isinstance(node, dict) and id(node) not in seen:
+            seen.add(id(node))
+            if "$ref" in node:
+                node = _resolve_local_ref(self.schema, node["$ref"])[0]
+                continue
+            arms = node.get("anyOf", node.get("oneOf"))
+            if "properties" in node or not isinstance(arms, list):
+                return node
+            arms = [arm for arm in arms if arm != {"type": "null"}]
+            if len(arms) != 1:
+                return node
+            node = arms[0]
+        return node if isinstance(node, dict) else None
+
+    def _object_properties(self, node: Any) -> List[Dict[str, Any]]:
+        """The `properties` of the object a raw node describes, its own and
+        those of its `allOf` arms, which the merged class holds as well."""
+        found: List[Dict[str, Any]] = []
+        stack, seen = [node], set()
+        while stack:
+            current = self._as_object(stack.pop())
+            if not isinstance(current, dict) or id(current) in seen:
+                continue
+            seen.add(id(current))
+            if isinstance(current.get("properties"), dict):
+                found.append(current["properties"])
+            if isinstance(current.get("allOf"), list):
+                stack.extend(reversed(current["allOf"]))
+        return found
+
+    def _properties_at(self, node: Any, path: str):
+        """The raw schema of each property at `path` below `node`.
+
+        `path` joins property names with '.' and marks an array's `items` with
+        '[]', so each name is matched whole: a name holding '.' is found, not
+        split into two. A path can then name more than one property (`a.b` as
+        the property `a.b`, or as `b` inside `a`), so every match is given."""
+        for properties in self._object_properties(node):
+            for name, child in properties.items():
+                if not isinstance(name, str) or not path.startswith(name):
+                    continue
+                rest = path[len(name) :]
+                while True:
+                    if not rest:
+                        yield child
+                        break
+                    if rest.startswith("."):
+                        yield from self._properties_at(child, rest[1:])
+                    if not rest.startswith("[]"):
+                        break
+                    child = (self._as_object(child) or {}).get("items")
+                    rest = rest[2:]
+
+    def _element_class_sources(self, field_path: str) -> Optional[List[str]]:
+        """Where the element class of the array property at `field_path` reads
+        its own keys, when its `items`, or an arm of them, is a `$ref`: the end
+        of each `$ref` chain. Empty when `items` is inline, and None when no
+        single array property is found at that path in the raw schema."""
+        path = field_path
+        if self.field_path:
+            if not path.startswith(self.field_path):
+                return None
+            path = path[len(self.field_path) :].lstrip(".")
+        arrays = {
+            id(array): array
+            for array in (
+                self._as_object(node) for node in self._properties_at(self.schema, path)
+            )
+            if isinstance(array, dict) and "items" in array
+        }
+        if len(arrays) != 1:
+            return None
+        items = next(iter(arrays.values()))["items"]
+        if not isinstance(items, dict):
+            return []
+        arms = items.get("anyOf", items.get("oneOf"))
+        refs = [items] if "$ref" in items else arms if isinstance(arms, list) else []
+        sources: List[str] = []
+        for ref in refs:
+            if not isinstance(ref, dict) or "$ref" not in ref:
+                continue
+            hops = list(_ref_chain(self.schema, ref, ""))
+            if len(hops) > 1 and hops[-1][1] not in sources:
+                sources.append(hops[-1][1])
+        return sources
 
     @staticmethod
     def _is_model(annotation: Any) -> bool:

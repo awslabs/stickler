@@ -51,7 +51,7 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 | `comparator` | `BaseComparator` | `LevenshteinComparator()` | The comparison algorithm to use. See [Comparators](../Comparators/README.md) for the full list. |
 | `threshold` | `float` (0.0--1.0) | `0.5` | Minimum similarity score required for a field to be classified as a match. |
 | `weight` | `float` (> 0.0) | `1.0` | Relative importance of this field when computing aggregate scores. |
-| `clip_under_threshold` | `bool` | `True` | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. |
+| `clip_under_threshold` | `bool` | `True` (`False` on dict and plain-model fields and lists of them) | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. List fields follow the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract. |
 
 ### How Each Parameter Affects Scoring
 
@@ -80,7 +80,7 @@ overall_score = sum(field_score * weight) / sum(weights)
 
 Fields with higher weights pull the overall score toward their individual result. At the dataset level, `BulkStructuredModelEvaluator.compute()` exposes this weight-aware aggregate as `metrics["weighted_overall_score"]` -- prefer it over `cm_f1` when weights are non-uniform, since `cm_f1` treats every field-match equally. See [Weighted Overall Score](bulk-evaluation.md#weighted-overall-score) in the bulk-evaluation guide.
 
-**`clip_under_threshold`** -- When enabled (the default), a field that scores below its threshold contributes 0.0 to the weighted average instead of its partial similarity. This prevents low-confidence matches from inflating the overall score.
+**`clip_under_threshold`** -- When enabled (the default, except on dict and plain-model fields), a field that scores below its threshold contributes 0.0 to the weighted average instead of its partial similarity. This prevents low-confidence matches from inflating the overall score. A list field follows the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 ### Example Model
 
@@ -110,8 +110,7 @@ class Invoice(StructuredModel):
     )
 
     total_amount: float = ComparableField(
-        comparator=NumericComparator(),  # Tolerance-based numeric comparison
-        threshold=0.95,
+        comparator=NumericComparator(absolute_tolerance=0.01),  # Equal within 0.01
         weight=2.5,
     )
 
@@ -193,12 +192,12 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | Extension | Type | Default | Purpose |
 |-----------|------|---------|---------|
 | `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`). On an object with `properties`, which is scored field by field, it has no effect except for a threshold it names, and warns |
-| `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value from 0.0 to 1.0 other than 0.5 warns there; any other value raises, naming `x-aws-stickler-match-threshold`. Read, not ignored, on an array of free-form `{"type": "object"}` items |
+| `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value from 0.0 to 1.0 other than 0.5 warns there (in Python, `ComparableField(threshold=...)` on a `List[StructuredModel]` raises `ValueError`); any other value raises, naming `x-aws-stickler-match-threshold`. Read, not ignored, on an array of free-form `{"type": "object"}` items |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
-| `x-aws-stickler-clip-under-threshold` | boolean | `true`, `false` on a free-form object or an array of them | Zero out scores below threshold |
+| `x-aws-stickler-clip-under-threshold` | boolean | `true`, `false` on a free-form object or an array of them | Zero out scores below threshold. An inferred property takes it from inference (see below) |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
-| `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold and weight for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
+| `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold, weight and clip setting for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
 | `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments passed to the named comparator. On an object with `properties` only its `threshold` is read; on an array of models nothing is. Every key not read warns |
 
 An unstated `x-aws-stickler-threshold` does not resolve to one number. It depends
@@ -233,6 +232,13 @@ object or an array of them, where it defaults to `false` so a comparator such as
 `ANLSStarComparator` keeps its partial credit. The default `ExactComparator`
 scores each object `0.0` or `1.0`, so clipping does not change them.
 
+With `x-aws-stickler-infer-unspecified`, a scalar, a free-form object, or an
+array of either that names no comparator takes any threshold or clip setting it
+leaves unstated from
+[inference](../../Advanced/dynamic-models.md#what-inference-chooses) instead.
+Inference turns clip off for a free-form object, a free-text string such as
+`notes` or `description`, and an array of either, and leaves it on elsewhere.
+
 ### Example Schema
 
 ```json
@@ -257,7 +263,7 @@ scores each object `0.0` or `1.0`, so clipping does not change them.
     "total_amount": {
       "type": ["number", "null"],
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95,
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
       "x-aws-stickler-weight": 2.5
     }
   },

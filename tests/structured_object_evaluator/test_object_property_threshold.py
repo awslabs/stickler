@@ -330,6 +330,161 @@ class TestAnArrayOfObjectsIgnoresItWithAWarning:
                 )
 
 
+class TestTheWarningNamesTheClassAnItemsRefBuildsFrom:
+    """Where `items` is a `$ref`, the warning names the definition to edit.
+
+    "Declared inside that property's 'items'" read as beside the `$ref`, where
+    the key is not read either: the class is built from the target, so the
+    import raises there and names the target. The two messages gave opposite
+    advice for the same key.
+    """
+
+    ROW = {"type": "object", "properties": {"b": {"type": "string"}}}
+
+    # How the array property reaches `Row`, and the property names on the way
+    # to it, which the warning joins with '.'.
+    SHAPES = {
+        "ref": (
+            lambda rows: {"type": "object", "properties": {"rows": rows}},
+            {"$ref": "#/$defs/Row"},
+            ("rows",),
+        ),
+        "alias": (
+            lambda rows: {"type": "object", "properties": {"rows": rows}},
+            {"$ref": "#/$defs/Alias"},
+            ("rows",),
+        ),
+        "anyOf-arm": (
+            lambda rows: {"type": "object", "properties": {"rows": rows}},
+            {"anyOf": [{"$ref": "#/$defs/Row"}, {"type": "null"}]},
+            ("rows",),
+        ),
+        "inside-a-definition": (
+            lambda rows: {
+                "type": "object",
+                "properties": {"p": {"$ref": "#/$defs/P"}},
+                "$defs": {"P": {"type": "object", "properties": {"rows": rows}}},
+            },
+            {"$ref": "#/$defs/Row"},
+            ("p", "rows"),
+        ),
+        "under-the-root-ref": (
+            lambda rows: {
+                "$ref": "#/$defs/P",
+                "$defs": {"P": {"type": "object", "properties": {"rows": rows}}},
+            },
+            {"$ref": "#/$defs/Row"},
+            ("rows",),
+        ),
+        "inside-an-allOf-arm": (
+            lambda rows: {
+                "type": "object",
+                "properties": {
+                    "o": {"allOf": [{"type": "object", "properties": {"rows": rows}}]}
+                },
+            },
+            {"$ref": "#/$defs/Row"},
+            ("o", "rows"),
+        ),
+        "a-name-with-a-dot": (
+            lambda rows: {"type": "object", "properties": {"a.b": rows}},
+            {"$ref": "#/$defs/Row"},
+            ("a.b",),
+        ),
+        "a-name-with-a-dot-beside-that-path": (
+            lambda rows: {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "object", "properties": {"b": {"type": "string"}}},
+                    "a.b": rows,
+                },
+            },
+            {"$ref": "#/$defs/Row"},
+            ("a.b",),
+        ),
+    }
+
+    @classmethod
+    def _schema(cls, shape, row, **extensions):
+        make, items, _ = cls.SHAPES[shape]
+        schema = make(dict({"type": "array", "items": items}, **extensions))
+        schema.setdefault("$defs", {}).update(
+            {"Row": row, "Alias": {"$ref": "#/$defs/Row"}}
+        )
+        return schema
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_it_names_the_definition(self, shape):
+        with pytest.warns(UserWarning, match="has no effect") as caught:
+            StructuredModel.from_json_schema(
+                self._schema(shape, self.ROW, **{"x-aws-stickler-threshold": 0.88})
+            )
+        message = str(caught[0].message)
+        assert f"array property '{'.'.join(self.SHAPES[shape][2])}'" in message
+        assert "declared on definition '$defs.Row'" in message
+        assert "inside that property's 'items'" not in message
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_following_it_works(self, shape):
+        model = StructuredModel.from_json_schema(
+            self._schema(
+                shape, dict(self.ROW, **{"x-aws-stickler-match-threshold": 0.88})
+            )
+        )
+        for name in self.SHAPES[shape][2]:
+            element = model.model_fields[name].annotation
+            while getattr(element, "__args__", None):
+                element = next(arg for arg in element.__args__ if arg is not type(None))
+            model = element
+        assert model.match_threshold == 0.88
+
+    def test_inline_items_keep_the_items_advice(self):
+        with pytest.warns(UserWarning, match="inside that property's 'items'"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "rows": {
+                            "type": "array",
+                            "items": self.ROW,
+                            "x-aws-stickler-threshold": 0.88,
+                        }
+                    },
+                }
+            )
+
+    def test_where_the_property_is_not_found_the_advice_fits_either_shape(self):
+        """An object in a two-arm `anyOf` is not looked through, so the
+        warning cannot tell inline `items` from a `$ref`, and says what holds
+        for both rather than "inside that property's 'items'"."""
+        rows = {
+            "type": "array",
+            "items": {"$ref": "#/$defs/Row"},
+            "x-aws-stickler-threshold": 0.88,
+        }
+        with pytest.warns(UserWarning, match="has no effect") as caught:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "o": {
+                            "anyOf": [
+                                {"type": "object", "properties": {"rows": rows}},
+                                {"type": "object", "properties": {"z": {"type": "string"}}},
+                            ]
+                        }
+                    },
+                    "$defs": {"Row": self.ROW},
+                }
+            )
+        message = str(caught[0].message)
+        assert (
+            "declared on the class its 'items' builds, which for a '$ref' is the "
+            "definition it leads to" in message
+        )
+        assert "inside that property's 'items'" not in message
+
+
 class TestOurOwnExportDoesNotWarn:
     """The warning must not fire on a schema stickler itself produced.
 
@@ -623,17 +778,14 @@ class TestTheComparatorOnTheSameNodeWarns:
             )
 
 
-class TestTheKeyIsStillDroppedInsideDefs:
-    """The declared gap: `$ref` into `$defs` does not see the extension.
+class TestTheKeyIsNotDroppedInsideDefs:
+    """The gap 1.0.0 declared: `$ref` into `$defs` did not see the extension.
 
     `$ref` is how a generated schema expresses a reusable nested object, so this
-    is the spelling many real schemas use. The extension walk does not descend
-    into `$defs`, which is pre-existing on `dev` for every key -- but this change
-    is what makes the loss score-relevant for the threshold.
-
-    Asserts CURRENT behaviour. When the walk is extended, these fail, and that
-    failure is the reminder to delete the "Known gap" paragraph from the
-    CHANGELOG in the same commit.
+    is the spelling many real schemas use. The key used to resolve `0.7` there in
+    silence, and a typo imported cleanly. A definition reads only model keys, so
+    the threshold now raises and names where it belongs, and the typo raises as it
+    does inline. See #340.
     """
 
     WIDE = {
@@ -659,14 +811,26 @@ class TestTheKeyIsStillDroppedInsideDefs:
         )
         assert model._get_comparison_info("inner").threshold == pytest.approx(0.88)
 
-    def test_via_defs_silently_falls_back(self):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            model = self._via_defs(
-                dict(self.WIDE, **{"x-aws-stickler-threshold": 0.88})
-            )
-        assert model._get_comparison_info("inner").threshold == pytest.approx(0.7)
-        assert not [str(w.message) for w in caught if "threshold" in str(w.message)]
+    def test_via_defs_raises_instead_of_falling_back(self):
+        with pytest.raises(ValueError, match="belongs on the property that uses"):
+            self._via_defs(dict(self.WIDE, **{"x-aws-stickler-threshold": 0.88}))
+
+    def test_beside_the_ref_honours_it(self):
+        """Where the error sends the author, the same value as inline."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "Parent",
+                "properties": {
+                    "inner": {
+                        "$ref": "#/$defs/Inner",
+                        "x-aws-stickler-threshold": 0.88,
+                    }
+                },
+                "$defs": {"Inner": self.WIDE},
+            }
+        )
+        assert model._get_comparison_info("inner").threshold == pytest.approx(0.88)
 
     def test_a_typo_inline_is_rejected(self):
         """#312's guard works in the position this change touches."""
@@ -675,10 +839,9 @@ class TestTheKeyIsStillDroppedInsideDefs:
                 _schema(**{"x-aws-stickler-thresold": 0.88})
             )
 
-    def test_the_same_typo_inside_defs_is_not(self):
-        """The half that makes the gap a validation hole, not just a default."""
-        model = self._via_defs(dict(self.WIDE, **{"x-aws-stickler-thresold": 0.88}))
-        assert model._get_comparison_info("inner").threshold == pytest.approx(0.7)
+    def test_the_same_typo_inside_defs_is_rejected_too(self):
+        with pytest.raises(ValueError, match="Unrecognized Stickler extension"):
+            self._via_defs(dict(self.WIDE, **{"x-aws-stickler-thresold": 0.88}))
 
 
 class TestAnUndeclaredSchemaIsUnaffectedEndToEnd:
