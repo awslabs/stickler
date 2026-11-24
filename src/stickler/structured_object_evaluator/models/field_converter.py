@@ -254,7 +254,8 @@ class FieldConverter:
                 f"'match_threshold' is not read on primitive field "
                 f"'{field_path}'{of_model}; it is the object-level threshold. "
                 f"Use 'threshold' for this field, or set 'match_threshold' on "
-                f"the model or on a 'structured_model' field."
+                f"the model or on a 'structured_model', 'list_structured_model' "
+                f"or 'optional_structured_model' field."
             )
 
         # `infer_unspecified_fields` scopes a SUBTREE, so it is meaningful only on

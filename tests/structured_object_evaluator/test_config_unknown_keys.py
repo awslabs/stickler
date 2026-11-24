@@ -295,7 +295,8 @@ def test_match_threshold_on_a_primitive_raises():
         "'match_threshold' is not read on primitive field 'amount' of model "
         "'DynamicModel(fields: amount)'; it is the object-level threshold. Use "
         "'threshold' for this field, or set 'match_threshold' on the model or "
-        "on a 'structured_model' field."
+        "on a 'structured_model', 'list_structured_model' or "
+        "'optional_structured_model' field."
     )
 
 
