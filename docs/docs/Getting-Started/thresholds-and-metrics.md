@@ -41,7 +41,7 @@ class Invoice(StructuredModel):
 **What it gates:**
 
 - **TP vs FD classification:** If `similarity >= threshold` (see [Meeting a Threshold](#meeting-a-threshold)), the field is a True Positive. Otherwise, it's a False Discovery.
-- **Score clipping:** When `clip_under_threshold=True` (the default, except on dict and plain-model fields), scores below the threshold are zeroed out in the weighted average. A list field follows the [Score](../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
+- **Score clipping:** When `clip_under_threshold=True` (the default, except on dict and plain-model fields and `List[StructuredModel]`), scores below the threshold are zeroed out in the weighted average. A list field follows the [Score](../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 **Default:** `0.5`
 
@@ -153,7 +153,7 @@ Field threshold, then a threshold named on the comparator, then a default that d
 | `addr: Address` (bare `StructuredModel`) | 0.9 |
 | `addrs: List[Address]` (bare list of `StructuredModel`) | none: each element pair is classified against `Address.match_threshold` (0.7 unless set), as in [list element pairing](#threshold-precedence) |
 
-Bare `dict`, list-of-dict, plain `BaseModel` and list-of-plain-model fields are scored by ANLS* and do not zero low scores (`clip_under_threshold=False`): at a raw 0.6 they score 0.6 but still count as a false discovery against the 0.7 threshold. A bare `addr: Address` does clip: at 0.875 it scores 0.0 and is a false discovery, while the same pair in `addrs: List[Address]` is a TP scoring 0.875.
+Bare `dict`, list-of-dict, plain `BaseModel` and list-of-plain-model fields are scored by ANLS* and do not zero low scores (`clip_under_threshold=False`): at a raw 0.6 they score 0.6 but still count as a false discovery against the 0.7 threshold. A bare `addr: Address` does clip: at 0.875 it scores 0.0 and is a false discovery, while the same pair in `addrs: List[Address]` is a TP scoring 0.875. A bare `List[Address]` does not zero an FD item either (`clip_under_threshold=False`), unless declared with `ComparableField(clip_under_threshold=True)`.
 
 A bare `int` or `float` field is compared as text by `LevenshteinComparator`, not as a number. For a `float`, `inf` against `-inf` scores 0.75 and `1000` against `-1000` scores 0.857, and both clear the 0.7 default threshold; a bare `int` pair of `1000` and `-1000` scores 0.8. Declare `ComparableField(comparator=NumericComparator())` to compare numbers as numbers.
 

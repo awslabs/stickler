@@ -31,7 +31,7 @@ from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField, _named_comparator_threshold
 from .comparison_helper import ComparisonHelper, _maybe_absent
-from .configuration_helper import ConfigurationHelper
+from .configuration_helper import ConfigurationHelper, note_deferred_clip_fields
 from .evaluator_format_helper import EvaluatorFormatHelper, in_list_item_metrics
 from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
@@ -623,6 +623,11 @@ class StructuredModel(BaseModel):
     # Default match threshold - can be overridden in subclasses
     match_threshold: ClassVar[float] = 0.7
 
+    # Fields of a class pydantic could not complete at definition, set by
+    # `_install_object_grade_comparators`. A class-level default so the
+    # per-comparison read in `ConfigurationHelper` is a plain attribute lookup.
+    _stickler_deferred_clip_fields: ClassVar[frozenset] = frozenset()
+
     @classmethod
     def _install_object_grade_comparators(cls) -> None:
         """Give object-grade fields a comparator that can score a whole object.
@@ -671,6 +676,23 @@ class StructuredModel(BaseModel):
         # already resolved, so a module using `from __future__ import annotations`
         # (PEP 563) is handled without special-casing the string form, and its
         # `FieldInfo` is the object every reader consults.
+        #
+        # A class pydantic could not complete yet holds an unresolved forward
+        # reference, so a `List["Item"]` cannot be recognised below. The fields
+        # pydantic could not resolve (`FieldInfo._complete` is False; a field
+        # without the flag counts as unresolved) are recorded for
+        # `ConfigurationHelper.get_comparison_info`, which applies the
+        # list-of-models clip default to them at read time. Every other field
+        # was settled here, so the read path skips the check (#415).
+        if not cls.__dict__.get("__pydantic_complete__", True):
+            note_deferred_clip_fields(
+                cls,
+                [
+                    name
+                    for name, info in cls.model_fields.items()
+                    if not getattr(info, "_complete", False)
+                ],
+            )
         for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:
                 continue
@@ -685,6 +707,17 @@ class StructuredModel(BaseModel):
             # comparator at definition time changes what `to_json_schema()` exports
             # for that shape -- which is exactly the reader alignment this branch is
             # for. All four object-grade shapes now take the one path.
+            if ConfigurationHelper.is_list_of_structured_models(field_info):
+                # `List[StructuredModel]` takes the object-grade clip default
+                # but keeps its own matcher, so only the clip is amended. Written
+                # here so `to_json_schema()` exports the clip the engine uses and
+                # a round trip does not turn clipping on (#415).
+                extra = getattr(field_info, "json_schema_extra", None)
+                if callable(extra):
+                    clip = ConfigurationHelper.object_grade_clip(extra)
+                    if clip != getattr(extra, "_clip_under_threshold", True):
+                        _amend_clip_default(field_info, extra, clip)
+                continue
             if not ConfigurationHelper.is_object_grade_annotation(field_info):
                 continue
 
@@ -1364,7 +1397,8 @@ class StructuredModel(BaseModel):
           any other value raises ValueError naming the model and the field.
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
         - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0
-          (bool, default: true; false on a free-form object or an array of them)
+          (bool, default: true; false on a free-form object, an array of them,
+          or an array of models)
 
         An object with properties is scored field by field, so a comparator on
         it, and any comparator-config key but threshold, has no effect and emits
@@ -2243,7 +2277,9 @@ class StructuredModel(BaseModel):
                     # Without the factory's `[]`, `default_factory=list`
                     # imported back as None (#360).
                     add_exportable_default(property_schema, field_info)
-                    metadata = converter._extract_field_metadata(field_info)
+                    metadata = cls._model_list_export_metadata(
+                        converter, field_name, field_info
+                    )
                     metadata.pop("comparator", None)
                     # Drop the threshold for the same reason as the comparator:
                     # neither is read for a list of models. Hungarian matching
@@ -2331,6 +2367,25 @@ class StructuredModel(BaseModel):
             isinstance(m, BeforeValidator) and m.func is jsonable_mapping
             for m in inner.__metadata__
         )
+
+    @classmethod
+    def _model_list_export_metadata(
+        cls, converter, field_name: str, field_info
+    ) -> Dict[str, Any]:
+        """Comparison metadata to export for a list of models.
+
+        The clip is the one the engine resolves, not the raw attribute: a field
+        whose element class was defined after it (``List["Item"]``) could not
+        be amended at class definition, so its raw attribute still says
+        ``True`` while the engine reads ``False``. Exporting the raw value made
+        a round trip turn clipping on (#415). Only a clip already in the
+        metadata is replaced, so a bare annotation still exports none.
+        """
+        metadata = converter._extract_field_metadata(field_info)
+        if "clip_under_threshold" in metadata:
+            resolved = ConfigurationHelper.get_comparison_info(cls, field_name)
+            metadata["clip_under_threshold"] = resolved.clip_under_threshold
+        return metadata
 
     @classmethod
     def _list_export_metadata(
@@ -2753,7 +2808,9 @@ class StructuredModel(BaseModel):
                         include_literal=isinstance(literal, list) and not literal,
                         stickler_config=True,
                     )
-                    metadata = converter._extract_field_metadata(field_info)
+                    metadata = cls._model_list_export_metadata(
+                        converter, field_name, field_info
+                    )
                     metadata.pop("comparator", None)
                     extensions = converter._build_comparison_extensions(
                         metadata, output_format="stickler_config"

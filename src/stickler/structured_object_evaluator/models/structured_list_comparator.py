@@ -97,7 +97,13 @@ class StructuredListComparator:
                 "pair_results": {},
             }
         list_score, raw_similarity = self._calculate_struct_list_similarity(
-            matched_pairs, gt_list, pred_list, info, matching
+            matched_pairs,
+            gt_list,
+            pred_list,
+            info,
+            matching,
+            verdicts=verdicts,
+            clip=self._list_clip(field_name),
         )
         if matching is not None:
             matching["pairs"] = [
@@ -132,6 +138,25 @@ class StructuredListComparator:
         }
 
         return final_result
+
+    def _list_clip(self, field_name: str) -> bool:
+        """Whether this list field zeroes a pair its element class rejected.
+
+        Only a ``clip_under_threshold`` the author stated turns it on (#415).
+        A value reaches this comparator by what it holds, not by its
+        annotation (``List[Any]``, a union of models), so the decision reads
+        the field's own setting rather than the annotation: one left unstated
+        keeps partial credit on every spelling, as it did before the flag was
+        honoured. ``object_grade_clip`` is the rule the class-definition and
+        read-time paths apply to a ``List[StructuredModel]`` too.
+        """
+        from .configuration_helper import ConfigurationHelper
+
+        field_info = type(self.parent_model).model_fields.get(field_name)
+        extra = getattr(field_info, "json_schema_extra", None)
+        if not callable(extra):
+            return False
+        return ConfigurationHelper.object_grade_clip(extra)
 
     def _calculate_object_level_metrics(
         self,
@@ -200,6 +225,8 @@ class StructuredListComparator:
         pred_list: List["StructuredModel"],
         info: "ComparableField",
         matching: Dict[str, Any] | None = None,
+        verdicts: List[bool] | None = None,
+        clip: bool = False,
     ) -> tuple:
         """Calculate the score of a structured list, and its unclipped twin.
 
@@ -208,6 +235,10 @@ class StructuredListComparator:
             pred_list: Predicted list
             info: Field comparison info
             matching: Side map receiving accepted child traversals when reporting
+            verdicts: Per-pair acceptance against the element class's
+                ``match_threshold``, aligned with ``matched_pairs``.
+            clip: The field's resolved ``clip_under_threshold``. When True, a
+                pair ``verdicts`` rejected scores 0.0.
 
         Returns:
             ``(score, raw_score)``, each between 0.0 and 1.0. ``score`` is the
@@ -253,13 +284,30 @@ class StructuredListComparator:
         classification_threshold = (
                 0.01  # Almost everything that's not 0.0 should be TP
             )
-        
+
         match_result = ComparisonHelper.unordered_list_metrics(
             threshold_corrected_pairs, gt_list, pred_list, classification_threshold
         )
+        raw_score = match_result.get("raw_overall_score", 0.0)
+
+        # `clip_under_threshold` on the list field: a pair the element class's
+        # `match_threshold` rejected (an FD, per `verdicts`) contributes 0.0
+        # instead of its partial score (#415). It defaults to off, so a list
+        # that does not set it scores as before. The counts were settled by
+        # `verdicts` and do not move, and `raw_score` stays unclipped.
+        if clip and verdicts is not None:
+            threshold_corrected_pairs = [
+                (gt_idx, pred_idx, score if is_match else 0.0)
+                for (gt_idx, pred_idx, score), is_match in zip(
+                    threshold_corrected_pairs, verdicts, strict=True
+                )
+            ]
+            match_result = ComparisonHelper.unordered_list_metrics(
+                threshold_corrected_pairs, gt_list, pred_list, classification_threshold
+            )
 
         score = match_result.get("overall_score", 0.0)
-        return score, match_result.get("raw_overall_score", score)
+        return score, raw_score
 
     def _calculate_nested_field_metrics(
         self,

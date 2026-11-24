@@ -232,7 +232,7 @@ result = gt.compare_with(pred)
 - `x-aws-stickler-comparator-config`: keyword arguments for that comparator's constructor
 - `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: a threshold named on the comparator, in `x-aws-stickler-comparator-config` or by a custom comparator's constructor, else the type default). Whichever the field uses must be a number from 0.0 to 1.0, or the import raises `ValueError` naming the model, the field and the key as written
 - `x-aws-stickler-weight`: field importance weight (default: 1.0)
-- `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true; false on a free-form object or an array of them)
+- `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true; false on a free-form object, an array of them, or an array of models)
 
 An object with `properties` is scored field by field, so `x-aws-stickler-comparator` has no effect there and warns; only the threshold the comparator names, in `-comparator-config` or its constructor, is read. The comparator stays installed, as on the Python path, so `explain()` reports what the schema wrote. On an array of models `-comparator-config` is not read and warns; `x-aws-stickler-comparator` is accepted only as `LevenshteinComparator`, and any other raises ([#468](https://github.com/awslabs/stickler/issues/468)). The config path does the same for `comparator` and `comparator_config` on `structured_model`, `optional_structured_model` and `list_structured_model`, except that `comparator` on `list_structured_model` raises.
 
