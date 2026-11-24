@@ -920,6 +920,34 @@ class TestErrorCaptureAtBudget:
             assert entry["pct_errors_caught"] == pytest.approx(0.3)
             assert entry["gain"] == pytest.approx(1.0)
 
+    def test_tied_cutoff_scans_back_to_tie_start(self):
+        """Tied pairs inside the reviewed set count as part of the tie."""
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+
+        # The 0.9 tie spans indices 1-9, and the cutoff at k=5 reviews 4 of 9.
+        pairs = [cp(False, 0.2)]
+        pairs += [cp(i >= 3, 0.9) for i in range(9)]
+        metric = ErrorCaptureAtBudgetMetric(budgets=[0.50])
+
+        for ordering in (pairs, pairs[::-1]):
+            entry = metric.compute(ordering)["budgets"]["0.50"]
+
+            assert entry["fields_reviewed"] == 5
+            assert entry["errors_found"] == pytest.approx(1 + 3 * 4 / 9)
+
+    def test_split_tie_count_has_no_float_noise(self):
+        """7 errors across 10 tied pairs give exactly 0.7 for one review."""
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+
+        pairs = [cp(i >= 7, 0.9) for i in range(10)]
+        metric = ErrorCaptureAtBudgetMetric(budgets=[0.10])
+
+        assert metric.compute(pairs)["budgets"]["0.10"]["errors_found"] == 0.7
+
     def test_random_confidence_gain_near_one(self):
         """Random confidence should produce gain near 1.0."""
         import random as rng

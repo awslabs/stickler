@@ -305,9 +305,10 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
                 errors_in_tie = sum(
                     1 for p in sorted_pairs[tie_start:tie_end] if not p.is_match
                 )
-                reviewed_tie_fraction = (k - tie_start) / (tie_end - tie_start)
-                errors_found = (
-                    errors_before_tie + errors_in_tie * reviewed_tie_fraction
+                # Multiply before dividing: dividing first adds float noise
+                # (7 errors, 1 of 10 tied pairs reviewed: 0.7000000000000001).
+                errors_found = errors_before_tie + (
+                    errors_in_tie * (k - tie_start) / (tie_end - tie_start)
                 )
             pct_errors_caught = errors_found / total_errors
             gain = (
