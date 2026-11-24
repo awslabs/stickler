@@ -27,7 +27,7 @@ from ..structured_object_evaluator.models.structured_model import (
     _annotation_is_list,
 )
 from ..structured_object_evaluator.models.threshold_helper import ThresholdHelper
-from .builder import specs_for, structured_model_for
+from .builder import _runtime_match_threshold, specs_for, structured_model_for
 
 #: Object-level match threshold applied when neither the caller nor the model
 #: declares one. ``None`` is the "caller said nothing" sentinel on the public
@@ -310,8 +310,14 @@ def eval_for(
         weight_hints=weight_hints,
         match_threshold=resolved,
     )
+    # Checked by the builder above, so this only converts: `matched` and
+    # `explain()` then read the float the model was built with, not the
+    # `Decimal` or numpy number the caller passed.
     return EvalSpec(
-        cls, eval_model, weight_hints=weight_hints, match_threshold=resolved
+        cls,
+        eval_model,
+        weight_hints=weight_hints,
+        match_threshold=_runtime_match_threshold(resolved),
     )
 
 

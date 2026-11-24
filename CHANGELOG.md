@@ -9,7 +9,176 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- **The Stickler-config and JSON Schema importers now resolve an unstated
+  `threshold` and `clip_under_threshold` as the documented Python path
+  (`ComparableField`) does.** Both importers filled in their
+  own defaults (0.5 and `true`) before building the field, so every imported
+  field read as "the author stated this", and the two defaults that key on that
+  were skipped. Verdicts move wherever a field relied on that:
+  - **A threshold named on the comparator reaches the field.**
+    `"comparator_config": {"threshold": 0.9}` (or
+    `x-aws-stickler-comparator-config`) with no field `threshold` gated at the
+    importer's own default instead (0.5 for a string), so a pair scoring 0.78
+    was a TP there and an FD in Python. It is 0.9 on all
+    three paths now. The same goes for a threshold a custom comparator's
+    constructor passes to `super().__init__()`, which
+    `ComparableField(comparator=...)` already adopted: a field that names that
+    comparator and no threshold moves from the importer's default, 0.5 or a
+    schema type default such as 1.0 for an enum, to that value. For a
+    registered comparator whose constructor passes `threshold=0.95`, a string
+    pair it scores 0.9 was a TP at 0.5 and is an FD at 0.95 now, as in
+    Python. No built-in
+    comparator passes one when built without a threshold, so fields naming
+    one do not move. A field threshold still wins, and a comparator threshold
+    outranks an inferred one. This includes a `structured_model` or
+    `optional_structured_model` field and an object with `properties`, where
+    `ComparableField(comparator=X(threshold=0.9))` also gates at 0.9; the
+    config path dropped it there and the schema path did too
+    ([#334](https://github.com/awslabs/stickler/issues/334)). An adopted
+    comparator threshold is checked as a field threshold is; see the next item.
+  - **A threshold that is not a number from 0.0 to 1.0 raises `ValueError`
+    in 1.1.0 when the class is defined or the config or schema is loaded.**
+    This is a breaking change: some inputs that loaded on 1.0.x now raise
+    (listed below). It applies to the threshold the field ends up with, and to
+    `match_threshold`:
+    - Python: `ComparableField(threshold=...)`, also inside `Annotated[...]`
+      and on a field whose type is defined further down the module; a
+      comparator threshold the field adopts, such as
+      `LevenshteinComparator(threshold=85)`; and the `match_threshold` class
+      attribute, also as `ModelFactory.create_model_from_fields(match_threshold=...)`.
+      None was checked: a field threshold of 85 scored an identical pair 0.0
+      FD, and a class `match_threshold` of 85 made every list pair of that
+      class an FD. An `Annotated` field that names something defined further
+      down, its type or a value in its `ComparableField(...)`, is not yet
+      checked at class definition when its annotation is a string, as every
+      annotation is under `from __future__ import annotations`.
+    - Stickler config: `"threshold"`, an adopted `"comparator_config"`
+      threshold, and `"match_threshold"` on the model or a nested-model field.
+    - JSON Schema: `x-aws-stickler-threshold`, an adopted
+      `x-aws-stickler-comparator-config` threshold, and
+      `x-aws-stickler-match-threshold`.
+
+    `85`, `1.5`, `-1`, `"0.9"`, `true`, NaN and infinity all raise. These
+    inputs loaded on 1.0.x and raise in 1.1.0:
+    - `"threshold": true` in a config and `x-aws-stickler-threshold: true` in
+      a schema, which loaded as 1. Write `1.0`.
+    - `match_threshold = True` on a class, `"match_threshold": true` in a
+      config and `x-aws-stickler-match-threshold: true` in a schema, which
+      loaded as 1. Write `1.0`.
+    - An out-of-range value such as `85`, `1.5` or `-1` in
+      `ComparableField(threshold=...)` or a class `match_threshold`, which the
+      Python path never checked. The config and schema paths already refused
+      one in `"threshold"` and `"match_threshold"`. Write a number from 0.0 to
+      1.0, such as `0.85` for 85.
+    - A comparator constructor threshold that a field adopts because it sets
+      no threshold of its own, such as `LevenshteinComparator(threshold=85)`
+      in Python or `"comparator_config": {"threshold": 85}` in a config or
+      schema. The importers never read the config's value, so any value
+      loaded. A field whose type is defined further down the module also
+      raises on a list of models, where the comparator is never read.
+    - A custom comparator that reads `threshold` as a distance or a count
+      rather than a similarity score, such as `"comparator_config":
+      {"threshold": 5}` for an edit-distance comparator. The field now adopts
+      5 and raises.
+
+    For a comparator threshold, set the field's own `threshold`
+    (`ComparableField(threshold=...)`, `"threshold"` or
+    `x-aws-stickler-threshold`). It wins over the comparator's, which is then
+    neither adopted nor checked, and the comparator keeps the value it was
+    given. A `Decimal`,
+    `Fraction`, numpy number or 0-d numpy array from 0.0 to 1.0 now loads on
+    every path, converted with `float()`; the comparator keeps the value it
+    was given. A numpy float16 or float32 threshold or `match_threshold` is
+    then compared as a Python float, not in its own dtype, so a score within
+    its rounding below the threshold is an FD where it was a TP. Python kept
+    such a value unconverted, so a `Decimal` raised `TypeError` on a pair
+    scoring below it. The importers refused it, except a numpy float64, which
+    is a `float` subclass and loaded unconverted. The `match_threshold`
+    passed to `evaluate()` or `eval_for()` is outside this rule: for a plain
+    pydantic model it keeps its own check and message, now on every call, and
+    for a `StructuredModel` it is not checked. On a plain model it now also
+    takes any other real number from 0.0 to 1.0, such as a `Decimal`, a
+    `Fraction` or a numpy `int64` or `float32`, converted with `float()`;
+    before, one raised unless an equal value had reached the class first.
+    `True` and `False` still count as 1.0 and 0.0. Every path gives one
+    message. It quotes the value as written, names the model and the field,
+    says why the value fails and gives the fix in full; on the Python path it
+    ends with where the value was set, though a base class that overrides
+    `__init_subclass__` can make a `match_threshold` point at the line of
+    that override. The refusal of `ComparableField(threshold=...)`
+    on a `List[StructuredModel]` field uses the same template, says to remove
+    it and names the element class, and is headed `Unused threshold` whatever
+    its value. The warning for a comparator threshold there names the model
+    and the element class, and points at the class rather than at
+    `<frozen abc>`, or at a base class's `__init_subclass__` if it overrides
+    one. On the config path it is no longer prefixed
+    `Invalid field configuration:` or
+    `Error converting field configurations:`, and a field inside a
+    `list_structured_model` is named `items[].sku` there and in warnings, as
+    on the schema path:
+
+    ```text
+    Invalid threshold for field 'vendor' of model 'Invoice': ComparableField sets no threshold, so the field adopts its comparator's: LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or ComparableField(threshold=0.85), which wins over the comparator's. (Set at invoice_models.py:6.)
+    ```
+
+    A comparator threshold the field does not adopt is not checked: one a field
+    threshold overrides, or one on a list of models, which matches its items
+    on `match_threshold`. A field whose type is defined further down the
+    module is read as adopting, since stickler cannot tell yet whether it is a
+    list of models, so there an invalid comparator threshold raises even on a
+    list of models. `to_stickler_config()` leaves an out-of-range comparator
+    threshold off a `list_structured_model` field, so the export reloads.
+  - **A mapping field keeps its partial credit.** A `dict` field naming a
+    comparator, or a list of them, defaulted to `clip_under_threshold: true`,
+    so ANLS\* partial credit below the threshold was zeroed: 0.0 where Python
+    reports 0.3333 for two of three keys wrong. It now defaults to `false` on
+    both importers, as it does in Python; an explicit `true` is still honoured
+    ([#348](https://github.com/awslabs/stickler/issues/348)).
+
+  Any other field that states neither is unchanged. The schema path's
+  free-form object default (`ExactComparator` at 1.0, #348 item 1) is unchanged
+  too, except that its `clip_under_threshold` now reads `false`; Exact scores
+  0 or 1, so its scores do not move. `explain()` names an adopted comparator
+  threshold in `why` (`config: comparator_config.threshold=0.9 (overrides
+  above)`), as it already named a field `threshold`. The schema path named
+  neither and now names both, along with `-weight` and `-clip-under-threshold`
+  overrides.
+
 ### Fixed
+
+- **A comparator key on a nested model now warns instead of being dropped in
+  silence or refused.** A nested model is scored field by field, so its
+  comparator is never called, as on the Python path. `comparator` on a
+  `structured_model` or `optional_structured_model` field raised, and
+  `comparator_config` there, or on a `list_structured_model` field, was dropped
+  in silence; on the schema path `x-aws-stickler-comparator` and
+  `-comparator-config` on an object with `properties` were dropped, and on an
+  array of objects the config's `threshold` was reported by `explain()` as the
+  field's explicit threshold though nothing read it. Every such key that is
+  written on a field or a property and not read now emits a `UserWarning`
+  naming it, the model, and where the effective setting goes (`threshold` /
+  `x-aws-stickler-threshold` on an object, `match_threshold` /
+  `x-aws-stickler-match-threshold` on a list). The model is named as the
+  threshold errors name it: by its `model_name`, `x-aws-stickler-model-name`
+  or `title`, or else as an unnamed model, with the key that names one. On a
+  `$defs` definition that a property references, they are still ignored
+  without a warning; beside the `$ref`, they are treated as on any property.
+  A threshold
+  the comparator names on a single nested model, in its config or its own
+  constructor, is read (see Changed), and the warning gives its value. A named
+  comparator stays on the field, as on the Python path, so `explain()` reports
+  it rather than a placeholder `LevenshteinComparator`. A threshold that
+  comparator names on a single nested model is now checked, so one that is
+  not a number from 0.0 to 1.0 raises in 1.1.0 where the importers dropped it
+  on 1.0.x (see Changed). `comparator` on a `list_structured_model` field, and
+  `"auto"` on any nested model, still raise. A property that is a union of
+  objects (`anyOf` or `oneOf` whose arms declare `properties`) is not covered:
+  as on the Python path for a `Union` field, a comparator-config threshold
+  gates it, and a named comparator is installed and never called, with no
+  nested-model warning
+  ([#348](https://github.com/awslabs/stickler/issues/348))
 
 - Scalar-union lists such as `List[Union[int, str]]` now round-trip through
   `to_stickler_config()` and `model_from_json()`. The exported type keeps each

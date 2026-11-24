@@ -24,6 +24,8 @@ comparator = LevenshteinComparator(threshold=0.8)
 
 A threshold on the field always wins. And only a threshold you *named* is adopted: a comparator's own default is not, because those defaults were never chosen as classification cutoffs. `LevenshteinComparator(threshold=0.8)` gives the field 0.8; a bare `LevenshteinComparator()` leaves it at a `ComparableField` field's default of 0.5, not the comparator's 0.7. A JSON Schema property that names a comparator keeps its type's default threshold instead; see [Dynamic Model Creation](../Advanced/dynamic-models.md).
 
+An adopted comparator threshold must be a [valid threshold](#valid-threshold-values), as the field's own must.
+
 ### 2. Field Threshold
 
 **What it is:** The threshold set on a `ComparableField`.
@@ -42,6 +44,8 @@ class Invoice(StructuredModel):
 - **Score clipping:** When `clip_under_threshold=True` (the default, except on dict and plain-model fields), scores below the threshold are zeroed out in the weighted average. A list field follows the [Score](../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 **Default:** `0.5`
+
+**Valid values:** a number from 0.0 to 1.0. See [Valid Threshold Values](#valid-threshold-values).
 
 ### 3. Model Match Threshold
 
@@ -63,6 +67,8 @@ class LineItem(StructuredModel):
 
 **Default:** `0.7`
 
+**Valid values:** a number from 0.0 to 1.0, checked when the class is defined. `None` is not checked and does not read as unset: the class keeps it, and a comparison that reads it, such as of a list of the class, a bare-annotated field or `evaluate()`, raises `TypeError`. Leave `match_threshold` out instead. See [Valid Threshold Values](#valid-threshold-values).
+
 ### 4. Runtime Match Threshold
 
 **What it is:** The `match_threshold` parameter passed to `evaluate()` or `eval_for()`.
@@ -77,6 +83,8 @@ spec = stickler.eval_for(Invoice, match_threshold=0.8)
 **What it gates:** The document-level `EvalResult.matched` verdict (`overall_score >= match_threshold`). On a `StructuredModel` class that is all it does: field thresholds, list element pairing and every score keep their class values. On a plain pydantic class (the zero-config path) it also decides TP vs FD for `List[Model]` and `List[dict]` elements at every nesting level, and sets the field threshold of nested plain-model and `dict` fields. A `List[StructuredModel]` field keeps the element class's `match_threshold`, and a primitive list keeps the threshold inferred from its element type and field name (`0.7` for `tags: List[str]`, `0.6` for `notes: List[str]`). It never changes a similarity score or `overall_score`.
 
 **Default:** the class's `match_threshold` on a `StructuredModel`, else `0.7`
+
+**Valid values:** a number from 0.0 to 1.0. This value is outside the rule in [Valid Threshold Values](#valid-threshold-values). For a `StructuredModel` it is not checked, so pass one in range. For a plain pydantic model, a number in range of any real type, including a `Decimal`, a `Fraction` or a numpy number, is converted with `float()`, and `True` and `False` count as 1.0 and 0.0. A string, a numpy boolean, NaN, infinity or a number outside 0.0 to 1.0 raises `ValueError: match_threshold must be a number between 0.0 and 1.0`.
 
 ## Threshold Precedence
 
@@ -152,6 +160,26 @@ A bare `int` or `float` field is compared as text by `LevenshteinComparator`, no
 On the zero-config path, `stickler.evaluate` infers a threshold per field; `result.explain()` shows each one. For JSON Schema and Stickler config defaults, see [Dynamic Model Creation](../Advanced/dynamic-models.md).
 
 A comparator's *default* threshold is not part of that chain. `LevenshteinComparator()` does not contribute its 0.7, because those defaults were chosen for `binary_compare()` and were never audited as classification cutoffs. `DateComparator` is the clearest case: it defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting its default would clip its own feature to zero.
+
+## Valid Threshold Values
+
+A threshold is a number from 0.0 to 1.0, inclusive: the minimum similarity score for a match. An `int` or `float` is used as given, and a `Decimal`, `Fraction`, numpy number or 0-d numpy array is converted with `float()`. Booleans (numpy's too), strings, NaN and infinity are not valid. The rule applies to the threshold the field ends up with, whether you set it on the field or the field adopts it from the comparator, and to `match_threshold`, on the class, the Stickler config and the JSON Schema:
+
+| Path | Field threshold | Adopted comparator threshold | Match threshold |
+|---|---|---|---|
+| Python | `ComparableField(threshold=...)`, also inside `Annotated[...]` | `LevenshteinComparator(threshold=...)` | `match_threshold = ...` |
+| Stickler config | `"threshold"` | `"comparator_config": {"threshold": ...}` | `"match_threshold"` |
+| JSON Schema | `"x-aws-stickler-threshold"` | `"x-aws-stickler-comparator-config": {"threshold": ...}` | `"x-aws-stickler-match-threshold"` |
+
+Anything else, such as `85`, `1.5`, `-1`, `"0.9"`, `true`, NaN or infinity, raises `ValueError` when the class is defined or the config or schema is loaded. On the Python path `None` is not checked: `ComparableField(threshold=None)` reads as unset, and a class `match_threshold = None` loads, then raises `TypeError` where it is read (see [Model Match Threshold](#3-model-match-threshold)). Each path gives the same message, quoting the value as you wrote it. It names the model, the field, why the value fails, and the fix, and on the Python path where it was set (for a class `match_threshold` under a base class that overrides `__init_subclass__`, the line of that override):
+
+```text
+ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField sets no threshold, so the field adopts its comparator's: LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or ComparableField(threshold=0.85), which wins over the comparator's. (Set at invoice_models.py:6.)
+```
+
+A comparator threshold the field does not adopt is not checked: when the field sets its own, the comparator's is not read, and on a `List[StructuredModel]` field (an array of objects in a schema) it is never used, since its items are matched up using `match_threshold`, so it warns instead. On the Python path the warning needs an annotation that is already a list when the class is defined, written out (`items: List[Item] = ComparableField(...)`) or through an assigned alias (`ItemList = List[Item]`): inside `Annotated[...]`, through a `type` alias, or as a string, which includes every annotation under `from __future__ import annotations`, the field loads with no warning. A field threshold on a list of models that breaks the rule raises, and the message says to remove it and use `match_threshold`. A comparator's constructor never checks its threshold, since a custom comparator may use `threshold` for something else, and the comparator keeps the value you passed. The runtime `match_threshold` of `evaluate()` and `eval_for()` is outside this rule; see [Runtime Match Threshold](#4-runtime-match-threshold).
+
+A field whose type is defined further down the module is checked when the class is defined, before that type exists, so stickler reads the field as adopting its comparator's threshold. Only a list of models does not, so there, and on a bare name for a list of models (`items: "ItemList"`, with `ItemList = List[Item]` below), an invalid comparator threshold raises, though the field would ignore it once resolved. When the annotation is visibly a list (`List["Item"]`), the message says to remove the comparator if the element is a model. An invalid field threshold on such a field, or on a bare name, gets a fix for each case: a list of models, and anything else. An `Annotated` field that names something defined further down, its type or a value in its `ComparableField(...)`, is not yet checked at class definition when its annotation is a string, as every annotation is under `from __future__ import annotations`: pydantic builds its `ComparableField` only on `model_rebuild()`, so an invalid threshold there loads.
 
 ## Meeting a Threshold
 
