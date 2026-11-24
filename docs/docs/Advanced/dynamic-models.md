@@ -343,7 +343,7 @@ gated by `match_threshold`.
 
 A primitive or `list_structured_model` field that is not `required` and has no `default`, or `"default": null`, is built as `Optional[T]` with a `None` default, so it accepts `null`. A non-`None` default such as `"default": []` keeps the field non-nullable, and a `structured_model` field is never widened: it rejects `null` with or without a default (use `optional_structured_model`).
 
-A key that is not listed above is not read. Rather than being dropped in silence, it emits a `UserWarning` naming the key, the full field path (`billing.city`), and the keys that position does accept; the model still builds, without the key. `match_threshold` is accepted on any field but read only on the model and a `structured_model` field. On a primitive field it is ignored with its own `UserWarning`, as 1.0.0 ignored it; use `threshold` there. It becomes a `ValueError` in 1.1.0.
+A key that is not listed above is not read. Rather than being dropped in silence, it emits a `UserWarning` naming the key, the full field path (`billing.city`), and the keys that position does accept; the model still builds, without the key. `match_threshold` passes the unknown-key check on any field, but belongs on the model or on a `structured_model`, `list_structured_model` or `optional_structured_model` field. On a primitive field it raises a `ValueError`; use `threshold` there.
 
 ### Nested Model Example
 
@@ -645,7 +645,7 @@ Model = StructuredModel.model_from_json(config)
 
 ## Troubleshooting
 
-Every `model_from_json()` failure raises `ValueError`. Most are prefixed `Invalid field configuration:` or `Error converting field configurations:`; an invalid threshold is not, since its message names the field and the model itself. The message names the offending field and lists the valid values.
+Every `model_from_json()` failure raises `ValueError`. Most are prefixed `Invalid field configuration:`; a few found while converting a field, such as `match_threshold` on a primitive, are prefixed `Error converting field configurations:` instead. An invalid threshold has no prefix, since its message names the field and the model itself. The message names the offending field and lists the valid values.
 
 | Message | Cause | Fix |
 |-------|-------|-----|
@@ -659,6 +659,7 @@ Every `model_from_json()` failure raises `ValueError`. Most are prefixed `Invali
 | `Unknown comparator: 'x'. Available: [...]` | Comparator name not registered | Use a class name from the list; `BERTComparator` and `LLMComparator` appear only when the `[bert]` and `[llm]` extras are installed |
 | `Field 'x' with type 'structured_model' requires a 'fields' configuration` | Nested model without its own `fields` | Add the nested `fields` block |
 | `Field 'x' configuration must be a mapping, got int` | A field's value is not a config object | Wrap it: `{"x": {"type": "str", ...}}` |
+| `'match_threshold' is not read on primitive field 'x' of model 'Invoice'; ...` | Object-level threshold written on a leaf | Use `threshold` on the field, or move `match_threshold` to the model or a `structured_model`, `list_structured_model` or `optional_structured_model` field |
 
 These diagnostics are a `UserWarning` rather than a `ValueError`, because the key they name is not applied and the model still builds:
 
@@ -667,7 +668,6 @@ These diagnostics are a `UserWarning` rather than a `ValueError`, because the ke
 | `Field 'billing.city' does not accept 'threshhold' in its config; ignored.` | Unrecognized key on a field | Use one of the accepted keys the message lists |
 | `Model config does not accept 'match_threshhold'; ignored.` | Unrecognized key at the top level | Use one of `fields`, `model_name`, `match_threshold`, `infer_unspecified_fields` |
 | `'comparator' has no effect on field 'billing' of model 'Invoice' and is ignored` | A comparator, or a `comparator_config` key other than `threshold`, on a nested model, or any `comparator_config` key on a list of them. `from_json_schema()` warns the same way for `x-aws-stickler-comparator` and `-comparator-config` | Set comparators on the fields inside it, and the threshold with the key the message names |
-| `'match_threshold' is not read on primitive field 'x' of model 'Invoice'; ... ignored` | Object-level threshold written on a leaf; becomes a `ValueError` in 1.1.0 | Use `threshold` on the field, or move `match_threshold` to the model or a `structured_model` field |
 
 Each fires once per model, path and key, so repeated loads of the same config do not flood a batch run. All but the two unrecognized-key warnings name the model; those two do not, so Python's default filter shows each once across models that share the key. `from_json_schema()` does not deduplicate its own; Python's warning filter decides how often they show. Turn them into errors with `python -W error::UserWarning` to fail a build on a misspelled or misplaced key.
 
