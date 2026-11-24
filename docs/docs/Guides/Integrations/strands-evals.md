@@ -83,8 +83,8 @@ another schema that still validates against this one (it shares field names and 
 required fields) is scored as this schema; one that does not validate scores 0 and fails
 rather than dropping out of the dataset mean as not-applicable. That case carries no field
 detail, so it is absent from both rollups
-above — `report.scores` is where you see it. Because the detail is on the report and not on
-the evaluator, it survives a round trip through JSON —
+above — `report.scores` is where you see it. Because the detail is on the report and not on the
+evaluator, it survives a round trip through JSON —
 `StructuredOutputReport.from_file(path).metrics()` rolls up a saved report. Reading it
 back through `EvaluationReport` gives the base class, which has no rollups.
 
@@ -160,9 +160,7 @@ of them import the evaluator, so they need `strands-agents-evals[stickler]>=1.6.
   structured-output path runs with no credentials and no network call. That stored
   response is hand-authored to the Bedrock wire format rather than captured, and carries
   three deliberate extraction errors, so its scores demonstrate the mechanism and measure
-  no model; one command re-records it against your own agent. Scores with
-  `stickler.evaluate()` directly, so it needs no Strands Evals install, and it is the
-  place to start if you have not seen an agent response before.
+  no model; one command re-records it against your own agent.
 - [`Strands_Evals_FCC_Live_Agent.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_FCC_Live_Agent.ipynb)
   runs the same evaluator against a live agent: five real FCC invoices extracted by
   Claude Haiku through Bedrock, with the Bedrock call inside the `@eval_task()`
@@ -202,3 +200,11 @@ Re-annotating the date as `str` also sidesteps it, but do not: the inferred comp
 from `DateComparator` at threshold 0.95 to `LevenshteinComparator` at 0.7, so a date wrong by
 a month scores 0.9 and clears its threshold, where the date-typed field scores 0.0. Both
 edges are harness limitations rather than the evaluator's.
+
+## Compatibility Note
+
+The API surface used by Strands Evals is part of Stickler's **1.x public contract**. Any breaking change to this surface requires a major version bump of Stickler, or a coordinated release with `strands-agents-evals`. See issue #365 for details.
+
+## Contract Tests
+
+The contract is enforced by tests located at [`tests/integrations/test_strands_evals_contract.py`](../tests/integrations/test_strands_evals_contract.py). These tests are run as part of the CI to ensure compatibility.
