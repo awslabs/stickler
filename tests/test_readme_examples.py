@@ -292,8 +292,15 @@ def test_extension_reference_defaults_match_an_undeclared_schema(
     default = {name.strip("`"): cells[1] for name, cells in table.items()}
 
     infos = [undeclared._get_comparison_info(f) for f in UNDECLARED_PROPERTIES]
-    assert default["x-aws-stickler-clip-under-threshold"] == "`true`"
-    assert all(info.clip_under_threshold is True for info in infos)
+    assert (
+        default["x-aws-stickler-clip-under-threshold"]
+        == "`true`, `false` on a free-form object or an array of them"
+    )
+    free_form = {"mapping", "mappings"}
+    assert all(
+        info.clip_under_threshold is (name not in free_form)
+        for name, info in zip(UNDECLARED_PROPERTIES, infos)
+    )
     assert default["x-aws-stickler-weight"] == "1.0"
     assert all(info.weight == 1.0 for info in infos)
     assert default["x-aws-stickler-model-name"] == '`"DynamicModel"`'
@@ -373,9 +380,14 @@ def test_readme_extension_defaults_match_schema(readme, undeclared):
     assert {info.weight for info in infos} == {
         float(defaults["x-aws-stickler-weight"].strip("`"))
     }
-    clip = json.loads(defaults["x-aws-stickler-clip-under-threshold"].strip("`"))
-    assert isinstance(clip, bool), "README clip Default must be a boolean"
-    assert all(info.clip_under_threshold is clip for info in infos)
+    assert defaults["x-aws-stickler-clip-under-threshold"] == (
+        '`true`, except `false` for a free-form `{"type": "object"}` or an array of them'
+    )
+    free_form = {"mapping", "mappings"}
+    assert all(
+        info.clip_under_threshold is (name not in free_form)
+        for name, info in zip(UNDECLARED_PROPERTIES, infos)
+    )
     assert undeclared.__name__ == json.loads(
         defaults["x-aws-stickler-model-name"].strip("`")
     )

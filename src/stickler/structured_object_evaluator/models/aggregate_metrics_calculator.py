@@ -15,14 +15,8 @@ class AggregateMetricsCalculator:
     
     Architecture:
     -------------
-    This class is part of the StructuredModel refactoring that extracts metrics
-    calculation logic into dedicated helper classes. It works in conjunction with:
-    
-    - DerivedMetricsCalculator: Calculates derived metrics (F1, precision, recall)
-    - ConfusionMatrixBuilder: Orchestrates all metrics calculation
-    
-    The calculator performs a recursive traversal of the comparison result tree,
-    calculating aggregate metrics at each level by summing child field metrics.
+    ComparisonEngine.compare_with calls this calculator when a confusion matrix
+    is requested.
     
     Features:
     ---------

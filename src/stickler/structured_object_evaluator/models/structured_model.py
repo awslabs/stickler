@@ -10,8 +10,10 @@ from typing import (
     Any,
     ClassVar,
     Dict,
+    ForwardRef,
     Iterable,
     List,
+    Literal,
     Optional,
     Type,
     Union,
@@ -35,9 +37,21 @@ from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
-from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import model_identity as _model_identity
 from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
+from .threshold_rule import (
+    PYTHON,
+    SCHEMA,
+    as_threshold,
+    is_valid_threshold,
+    list_comparator_warning,
+    list_threshold_error,
+    match_threshold_error,
+    outside_location,
+    python_comparator_source,
+    stacklevel_outside,
+    threshold_error,
+)
 
 # Name of the internal field every StructuredModel carries to hold unmatched
 # input keys. It is not part of a model's data contract and must not appear in
@@ -222,6 +236,204 @@ def _annotation_is_list(annotation: Any) -> bool:
     return any(_annotation_is_list(arg) for arg in union_args(annotation))
 
 
+def _is_unresolved(annotation: Any) -> bool:
+    """Whether ``annotation`` still holds a forward reference pydantic could not resolve.
+
+    ``Annotated`` metadata and ``Literal`` values may be strings, so only the
+    type positions are searched.
+    """
+    if isinstance(annotation, (str, ForwardRef)):
+        return True
+    origin = get_origin(annotation)
+    if origin is Literal:
+        return False
+    args = get_args(annotation)
+    if origin is Annotated:
+        args = args[:1]
+    return any(_is_unresolved(arg) for arg in args)
+
+
+def _unalias(annotation: Any) -> Any:
+    """``list[Item]`` for a PEP 695 alias ``type Items = list[Item]``, also in a union.
+
+    pydantic keeps the alias as the field's annotation, so a list test on it
+    answers False although the field is scored as the list it names. An alias
+    whose value names a class not defined yet is left as it is.
+    """
+    for _ in range(10):
+        if type(annotation).__name__ != "TypeAliasType":
+            break
+        try:
+            annotation = annotation.__value__
+        except NameError:
+            return annotation
+    arms = get_args(annotation) if union_args(annotation) else ()
+    if arms and any(type(arm).__name__ == "TypeAliasType" for arm in arms):
+        return Union[tuple(_unalias(arm) for arm in arms)]
+    return annotation
+
+
+def _list_element_name(annotation: Any) -> str:
+    """``Item`` for ``List[Item]``, ``Optional[List[Item]]`` or ``list[Item] | None``.
+
+    Also for one still unresolved: ``List["Item"]``, or the string
+    ``"Optional[List[Item]]"`` that ``from __future__ import annotations`` leaves.
+    """
+    if isinstance(annotation, ForwardRef):
+        annotation = annotation.__forward_arg__
+    if isinstance(annotation, str):
+        return _string_list_element(annotation) or "the element class"
+    annotation = unwrap_annotated(annotation)
+    for arm in (annotation, *union_args(annotation)):
+        arm = unwrap_annotated(arm)
+        if isinstance(arm, (str, ForwardRef)):
+            name = _list_element_name(arm)
+            if name != "the element class":
+                return name
+        if get_origin(arm) in (list, List) and get_args(arm):
+            element, _ = unwrap_optional(unwrap_annotated(get_args(arm)[0]))
+            if isinstance(element, ForwardRef):
+                element = element.__forward_arg__
+            if isinstance(element, str):
+                return _bare_name(element) or "the element class"
+            if not isinstance(element, type):
+                return "the element class"  # a union of classes, say
+            return element.__name__
+    return "the element class"
+
+
+def _is_visibly_list(annotation: Any) -> bool:
+    """Whether ``annotation`` is a list, judged before its forward references resolve.
+
+    ``List[...]`` or ``list[...]``, also inside ``Optional``, a union or
+    ``Annotated``, whether as objects (``List["Item"]``) or as the string
+    ``from __future__ import annotations`` leaves (``"Optional[List[Item]]"``).
+    A bare name such as ``"Items"`` is not visibly a list, even if it later
+    resolves to one.
+    """
+    if isinstance(annotation, ForwardRef):
+        annotation = annotation.__forward_arg__
+    if isinstance(annotation, str):
+        return _string_is_list(annotation)
+    annotation = unwrap_annotated(annotation)
+    if get_origin(annotation) in (list, List) or annotation in (list, List):
+        return True
+    return any(_is_visibly_list(arm) for arm in union_args(annotation))
+
+
+def _unquote(text: str) -> str:
+    text = text.strip()
+    while len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
+        text = text[1:-1].strip()
+    return text
+
+
+def _split_top_level(text: str, separator: str) -> List[str]:
+    """``text`` split on ``separator`` outside brackets: ``"A[B, C], D"`` on ``,``."""
+    parts, depth, start = [], 0, 0
+    for i, char in enumerate(text):
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+        elif char == separator and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return [part.strip() for part in parts]
+
+
+def _subscript(text: str) -> tuple:
+    """``("List", "Item")`` for ``"typing.List[Item]"``; ``(text, None)`` if bare."""
+    text = _unquote(text)
+    if not text.endswith("]") or "[" not in text:
+        return text.rsplit(".", 1)[-1], None
+    head, _, inner = text[:-1].partition("[")
+    return head.strip().rsplit(".", 1)[-1], inner
+
+
+def _string_list_arm(text: str) -> Optional[str]:
+    """The ``[...]`` of the list arm of a string annotation, or ``None`` if none."""
+    text = _unquote(text)
+    arms = _split_top_level(text, "|")
+    if len(arms) > 1:
+        return next(
+            (inner for inner in map(_string_list_arm, arms) if inner is not None),
+            None,
+        )
+    head, inner = _subscript(text)
+    if inner is None:
+        return None
+    if head in ("List", "list"):
+        return inner
+    if head in ("Optional", "Union"):
+        return _string_list_arm("|".join(_split_top_level(inner, ",")))
+    if head == "Annotated":
+        return _string_list_arm(_split_top_level(inner, ",")[0])
+    return None
+
+
+def _string_is_list(text: str) -> bool:
+    return _string_list_arm(text) is not None
+
+
+def _bare_name(text: str) -> Optional[str]:
+    """``Item`` for ``"Item"``, ``"'Item'"``, ``"models.Item"``, ``"Optional[Item]"``
+    or ``"Item | None"``."""
+    arms = [
+        arm for arm in _split_top_level(_unquote(text), "|") if _unquote(arm) != "None"
+    ]
+    if len(arms) != 1:
+        return None
+    head, inner = _subscript(arms[0])
+    if inner is not None:
+        if head == "Union":
+            return _bare_name("|".join(_split_top_level(inner, ",")))
+        if head not in ("Optional", "Annotated"):
+            return None
+        return _bare_name(_split_top_level(inner, ",")[0])
+    name = _unquote(arms[0])
+    return name if name.replace(".", "").replace("_", "a").isalnum() else None
+
+
+def _string_list_element(text: str) -> Optional[str]:
+    inner = _string_list_arm(text)
+    return None if inner is None else _bare_name(inner)
+
+
+def _unresolved_type_name(annotation: Any) -> str:
+    """``Vendor`` for ``"Vendor"`` or ``Optional["Vendor"]``; ``""`` if not one name."""
+    if isinstance(annotation, ForwardRef):
+        annotation = annotation.__forward_arg__
+    if isinstance(annotation, str):
+        return _bare_name(annotation) or ""
+    inner = unwrap_optional(unwrap_annotated(annotation))[0]
+    if isinstance(inner, (str, ForwardRef)):
+        return _unresolved_type_name(inner)
+    return ""
+
+
+def _element_match_threshold(annotation: Any) -> Optional[float]:
+    """The ``match_threshold`` the element class of a resolved list of models sets.
+
+    ``None`` when it keeps ``StructuredModel``'s default, or is not a number.
+    """
+    annotation = unwrap_annotated(_unalias(annotation))
+    for arm in (annotation, *union_args(annotation)):
+        arm = unwrap_annotated(arm)
+        if get_origin(arm) in (list, List) and get_args(arm):
+            element = unwrap_optional(unwrap_annotated(get_args(arm)[0]))[0]
+            if not isinstance(element, type):
+                return None
+            for klass in element.__mro__:
+                if klass is StructuredModel:
+                    return None
+                if "match_threshold" in klass.__dict__:
+                    value = klass.__dict__["match_threshold"]
+                    return value if type(value) in (int, float) else None
+    return None
+
+
 def _amend_clip_default(field_info: Any, extra: Any, clip: bool) -> None:
     """Write ``clip`` onto an object-grade field, on a COPY of the metadata.
 
@@ -332,11 +544,6 @@ class StructuredModel(BaseModel):
       - Computes precision, recall, F1, accuracy
       - Supports both traditional and FD-inclusive recall
       - Delegates to MetricsHelper for calculations
-
-    - ConfusionMatrixBuilder: Orchestrates all metrics calculation
-      - Coordinates the aggregate and derived calculators
-      - Ensures correct calculation order
-      - Builds complete confusion matrices
 
     **Non-Match Documentation:**
     - NonMatchCollector: Documents non-matching fields
@@ -565,6 +772,7 @@ class StructuredModel(BaseModel):
         divergence ``_install_object_grade_comparators`` exists to prevent.
         """
         super().__pydantic_init_subclass__(**kwargs)
+        cls._check_field_thresholds()
         cls._install_object_grade_comparators()
 
     def __init_subclass__(cls, **kwargs):
@@ -619,25 +827,43 @@ class StructuredModel(BaseModel):
                                 "_threshold_explicit",
                                 threshold != 0.5,
                             )
-                            if threshold_explicit:
-                                # Do not echo 0.0 back as advice: the threshold
-                                # test is `>=`, so `match_threshold = 0.0` makes
-                                # every paired object a true positive. Telling a
-                                # user to set it would walk them straight into
-                                # the misconfiguration warn_if_threshold_is_zero
-                                # exists to flag.
-                                remedy = (
-                                    "Set a positive 'match_threshold' on the list element "
-                                    "class (0.0 would classify every paired object as a "
-                                    f"true positive). See {THRESHOLD_DOCS_URL}"
-                                    if threshold == 0.0
-                                    else f"Set 'match_threshold = {threshold}' on the list element class."
+                            if threshold_explicit and not is_valid_threshold(
+                                threshold
+                            ):
+                                # The range error, which points at
+                                # match_threshold with a number in range. The
+                                # one below would echo 85 back as advice.
+                                raise cls._threshold_error(
+                                    field_name,
+                                    field_default.json_schema_extra,
+                                    threshold,
+                                    field_type,
                                 )
-                                raise ValueError(
-                                    f"Field '{field_name}' is a List[StructuredModel] and cannot have a "
-                                    f"'threshold' parameter in ComparableField. Hungarian matching uses each "
-                                    f"StructuredModel's 'match_threshold' class attribute instead. "
-                                    f"{remedy}"
+                            if threshold_explicit:
+                                # The same template, naming the model and the
+                                # element class. It does not echo 0.0 back as
+                                # advice: the threshold test is `>=`, so
+                                # `match_threshold = 0.0` makes every paired
+                                # object a true positive, the misconfiguration
+                                # warn_if_threshold_is_zero exists to flag.
+                                raise list_threshold_error(
+                                    getattr(
+                                        field_default.json_schema_extra,
+                                        "_threshold_as_written",
+                                        threshold,
+                                    ),
+                                    spelling=PYTHON,
+                                    field=field_name,
+                                    model=cls.__name__,
+                                    element=_list_element_name(field_type),
+                                    element_match_threshold=_element_match_threshold(
+                                        field_type
+                                    ),
+                                    set_at=getattr(
+                                        field_default.json_schema_extra,
+                                        "_set_at",
+                                        None,
+                                    ),
                                 )
 
                             # The same number, written on the comparator instead.
@@ -678,16 +904,31 @@ class StructuredModel(BaseModel):
                                 # warns. The sibling `_warn_if_threshold_is_zero`
                                 # call below uses this helper for exactly that
                                 # reason, and I keyed on the name anyway.
+                                comparator = getattr(
+                                    field_default.json_schema_extra,
+                                    "_comparator_instance",
+                                    None,
+                                )
                                 warn_once(
                                     "list-of-models-comparator-threshold",
                                     f"{_model_identity(cls.__name__, cls.__annotations__)}"
                                     f".{field_name}",
-                                    f"Field '{field_name}' is a List[StructuredModel], so the "
-                                    f"threshold set on its comparator is not consulted: "
-                                    f"Hungarian matching pairs items using the element class's "
-                                    f"'match_threshold'. Set 'match_threshold' on the element "
-                                    f"class if you meant to change how items are paired.",
+                                    list_comparator_warning(
+                                        _named_comparator_threshold(comparator),
+                                        comparator=python_comparator_source(
+                                            comparator
+                                        ),
+                                        field=field_name,
+                                        model=cls.__name__,
+                                        element=_list_element_name(field_type),
+                                        element_match_threshold=_element_match_threshold(
+                                            field_type
+                                        ),
+                                    ),
                                     category=UserWarning,
+                                    stacklevel=stacklevel_outside(
+                                        through_warn_once=True
+                                    ),
                                 )
 
                             # Comparator validation - only flag if explicitly set to non-default type
@@ -716,23 +957,167 @@ class StructuredModel(BaseModel):
                     # "sets threshold=0.0" points at a `ComparableField` argument
                     # absent from the call site -- the same misattribution this
                     # PR fixes for the `List[StructuredModel]` error one screen up.
-                    field_wrote_it = getattr(
-                        field_default.json_schema_extra, "_threshold_explicit", True
+                    #
+                    # "Not stated on the field" does not imply "from the
+                    # comparator": an importer clears the marker on its own
+                    # defaults too, and an inferred mapping threshold copies a
+                    # `match_threshold` of 0.0. So the comparator is credited only
+                    # when it actually named a threshold.
+                    extra = field_default.json_schema_extra
+                    from_comparator = not getattr(
+                        extra, "_threshold_explicit", True
+                    ) and (
+                        _named_comparator_threshold(
+                            getattr(extra, "_comparator_instance", None)
+                        )
+                        is not None
                     )
                     _warn_if_threshold_is_zero(
                         temp_schema["x-comparison"].get("threshold"),
                         f"{_model_identity(cls.__name__, cls.__annotations__)}.{field_name}",
-                        "threshold" if field_wrote_it else "comparator threshold",
+                        "comparator threshold" if from_comparator else "threshold",
                     )
 
         # `match_threshold` is a plain class attribute rather than a field, so
-        # it is not covered by the loop above.
+        # it is not covered by the loop above. `None` is not checked, as it was
+        # not before, but it does not read as unset as a field's
+        # `threshold=None` does: the class keeps `None`, and a comparison that
+        # reads it (a list of the class, a bare-annotated field, `evaluate()`)
+        # raises `TypeError`. A property or method is not a value to check.
         if "match_threshold" in cls.__dict__:
+            value = cls.__dict__["match_threshold"]
+            if not (
+                value is None
+                or callable(value)
+                or isinstance(value, (property, classmethod, staticmethod))
+                or is_valid_threshold(value)
+            ):
+                raise match_threshold_error(
+                    value,
+                    spelling=PYTHON,
+                    model=cls.__name__,
+                    set_at=outside_location(),
+                )
+            number = as_threshold(value)
+            if number is not None and number is not value:
+                # A Decimal, Fraction or numpy number, as the float it means.
+                cls.match_threshold = number
             _warn_if_threshold_is_zero(
                 cls.__dict__["match_threshold"],
                 _model_identity(cls.__name__, cls.__annotations__),
                 "match_threshold",
             )
+
+    @classmethod
+    def _check_field_thresholds(cls) -> None:
+        """Raise if a field's threshold is not a number from 0.0 to 1.0.
+
+        Runs from ``__pydantic_init_subclass__`` over ``model_fields``, not from
+        ``__init_subclass__`` over class attributes: ``model_fields`` holds the
+        metadata of an ``Annotated[str, ComparableField(...)]`` field, which has
+        no class attribute, and resolved annotations under
+        ``from __future__ import annotations``, where ``__annotations__`` holds
+        the string ``"List[Item]"``. ``ComparableField`` cannot check it, since
+        it does not know the model or the field yet.
+
+        The resolved value is checked, not the comparator's own: when the field
+        states a threshold, the comparator's is never read (``binary_compare()``
+        is its only other reader, and the evaluator does not call it). On a
+        ``List[StructuredModel]`` field a comparator threshold is not consulted
+        either, since Hungarian matching pairs on the element class's
+        ``match_threshold``, so only the field's own is checked there, as the
+        importers do.
+
+        An annotation still unresolved (a forward reference, such as ``addr:
+        Address`` under ``from __future__ import annotations`` with ``Address``
+        defined below) is checked now, as one that adopts its comparator's
+        threshold, even when it is visibly a list (``List["Item"]``): stickler
+        cannot tell yet whether ``Item`` is a model, and nothing checks the
+        field once it resolves. Only a list of models does not adopt, so an
+        invalid comparator threshold there raises, though the field would
+        ignore it once resolved. When the annotation is visibly a list, the
+        message says to remove the comparator if the element is a model.
+        A bare name for a list of models (``items: "ItemList"``, with
+        ``ItemList = List[Item]`` below) raises too, but its message gives
+        only the fix for a field that adopts. A PEP 695 alias is
+        read as the type it names once the type it names is defined; before
+        that, it is checked as adopting.
+
+        An ``Annotated`` annotation that names something defined further down,
+        its type or a value in its metadata, is not yet checked when it is a
+        string (quoted whole, or under ``from __future__ import annotations``):
+        pydantic holds it as one string until ``model_rebuild()``, so its
+        ``ComparableField`` does not exist yet and ``json_schema_extra`` is
+        empty here.
+        """
+        for field_name, field_info in cls.model_fields.items():
+            if field_name == _EXTRA_FIELDS_KEY:
+                continue
+            extra = field_info.json_schema_extra
+            metadata = getattr(extra, "_comparison_metadata", None)
+            if not callable(extra) or not isinstance(metadata, dict):
+                continue
+            threshold = metadata.get("threshold")
+            if is_valid_threshold(threshold):
+                continue
+            annotation = field_info.annotation
+            if (
+                not getattr(extra, "_threshold_explicit", True)
+                and not _is_unresolved(annotation)
+                and cls._is_list_of_structured_model_type(_unalias(annotation))
+            ):
+                continue
+            raise cls._threshold_error(field_name, extra, threshold, annotation)
+
+    @classmethod
+    def _threshold_error(
+        cls, field_name: str, extra: Any, threshold: Any, annotation: Any
+    ) -> ValueError:
+        """The shared threshold error for ``field_name``, in Python spelling."""
+        comparator = None
+        if not getattr(extra, "_threshold_explicit", True):
+            comparator = python_comparator_source(
+                getattr(extra, "_comparator_instance", None)
+            )
+        unresolved = _is_unresolved(annotation)
+        resolved = _unalias(annotation)
+        list_element = None
+        element_match_threshold = None
+        if (
+            _is_visibly_list(annotation)
+            if unresolved
+            else cls._is_list_of_structured_model_type(resolved)
+        ):
+            list_element = _list_element_name(resolved)
+            if not unresolved:
+                element_match_threshold = _element_match_threshold(resolved)
+        nested = (
+            comparator is not None
+            and not unresolved
+            and cls._is_structured_model_type(resolved)
+        )
+        nested_model = None
+        if nested:
+            inner = unwrap_optional(unwrap_annotated(resolved))[0]
+            nested_model = getattr(inner, "__name__", None)
+        # One name not defined yet may be an alias of a list of models;
+        # ``Dict[str, Later]`` or ``Tuple[Later, ...]`` never is.
+        unresolved_name = _unresolved_type_name(annotation) if unresolved else ""
+        return threshold_error(
+            threshold,
+            spelling=PYTHON,
+            field=field_name,
+            model=cls.__name__,
+            comparator=comparator,
+            nested=nested,
+            nested_model=nested_model,
+            list_element=list_element,
+            list_unresolved=unresolved
+            and (list_element is not None or bool(unresolved_name)),
+            unresolved_name=unresolved_name or None,
+            element_match_threshold=element_match_threshold,
+            set_at=getattr(extra, "_set_at", None),
+        )
 
     def model_post_init(self, __context):
         """Initialize confidence storage after model creation."""
@@ -906,7 +1291,8 @@ class StructuredModel(BaseModel):
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
-                       "threshold": 0.8,  # Optional, default 0.5
+                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be a number from 0.0 to 1.0, else ValueError
+                       "threshold": 0.8,  # Optional; default: a threshold named on the comparator (comparator_config or a custom constructor), else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
                        "default": "value", # Optional
@@ -968,9 +1354,23 @@ class StructuredModel(BaseModel):
         Field-Level Extensions:
         -----------------------
         - x-aws-stickler-comparator: Comparator algorithm name (built-in or registered custom)
-        - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0, default: 0.5)
+        - x-aws-stickler-comparator-config: Keyword arguments for that comparator
+        - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0,
+          default: a threshold named on the comparator, in
+          x-aws-stickler-comparator-config or by a custom comparator's
+          constructor, else the type default, such as 0.5 for a string and 0.7
+          for a nested object).
+          Whichever threshold the field uses must be a number from 0.0 to 1.0;
+          any other value raises ValueError naming the model and the field.
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
-        - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0 (bool, default: true)
+        - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0
+          (bool, default: true; false on a free-form object or an array of them)
+
+        An object with properties is scored field by field, so a comparator on
+        it, and any comparator-config key but threshold, has no effect and emits
+        a UserWarning; a threshold the comparator names still gates it. An array
+        of objects with properties reads no comparator config. A free-form
+        object, or an array of them, reads both keys.
 
         Model-Level Extensions:
         -----------------------
@@ -1169,17 +1569,12 @@ class StructuredModel(BaseModel):
                 f"got: {model_name}"
             )
 
-        # Validate match threshold
-        if not isinstance(match_threshold, (int, float)):
-            raise ValueError(
-                f"x-aws-stickler-match-threshold must be a number, "
-                f"got: {type(match_threshold).__name__}"
-            )
+        # Validate match threshold, with the message every path shares.
+        if not is_valid_threshold(match_threshold):
+            from .json_schema_importer import schema_model_label
 
-        if not (0.0 <= match_threshold <= 1.0):
-            raise ValueError(
-                f"x-aws-stickler-match-threshold must be between 0.0 and 1.0, "
-                f"got: {match_threshold}"
+            raise match_threshold_error(
+                match_threshold, spelling=SCHEMA, model=schema_model_label(schema)
             )
 
         # Convert through the schema library. Composed/root-ref schemas may not
@@ -2210,6 +2605,31 @@ class StructuredModel(BaseModel):
             schema["type"] = [schema["type"], "null"]
         return schema
 
+    @staticmethod
+    def _scalar_union_config_type(
+        annotation: Type, nullable: bool = False
+    ) -> Optional[str]:
+        """Name a union of built-in scalars for the existing config resolver.
+
+        Keep unsupported unions on their legacy export path rather than
+        silently replacing an unrepresentable arm with a string. `nullable`
+        carries an `Optional` the caller already stripped, such as the outer
+        one in `Optional[Annotated[Union[int, str], ...]]`.
+        """
+        arms = union_args(annotation)
+        if not arms:
+            return None
+        names = []
+        for arm in arms:
+            arm = unwrap_annotated(arm)
+            if arm not in (str, int, float, bool, bytes):
+                return None
+            names.append(arm.__name__)
+        name = f"Union[{', '.join(names)}]"
+        if nullable or type(None) in get_args(annotation):
+            name = f"Optional[{name}]"
+        return name
+
     @classmethod
     def to_stickler_config(cls) -> Dict[str, Any]:
         """Export model as custom Stickler JSON configuration.
@@ -2339,6 +2759,12 @@ class StructuredModel(BaseModel):
                         metadata, output_format="stickler_config"
                     )
                     field_config.update(extensions)
+                    # Pairing reads `match_threshold`, never this threshold, so
+                    # one out of range is left out rather than written for
+                    # `model_from_json()` to refuse. Only a comparator can put
+                    # one here: `ComparableField(threshold=85)` raises.
+                    if not is_valid_threshold(field_config.get("threshold", 0.5)):
+                        del field_config["threshold"]
                 else:
                     # Primitive list - pass element type, then fix up type string.
                     # The whole field is checked first, since the converter
@@ -2370,6 +2796,12 @@ class StructuredModel(BaseModel):
                         if "comparator_config" not in extensions:
                             field_config.pop("comparator_config", None)
                         field_config.update(extensions)
+                    elif union_type := cls._scalar_union_config_type(
+                        element_type, nullable=element_is_nullable
+                    ):
+                        # __name__ loses all union arms (or is absent for |).
+                        # The importer already accepts parameterized unions.
+                        field_config["type"] = f"List[{union_type}]"
                     else:
                         # A plain model's class name is not a type
                         # model_from_json() knows; it is written as `dict`, as
@@ -2379,7 +2811,14 @@ class StructuredModel(BaseModel):
                             if ConfigurationHelper.is_plain_model_annotation(
                                 element_type
                             )
-                            else element_type.__name__
+                            # `A | B` has no __name__; write `Union`, as the
+                            # legacy export does for `List[Union[A, B]]`.
+                            else getattr(element_type, "__name__", None)
+                            or (
+                                "Union"
+                                if union_args(element_type)
+                                else str(element_type)
+                            )
                         )
                         field_config["type"] = f"List[{element_name}]"
             else:
