@@ -528,6 +528,141 @@ class Address(StructuredModel):
 
 ---
 
+## Language Support
+
+The text comparators score identical Arabic, Devanagari or Japanese text
+`1.0`, as they do Latin text. The comparators differ in what each one treats
+as the same value written another way. This section covers the text, numeric,
+date and phone comparators: what each reads in other scripts, and what it
+scores `0.0`. The model-based comparators (Semantic, BERT and LLM) score whatever
+their model returns, so they are not covered here.
+
+### Text comparators
+
+None of the text comparators folds letter variants, diacritics or character
+widths. `NormalizedComparator` applies NFC, casefolds, and ignores Unicode
+punctuation and whitespace, and the other four apply neither NFC nor NFKC.
+Scores below are for each pair with the comparator's defaults, to at most two
+decimal places:
+
+| The pair differs by | Example | Exact | Normalized | Levenshtein | Fuzzy | ANLS\* |
+|---|---|---|---|---|---|---|
+| Hamza on alef | `"أحمد"` / `"احمد"` | 0.0 | 0.0 | 0.75 | 0.75 | 0.75 |
+| Ta marbuta and ha | `"مدرسة"` / `"مدرسه"` | 0.0 | 0.0 | 0.80 | 0.80 | 0.80 |
+| Alef maqsura and ya | `"مصطفى"` / `"مصطفي"` | 0.0 | 0.0 | 0.80 | 0.80 | 0.80 |
+| Diacritics | `"مُحَمَّد"` / `"محمد"` | 0.0 | 0.0 | 0.50 | 0.67 | 0.50 |
+| Tatweel | `"محـــمد"` / `"محمد"` | 0.0 | 0.0 | 0.57 | 0.73 | 0.57 |
+| Persian and Arabic letter forms | `"یک کتاب"` / `"يك كتاب"` | 0.0 | 0.0 | 0.57 | 0.57 | 0.57 |
+| Arabic-Indic digits in an ID | `"INV-١٢٥٠"` / `"INV-1250"` | 0.0 | 0.0 | 0.50 | 0.50 | 0.50 |
+| Arabic punctuation | `"مرحبا، كيف حالك؟"` / `"مرحبا كيف حالك"` | 0.0 | 1.0 | 0.88 | 0.93 | 0.88 |
+| Composed and decomposed form | `"\u0623\u062d\u0645\u062f"` / `"\u0627\u0654\u062d\u0645\u062f"` | 0.0 | 1.0 | 0.60 | 0.67 | 0.60 |
+| A right-to-left mark (U+200F) | `"\u200fدبي"` / `"دبي"` | 0.0 | 0.0 | 0.75 | 0.86 | 0.75 |
+| A zero-width non-joiner (U+200C) | `"می\u200cخواهم"` / `"میخواهم"` | 0.0 | 0.0 | 0.88 | 0.93 | 0.88 |
+| Arabic presentation forms | `"\ufee3\ufea4\ufee4\ufeaa"` / `"محمد"` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Full-width forms | `"ＡＢＣ１２３"` / `"ABC123"` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Half-width forms | `"ｶﾅ"` / `"カナ"` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+
+Escaped examples in this section's tables and text are Python string literals,
+because the two sides render the same or the difference is invisible.
+Devanagari has two spellings of क़ too, `"\u0958"` and `"\u0915\u093c"`,
+which NFC makes equal: only Normalized matches them (`1.0`), and the other four
+score `0.0`.
+
+Presentation forms, full-width and half-width characters can appear in text
+extracted from PDFs and scans. No text comparator applies NFKC, which would map
+them to the ordinary characters they display, so they never match those
+characters. A single word written entirely in them scores `0.0`, as in the
+last three rows. In longer text only shared characters such as spaces can earn
+credit: `"\ufee3\ufea4\ufee4\ufeaa \ufecb\ufee0\ufef2"` / `"محمد علي"` scores
+`0.125` with Levenshtein and Fuzzy and `0.0` with ANLS\*. Text that mixes them
+with ordinary characters loses credit for each such character:
+`"\ufee3\ufea4\ufee4\ufeaa 2024"` / `"محمد 2024"` scores `0.56` with
+Levenshtein, Fuzzy and ANLS\*, and `"INV-１２３"` / `"INV-123"` scores `0.57`.
+
+ANLS\* scores like Levenshtein on plain strings, except that a score below its
+leaf threshold of `0.5` becomes `0.0`. One more diacritic is enough to cross
+it: with a tanween added, `"مُحَمَّدٌ"` / `"محمد"` scores `0.44` with
+Levenshtein and `0.0` with ANLS\*.
+
+### Numbers, dates and phone numbers
+
+| Comparator | Reads in other scripts | Scores `0.0` |
+|---|---|---|
+| [`NumericComparator`](#numericcomparator) | Decimal digits in other scripts: `"١٬٢٥٠٫٥٠"` against `"1,250.50"`, `"۱۲۵۰"`, `"१२५०"` or `"১২৫০"` against `"1250"`, and `"１，２５０．５０"` against `"1250.50"`, score `1.0`. Persian digits read with the Arabic separators `٬` and `٫` (`"۱٬۲۵۰٫۵"` against `"1250.5"`) | The cases listed below the table |
+| [`DateComparator`](date-comparator.md) | Decimal digits in other scripts: `"١٤/٠٥/٢٠٢٤"`, `"۱۴/۰۵/۲۰۲۴"`, `"१४/०५/२०२४"`, `"১৪/০৫/২০২৪"`, `"๑๔/๐๕/๒๐๒๔"` (with a Gregorian year) and `"２０２４-０５-１４"` all score `1.0` against `"2024-05-14"`. A year-first date such as `"٢٠٢٤-٠٣-٠٤"` is read as year, month, day | A month name that is not English: `"14 مايو 2024"` and `"14 मई 2024"` score `0.0` against `"2024-05-14"`, where `"14 May 2024"` scores `1.0`. CLDR's short date for ar-EG, ar-SA and ar-AE, which puts a right-to-left mark after the day and the month: `"١٤\u200f/٥\u200f/٢٠٢٤"`, or `"14\u200f/5\u200f/2024"` in ar-AE. Without the marks, both score `1.0`. A date in another calendar: `"۱۴۰۳/۲/۲۵"` (CLDR's Solar Hijri short date for 14 May 2024), `"٦\u200f/١١\u200f/١٤٤٥ هـ"` (the same day in ar-SA's Umm al-Qura calendar, also `0.0` without the marks) and the Thai Buddhist-era year in `"๑๔/๐๕/๒๕๖๗"`. A date with `年`, `月` and `日`, such as `"2024年5月14日"` |
+| `PhoneComparator` | Decimal digits in other scripts: `"+٩٧١ ٥٠ ١٢٣ ٤٥٦٧"`, `"+۹۷۱ ۵۰ ۱۲۳ ۴۵۶۷"`, `"+९७१ ५० १२३ ४५६७"`, `"+৯৭১ ৫০ ১২৩ ৪৫৬৭"` and `"＋９７１ ５０ １２３ ４５６７"` all score `1.0` against `"+971 50 123 4567"` | A different number, such as `"+٩٧١ ٥٠ ١٢٣ ٤٥٦٨"`. A direction mark inside the number, such as U+200F in `"+٩٧١\u200f ٥٠ ١٢٣ ٤٥٦٧"`; a mark at the start or end scores `1.0`. A plus sign that right-to-left extraction moved to the end, as in `"٩٧١ ٥٠ ١٢٣ ٤٥٦٧+"` |
+
+Dates and phone numbers read the same way in every other decimal-digit script
+tried, including Gujarati, Tamil, Khmer, Lao, Myanmar and Tibetan; scripts not
+listed here were not checked.
+
+`NumericComparator` scores these `0.0`:
+
+- A value whose digits switch script, such as `"١٢٥٠.50"` against `"1250.5"`.
+  Two kinds are read: Arabic-Indic and Persian digits mixed (`"۱٢٥٠"` reads
+  1250), and the same amount written twice in two scripts (`"1,250.50١٬٢٥٠٫٥٠"`
+  reads 1250.50).
+- Digits with a `.` or `,` (ASCII, full-width or small form) in a script whose
+  locales may write `,` as the decimal point, or that no locale writes
+  natively, such as Persian, Khmer, Lao, Mongolian, Javanese, Sundanese,
+  Balinese and Cham: `"۱,۲۵۰"` and `"១.២៥០"` read as no number.
+- A CJK numeral touching the number, such as `万` in `"１２万円"`, which reads as
+  no number. `"一式 １，２５０円"` reads 1250.
+
+It does not apply the multiplier in a compact form: `"١٫٣ ألف"` (1.3
+thousand) reads 1.3, so it scores `1.0` against `"1.3"` and `0.0` against
+`"1300"`.
+
+Declare a `NumericComparator` field `str` to get the readings in the table, as
+[NumericComparator](#numericcomparator) explains. A `float` or `int` field
+rejects digits outside ASCII before the comparator runs. A `Decimal` field
+rejects `,`, `٬` and `٫`, and reads the rest with Python's `Decimal`, which
+accepts digits that switch script: `"١٢٥٠.50"` becomes `1250.50` and matches
+`"1250.5"`.
+
+### Choosing a comparator for non-Latin text
+
+- **Names and free text:** `LevenshteinComparator` or `FuzzyComparator`. They
+  give partial credit for letter variants and diacritics, but no full credit,
+  so set the threshold from scores like those in the table above. Exact scores
+  any difference `0.0`, and Normalized matches two spellings only when they are
+  identical after NFC, casefolding and removing punctuation and whitespace, so
+  it scores the letter variants and diacritics in the table `0.0`.
+- **IDs and codes:** `ExactComparator` or `NormalizedComparator` when both sides
+  use the same digits. Neither matches `"١٢٥٠"` with `"1250"`, so if your
+  documents mix digit scripts in IDs, convert the digits before evaluation.
+- **Amounts, dates and phone numbers:** `NumericComparator`, `DateComparator`
+  and `PhoneComparator` read digits in other scripts. Dates need English month
+  names and the Gregorian calendar, and score `0.0` written with `年`, `月` and
+  `日`. Remove direction marks (U+200E, U+200F and U+061C) from dates and phone
+  numbers before evaluation. One such mark anywhere in a date makes it score
+  `0.0`, as CLDR's Arabic short date shows, and one inside a phone number does
+  the same; a mark at the start or end of a phone number does not.
+- **Text from PDFs and scans:** if it may contain presentation forms or full-width
+  or half-width characters, convert it with NFKC before evaluation. No text
+  comparator matches those characters with the ones they display.
+
+[`test_arabic_text.py`](https://github.com/awslabs/stickler/blob/main/tests/common/comparators/test_arabic_text.py)
+pins the Arabic and Persian rows of the text table, the identical-Arabic-text
+score, the Arabic and Persian dates and phone numbers, and the tanween example,
+and
+[`test_numeric.py`](https://github.com/awslabs/stickler/blob/main/tests/common/comparators/test_numeric.py)
+pins how each number example is read, some through a signed or longer form of
+the same value, so a change to any of those scores is deliberate. No test pins
+these yet: the `float`, `int` and `Decimal` field behaviour above; the
+full-width and small-form `.` and `,` with the scripts that refuse them; the
+Levenshtein, Fuzzy and ANLS\* scores of the Arabic punctuation row; the
+full-width, half-width and Devanagari क़ text examples, the two-word
+presentation-form example and the mixed strings; identical Devanagari and
+Japanese text; the Devanagari, Bengali, Thai and full-width dates,
+`"14 मई 2024"`, the Thai Buddhist-era date and the `年`, `月` and `日` date, and
+the Umm al-Qura date; the Devanagari, Bengali and full-width phone numbers, the
+other dates with a direction mark, and the phone numbers with a direction mark
+or a trailing plus sign; and the other scripts tried for dates and phone
+numbers.
+
+---
+
 ## Default Comparators by Type
 
 These are the defaults on the **JSON Schema path** — what `from_json_schema` picks for a property

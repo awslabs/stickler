@@ -195,6 +195,14 @@ Each release links to full notes on the
 
 ### Documentation
 
+- The comparator guide has a Language Support section
+  ([#592](https://github.com/awslabs/stickler/issues/592)). It gives the score
+  each text comparator returns for Arabic spelling variants, diacritics,
+  invisible marks, presentation forms and full-width and half-width characters,
+  says which digits, dates and phone numbers in other scripts the numeric, date
+  and phone comparators read and which they score `0.0`, and suggests a
+  comparator for each kind of field.
+
 - Understanding Results now documents the three `non_matches` record shapes
   ([#486](https://github.com/awslabs/stickler/issues/486)). Whole list-item
   records and sub-field records of matched list items carry `reason` at the top
