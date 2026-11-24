@@ -743,12 +743,14 @@ class TestNestedStructuredModels:
     def test_schema_validation_errors(self):
         """Test helpful error messages for invalid configurations."""
 
-        # Error: structured model with comparator (forbidden)
+        # Error: list of structured models with comparator (forbidden, as on
+        # the Python path). On a single structured_model it warns instead; see
+        # test_importer_resolution_parity.
         invalid_config1 = {
             "model_name": "InvalidTest",
             "fields": {
                 "person": {
-                    "type": "structured_model",
+                    "type": "list_structured_model",
                     "comparator": "LevenshteinComparator",  # ❌ Forbidden!
                     "fields": {
                         "name": {"type": "str", "comparator": "ExactComparator"}
@@ -757,7 +759,9 @@ class TestNestedStructuredModels:
             },
         }
 
-        with pytest.raises(ValueError, match="structured_model.*cannot.*comparator"):
+        with pytest.raises(
+            ValueError, match="list_structured_model.*cannot.*comparator"
+        ):
             StructuredModel.model_from_json(invalid_config1)
 
         # Error: primitive field with fields (forbidden)

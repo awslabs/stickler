@@ -215,7 +215,7 @@ class StructuredListComparator:
             no pair clipped, and is reported as ``raw_similarity_score`` only.
             Each pair's score is the item's own ``overall_score``, which has
             already clipped the item's fields, so ``raw_score`` is unclipped at
-            the list level only (#330).
+            the list level only (#437).
         """
         from .comparison_engine import ComparisonEngine
         from .structured_model import StructuredModel

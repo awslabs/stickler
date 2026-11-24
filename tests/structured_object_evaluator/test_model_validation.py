@@ -36,12 +36,14 @@ class TestStructuredModelValidation:
                 )
 
         error_message = str(exc_info.value)
-        assert "cannot have a 'threshold' parameter" in error_message
-        assert (
-            "Hungarian matching uses each StructuredModel's 'match_threshold'"
-            in error_message
+        assert error_message.startswith(
+            "Unused threshold for field 'products' of model 'OrderWithThreshold': "
+            "ComparableField(threshold=0.9) has no effect on a List[Product] "
+            "field: its items are matched up using Product.match_threshold. "
+            "Remove threshold=0.9. To change how items match, set "
+            "Product.match_threshold, now 0.7, to 0.9. (Set at "
         )
-        assert "Set 'match_threshold = 0.9'" in error_message
+        assert "test_model_validation.py:" in error_message
 
     def test_comparator_validation_on_list_structured_model_field(self):
         """Test that comparator parameter on List[StructuredModel] fields raises ValueError."""
@@ -93,7 +95,7 @@ class TestStructuredModelValidation:
 
         error_message = str(exc_info.value)
         # Should catch the threshold error first
-        assert "cannot have a 'threshold' parameter" in error_message
+        assert "ComparableField(threshold=0.9) has no effect" in error_message
 
     def test_valid_list_structured_model_field_creation(self):
         """Test that valid List[StructuredModel] fields can be created without errors."""
@@ -173,7 +175,7 @@ class TestStructuredModelValidation:
                 )
 
         error_message = str(exc_info.value)
-        assert "Set 'match_threshold = 0.95'" in error_message
+        assert "set Product.match_threshold, now 0.7, to 0.95." in error_message
 
     def test_validation_works_with_different_threshold_values(self):
         """Test that validation catches different threshold values correctly."""

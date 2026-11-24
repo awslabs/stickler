@@ -289,12 +289,11 @@ else:
     Classification is separate and is never affected by this setting. A pair below
     the threshold is one `fd` whether or not its score is kept.
 
-    One gap remains, tracked in
-    [#330](https://github.com/awslabs/stickler/issues/330):
-    `List[StructuredModel]` does not honour the flag, because each pair is scored
-    through the item's own `compare_with` and clipping has already happened per
-    item. For the same reason its `raw_similarity_score` is unclipped only at the
-    list level.
+    Two gaps remain. `List[StructuredModel]` does not honour the flag
+    ([#415](https://github.com/awslabs/stickler/issues/415)), because each pair is
+    scored through the item's own `compare_with` and clipping has already happened
+    per item. For the same reason its `raw_similarity_score` is unclipped only at
+    the list level ([#437](https://github.com/awslabs/stickler/issues/437)).
 
 ### `_aggregate_to_overall()`
 
