@@ -358,9 +358,11 @@ class EvaluationHTMLReporter:
         """Generate JavaScript section with external file reference and data initialization."""
         field_thresholds = DataExtractor.extract_all_field_thresholds(model_schema) if model_schema else None
         if field_thresholds:
-            # A flat {field path: float} map. ComparableField accepts a NaN or
-            # infinite threshold, which is no usable threshold, so drop it as
-            # if unset rather than fail the report.
+            # A flat {field path: float} map. ComparableField refuses a NaN or
+            # infinite threshold at class definition, but a field the check
+            # cannot read yet (a string `Annotated` annotation naming a type
+            # defined further down) still loads one. It is no usable
+            # threshold, so drop it as if unset rather than fail the report.
             field_thresholds = {
                 path: threshold
                 for path, threshold in field_thresholds.items()
