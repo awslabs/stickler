@@ -201,6 +201,11 @@ Each release links to full notes on the
   exported the unusable `List[Union]`, and the `list[int | str]` spelling raised
   `AttributeError` at export
   ([#476](https://github.com/awslabs/stickler/issues/476)).
+- `ErrorCaptureAtBudgetMetric` no longer depends on input order when a review
+  budget cuts through a group of tied confidences. In that case `errors_found`
+  is now a fractional expected count (a float) instead of an integer that
+  varied between runs
+  ([#601](https://github.com/awslabs/stickler/issues/601)).
 
 ### Performance
 
