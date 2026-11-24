@@ -54,7 +54,44 @@ See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) fo
 | [**LLMComparator**](#llmcomparator) | Complex semantic evaluation with reasoning | Slow | Yes (Bedrock) | Binary (0.0 or 1.0) |
 
 ---
+## Language and Script Support
 
+Comparator behaviour depends on the type of value being compared. Support for
+characters or digits from a script does not necessarily mean support for the
+language, its spelling conventions, or its calendar system.
+
+The following behaviours are covered by the comparator tests:
+
+| Comparator | Tested language and script behaviour |
+|---|---|
+| `ExactComparator` | Compares text exactly. Arabic and Persian spelling variants, diacritics, punctuation, and presentation forms remain significant. |
+| `NormalizedComparator` | Applies Unicode NFC normalization and can ignore Unicode whitespace and punctuation. It does not equate Arabic/Persian letter variants, presentation forms, direction marks, or zero-width non-joiners. |
+| `LevenshteinComparator` | Gives partial credit for tested Arabic and Persian text variations using edit distance. It does not apply language-specific normalization. |
+| `FuzzyComparator` | Gives partial credit for tested Arabic and Persian text variations using fuzzy string matching. It does not apply language-specific normalization. |
+| `ANLSStarComparator` | Uses normalized edit distance for the tested Arabic and Persian variations. Its leaf threshold can reduce a partial score to zero. |
+| `NumericComparator` | Reads decimal digits from multiple Unicode scripts, including Arabic-Indic, Persian, Devanagari, Bengali, Tamil, Thai, Myanmar, fullwidth, and Adlam digits. Tested Arabic and Persian separators and currency formats are also recognized. |
+| `DateComparator` | Parses tested dates written with Arabic-Indic and Persian digits. The tested Arabic month name and Solar Hijri date are not parsed as equivalent Gregorian dates. |
+| `PhoneComparator` | Recognizes tested phone numbers written with Arabic-Indic and Persian digits. Phone parsing and validation are delegated to `phonenumbers`. |
+
+These are tested behaviours, not a guarantee of complete support for every
+language or locale. In particular:
+
+- Text comparators do not automatically normalize language-specific spelling
+  variants. For example, Arabic diacritics, Persian/Arabic letter differences,
+  and zero-width non-joiners can affect the score.
+- `NormalizedComparator` removes Unicode punctuation and whitespace, but
+  preserves format characters such as right-to-left marks.
+  - `NumericComparator` requires an unambiguous numeric value. Mixing ASCII
+  digits with non-ASCII decimal digits within one number can result in no
+  numeric reading.
+- `DateComparator` relies on `python-dateutil`; digit recognition does not
+  imply support for non-Gregorian calendars or localized month names.
+
+For reproducible examples, see the
+[Arabic and Persian text comparator tests](https://github.com/awslabs/stickler/blob/dev/tests/common/comparators/test_arabic_text.py)
+and the
+[NumericComparator tests](https://github.com/awslabs/stickler/blob/dev/tests/common/comparators/test_numeric.py).
+--
 ## Comparator Details
 
 ### ExactComparator
