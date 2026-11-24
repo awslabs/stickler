@@ -154,6 +154,13 @@ Each release links to full notes on the
   importer already refused the same misplacement
   ([#607](https://github.com/awslabs/stickler/issues/607)).
 
+### Removed
+
+- The deprecated `stickler.structured_object_evaluator.models.confusion_matrix_calculator`
+  shim that 1.0.2 restored for 1.0.x is gone. Nothing in Stickler used it;
+  `compare_with(include_confusion_matrix=True)` reports the counts
+  ([#610](https://github.com/awslabs/stickler/issues/610)).
+
 ### Fixed
 
 - **A comparator key on a nested model now warns instead of being dropped in
