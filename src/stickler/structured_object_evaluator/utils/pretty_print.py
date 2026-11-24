@@ -52,6 +52,22 @@ class Colors:
     BRIGHT_WHITE = "\033[97m"
 
 
+# Confusion-count and derived-metric keys, in the order this module writes them.
+_CM_COUNT_KEYS = ("tp", "fp", "tn", "fn", "fd", "fa")
+_CM_DERIVED_KEYS = ("cm_precision", "cm_recall", "cm_f1", "cm_accuracy")
+
+# Matrix visualization cells in print order: (key, background colour,
+# character used without colour, legend label).
+_MATRIX_CELLS = (
+    ("tp", Colors.BG_GREEN, "T", "True Positive (TP)"),
+    ("tn", Colors.BG_BLUE, "N", "True Negative (TN)"),
+    ("fp", Colors.BG_RED, "F", "False Positive (FP)"),
+    ("fn", Colors.BG_YELLOW, "M", "False Negative (FN)"),  # M for "Miss"
+    ("fd", Colors.BG_MAGENTA, "D", "False Discovery (FD)"),
+)
+_MATRIX_WIDTH = 40
+
+
 def _supports_color() -> bool:
     """
     Check if the terminal supports color output.
@@ -211,6 +227,16 @@ def _format_nested_field_name(name: str, level: int = 0, use_color: bool = True)
     return f"{indent}{last_part}"
 
 
+def _counts(d: Dict[str, Any]) -> Dict[str, Any]:
+    """The six confusion counts from ``d``, defaulting to 0."""
+    return {k: d.get(k, 0) for k in _CM_COUNT_KEYS}
+
+
+def _derived(d: Dict[str, Any]) -> Dict[str, Any]:
+    """The four derived metrics from ``d``, defaulting to 0.0."""
+    return {k: d.get(k, 0.0) for k in _CM_DERIVED_KEYS}
+
+
 def _normalize_results_format(
     results: Union[Dict[str, Any], Any],
 ) -> Optional[Dict[str, Any]]:
@@ -235,42 +261,18 @@ def _normalize_results_format(
         overall_metrics = results.metrics
         field_metrics = results.field_metrics
 
-        # Create derived metrics structure for overall metrics
-        overall_derived = {
-            "cm_precision": overall_metrics.get("cm_precision", 0.0),
-            "cm_recall": overall_metrics.get("cm_recall", 0.0),
-            "cm_f1": overall_metrics.get("cm_f1", 0.0),
-            "cm_accuracy": overall_metrics.get("cm_accuracy", 0.0),
+        # Read overall derived, then fields, then overall counts: for a
+        # malformed input this order decides which AttributeError is raised.
+        overall_derived = _derived(overall_metrics)
+        normalized_fields = {
+            field_name: {**_counts(field_data), "derived": _derived(field_data)}
+            for field_name, field_data in field_metrics.items()
         }
-
-        # Create normalized field structure
-        normalized_fields = {}
-        for field_name, field_data in field_metrics.items():
-            # Extract base confusion matrix values and derived metrics
-            normalized_fields[field_name] = {
-                "tp": field_data.get("tp", 0),
-                "fp": field_data.get("fp", 0),
-                "tn": field_data.get("tn", 0),
-                "fn": field_data.get("fn", 0),
-                "fd": field_data.get("fd", 0),
-                "fa": field_data.get("fa", 0),
-                "derived": {
-                    "cm_precision": field_data.get("cm_precision", 0.0),
-                    "cm_recall": field_data.get("cm_recall", 0.0),
-                    "cm_f1": field_data.get("cm_f1", 0.0),
-                    "cm_accuracy": field_data.get("cm_accuracy", 0.0),
-                },
-            }
 
         return {
             "confusion_matrix": {
                 "overall": {
-                    "tp": overall_metrics.get("tp", 0),
-                    "fp": overall_metrics.get("fp", 0),
-                    "tn": overall_metrics.get("tn", 0),
-                    "fn": overall_metrics.get("fn", 0),
-                    "fd": overall_metrics.get("fd", 0),
-                    "fa": overall_metrics.get("fa", 0),
+                    **_counts(overall_metrics),
                     "derived": overall_derived,
                 },
                 "fields": normalized_fields,
@@ -294,15 +296,7 @@ def _normalize_results_format(
         # This might be a direct metrics dict, wrap it
         return {
             "confusion_matrix": {
-                "overall": {
-                    **results,
-                    "derived": {
-                        "cm_precision": results.get("cm_precision", 0.0),
-                        "cm_recall": results.get("cm_recall", 0.0),
-                        "cm_f1": results.get("cm_f1", 0.0),
-                        "cm_accuracy": results.get("cm_accuracy", 0.0),
-                    },
-                },
+                "overall": {**results, "derived": _derived(results)},
                 "fields": {},
             }
         }
@@ -654,6 +648,18 @@ def _print_field_row(
     )
 
 
+def _matrix_widths(counts: List[int], total: int) -> List[int]:
+    """Cell widths by count share; non-zero gets 1+, the first largest gets spare."""
+    widths = [
+        max(int((count / total) * _MATRIX_WIDTH), 1) if count > 0 else 0
+        for count in counts
+    ]
+    current_width = sum(widths)
+    if current_width < _MATRIX_WIDTH:
+        widths[widths.index(max(widths))] += _MATRIX_WIDTH - current_width
+    return widths
+
+
 def _print_matrix_visualization(
     results: Dict[str, Any], use_color: bool = True
 ) -> None:
@@ -666,12 +672,9 @@ def _print_matrix_visualization(
     """
     cm = results["confusion_matrix"]["overall"]
 
-    tp = cm.get("tp", 0)
-    fp = cm.get("fp", 0)
-    tn = cm.get("tn", 0)
-    fn = cm.get("fn", 0)
-    fd = cm.get("fd", 0)
-
+    counts = [cm.get(key, 0) for key, *_ in _MATRIX_CELLS]
+    tp, tn, fp, fn, fd = counts
+    # This addition order sets float rounding and the TypeError text for bad counts.
     total = tp + fp + tn + fn + fd
     if total == 0:
         return  # Avoid division by zero
@@ -679,117 +682,23 @@ def _print_matrix_visualization(
     print(_create_header("CONFUSION MATRIX VISUALIZATION", "=", use_color))
     print()
 
-    matrix_width = 40
-
-    # Calculate cell widths proportional to counts
-    cell_tp = int((tp / total) * matrix_width) if tp > 0 else 0
-    cell_tn = int((tn / total) * matrix_width) if tn > 0 else 0
-    cell_fp = int((fp / total) * matrix_width) if fp > 0 else 0
-    cell_fn = int((fn / total) * matrix_width) if fn > 0 else 0
-    cell_fd = int((fd / total) * matrix_width) if fd > 0 else 0
-
-    # Ensure at least 1 character for non-zero values
-    # Create dictionaries to safely track cell widths and corresponding counts
-    cell_data = {
-        "cell_tp": cell_tp,
-        "cell_tn": cell_tn,
-        "cell_fp": cell_fp,
-        "cell_fn": cell_fn,
-        "cell_fd": cell_fd,
-    }
-
-    count_data = {"tp": tp, "tn": tn, "fp": fp, "fn": fn, "fd": fd}
-
-    # Ensure at least 1 character for non-zero values
-    for cell_key in cell_data:
-        count_key = cell_key.replace("cell_", "")
-        if count_data[count_key] > 0 and cell_data[cell_key] == 0:
-            cell_data[cell_key] = 1
-
-    # Update the original variables
-    cell_tp = cell_data["cell_tp"]
-    cell_tn = cell_data["cell_tn"]
-    cell_fp = cell_data["cell_fp"]
-    cell_fn = cell_data["cell_fn"]
-    cell_fd = cell_data["cell_fd"]
-
-    # Adjust to ensure total width is maintained
-    current_width = cell_tp + cell_tn + cell_fp + cell_fn + cell_fd
-    if current_width < matrix_width:
-        # Add extra to largest cell
-        max_cell = max([cell_tp, cell_tn, cell_fp, cell_fn, cell_fd])
-        if max_cell == cell_tp:
-            cell_tp += matrix_width - current_width
-        elif max_cell == cell_tn:
-            cell_tn += matrix_width - current_width
-        elif max_cell == cell_fp:
-            cell_fp += matrix_width - current_width
-        elif max_cell == cell_fn:
-            cell_fn += matrix_width - current_width
-        else:
-            cell_fd += matrix_width - current_width
-
-    # Create the matrix visualization
-    if use_color and _supports_color():
-        tp_cell = (
-            f"{Colors.BG_GREEN}{' ' * cell_tp}{Colors.RESET}" if cell_tp > 0 else ""
-        )
-        tn_cell = (
-            f"{Colors.BG_BLUE}{' ' * cell_tn}{Colors.RESET}" if cell_tn > 0 else ""
-        )
-        fp_cell = f"{Colors.BG_RED}{' ' * cell_fp}{Colors.RESET}" if cell_fp > 0 else ""
-        fn_cell = (
-            f"{Colors.BG_YELLOW}{' ' * cell_fn}{Colors.RESET}" if cell_fn > 0 else ""
-        )
-        fd_cell = (
-            f"{Colors.BG_MAGENTA}{' ' * cell_fd}{Colors.RESET}" if cell_fd > 0 else ""
-        )
-    else:
-        tp_cell = "T" * cell_tp if cell_tp > 0 else ""
-        tn_cell = "N" * cell_tn if cell_tn > 0 else ""
-        fp_cell = "F" * cell_fp if cell_fp > 0 else ""
-        fn_cell = "M" * cell_fn if cell_fn > 0 else ""  # M for "Miss" (False Negative)
-        fd_cell = (
-            "D" * cell_fd if cell_fd > 0 else ""
-        )  # D for "Discovery" (False Discovery)
+    widths = _matrix_widths(counts, total)
+    colored = use_color and _supports_color()
 
     # Print matrix
-    print(f"{tp_cell}{tn_cell}{fp_cell}{fn_cell}{fd_cell}")
+    cells = []
+    for (_, bg, char, _), width in zip(_MATRIX_CELLS, widths):
+        if width > 0:
+            cells.append(
+                f"{bg}{' ' * width}{Colors.RESET}" if colored else char * width
+            )
+    print("".join(cells))
 
     # Print legend
     print("\nLegend:")
-    if use_color and _supports_color():
-        print(
-            f"  {Colors.BG_GREEN}  {Colors.RESET} True Positive (TP): {tp} ({_format_percentage(tp / total if total else 0)})"
-        )
-        print(
-            f"  {Colors.BG_BLUE}  {Colors.RESET} True Negative (TN): {tn} ({_format_percentage(tn / total if total else 0)})"
-        )
-        print(
-            f"  {Colors.BG_RED}  {Colors.RESET} False Positive (FP): {fp} ({_format_percentage(fp / total if total else 0)})"
-        )
-        print(
-            f"  {Colors.BG_YELLOW}  {Colors.RESET} False Negative (FN): {fn} ({_format_percentage(fn / total if total else 0)})"
-        )
-        print(
-            f"  {Colors.BG_MAGENTA}  {Colors.RESET} False Discovery (FD): {fd} ({_format_percentage(fd / total if total else 0)})"
-        )
-    else:
-        print(
-            f"  T True Positive (TP): {tp} ({_format_percentage(tp / total if total else 0)})"
-        )
-        print(
-            f"  N True Negative (TN): {tn} ({_format_percentage(tn / total if total else 0)})"
-        )
-        print(
-            f"  F False Positive (FP): {fp} ({_format_percentage(fp / total if total else 0)})"
-        )
-        print(
-            f"  M False Negative (FN): {fn} ({_format_percentage(fn / total if total else 0)})"
-        )
-        print(
-            f"  D False Discovery (FD): {fd} ({_format_percentage(fd / total if total else 0)})"
-        )
+    for (_, bg, char, label), count in zip(_MATRIX_CELLS, counts):
+        swatch = f"{bg}  {Colors.RESET}" if colored else char
+        print(f"  {swatch} {label}: {count} ({_format_percentage(count / total)})")
 
     print("\n")
 
