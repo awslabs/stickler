@@ -9,6 +9,35 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- Scalar-union lists such as `List[Union[int, str]]` now round-trip through
+  `to_stickler_config()` and `model_from_json()`. The exported type keeps each
+  built-in scalar arm, including nullable elements. Before, `List[Union[int, str]]`
+  exported the unusable `List[Union]`, and the `list[int | str]` spelling raised
+  `AttributeError` at export
+  ([#476](https://github.com/awslabs/stickler/issues/476)).
+
+### Performance
+
+- `LevenshteinComparator` uses RapidFuzz's edit distance, accelerating string
+  comparisons and ANLS* leaf scoring while preserving public similarity scores.
+  [#510](https://github.com/awslabs/stickler/issues/510)
+
+### Documentation
+
+- Understanding Results now documents the three `non_matches` record shapes
+  ([#486](https://github.com/awslabs/stickler/issues/486)). Whole list-item
+  records and sub-field records of matched list items carry `reason` at the top
+  level instead of in `details`, and only false discoveries have
+  `similarity_score`, so code written from the old table
+  (`nm["details"]["reason"]`) raised `KeyError` on the first list record. The
+  Understanding Results snippet now reads the reason from either place, and
+  the Evaluation guide's snippet no longer reads `similarity_score` on false
+  alarms and false negatives.
+
+## [1.0.2] - 2026-11-20
+
 ### Changed
 
 - The three changes that 1.0.1 announced for 1.0.2 now land in 1.1.0, because
@@ -434,6 +463,12 @@ Each release links to full notes on the
   (`"(-1250)"`). A minus sign after a word keeps its old reading
   (`"Total – 1250"` reads 1250)
   ([#559](https://github.com/awslabs/stickler/issues/559))
+
+- Quoted the `pip install "stickler-eval[...]"` commands in the docs, examples and the
+  `LLMComparator` `ImportError`, since zsh reads unquoted brackets as a glob,
+  and the comparator guides now install BERT and Semantic through their extras
+  ([#482](https://github.com/awslabs/stickler/issues/482), based on
+  [#533](https://github.com/awslabs/stickler/pull/533) by @HarshRajSinghania)
 
 ### Security
 
@@ -3318,7 +3353,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.1...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.2...dev
+[1.0.2]: https://github.com/awslabs/stickler/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/awslabs/stickler/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/awslabs/stickler/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0
