@@ -1592,6 +1592,7 @@ class StructuredModel(BaseModel):
             field_definitions=field_definitions,
             match_threshold=match_threshold,
             base_class=cls,
+            scoreable_numbers=True,
         )
 
     @classmethod

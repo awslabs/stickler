@@ -17,6 +17,11 @@ from .field_converter import (
     get_global_converter,
     validate_fields_config,
 )
+from .scoreable_number import (
+    numeric_field_names,
+    scoreable_number_validators,
+    serialize_by_value,
+)
 from .threshold_helper import model_identity, warn_if_threshold_is_zero
 from .threshold_rule import (
     CONFIG,
@@ -243,7 +248,11 @@ class ModelFactory:
             raise ValueError(f"Error converting field configurations: {e}")
 
         DynamicClass = ModelFactory._build(
-            model_name, field_definitions, match_threshold, base_class
+            model_name,
+            field_definitions,
+            match_threshold,
+            base_class,
+            scoreable_numbers=True,
         )
 
         # Add configuration metadata for debugging/introspection
@@ -257,6 +266,8 @@ class ModelFactory:
         field_definitions: Dict[str, tuple],
         match_threshold: float = 0.7,
         base_class: Type = None,
+        *,
+        scoreable_numbers: bool = False,
     ) -> Type:
         """Create a StructuredModel subclass from pre-converted Pydantic fields.
         
@@ -275,6 +286,11 @@ class ModelFactory:
                            Must be between 0.0 and 1.0.
             base_class: The base class to extend (typically StructuredModel).
                        If None, will be imported to avoid circular dependency.
+            scoreable_numbers: Keep a string an ``int`` or ``float`` field
+                       rejects, such as ``"N/A"``, as written, so the field's
+                       comparator scores it instead of model construction
+                       raising. ``from_json_schema()`` and ``model_from_json()``
+                       set it; the default keeps pydantic's validation.
             
         Returns:
             A fully functional StructuredModel subclass created with create_model()
@@ -337,7 +353,11 @@ class ModelFactory:
                 )
 
         return ModelFactory._build(
-            model_name, field_definitions, match_threshold, base_class
+            model_name,
+            field_definitions,
+            match_threshold,
+            base_class,
+            scoreable_numbers=scoreable_numbers,
         )
 
     @staticmethod
@@ -379,13 +399,29 @@ class ModelFactory:
         field_definitions: Dict[str, tuple],
         match_threshold: float,
         base_class: Type,
+        *,
+        scoreable_numbers: bool = False,
     ) -> Type:
         """Create the dynamic model and apply the shared class-level tail."""
+        validators = {}
+        if scoreable_numbers:
+            names = numeric_field_names(field_definitions)
+            if names:
+                validators = scoreable_number_validators(names)
+                field_definitions = {
+                    name: (
+                        (serialize_by_value(definition[0]), *definition[1:])
+                        if name in names
+                        else definition
+                    )
+                    for name, definition in field_definitions.items()
+                }
         # Create the dynamic model extending StructuredModel
         try:
             DynamicClass = create_model(
                 model_name,
                 __base__=base_class,  # Extend StructuredModel
+                __validators__=validators or None,
                 **field_definitions,
             )
         except Exception as e:

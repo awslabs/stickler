@@ -29,6 +29,11 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   permissive so malformed predictions reach the comparator instead of raising
   during model construction. The converter retains the public compatibility
   entry point and the inverse field-export helpers.
+- `scoreable_number.py` — the validator that keeps a non-numeric string in a
+  numeric field of a schema- or config-built class, so `"N/A"` is scored rather
+  than rejected, and the serializer that dumps it as a string.
+  `FieldInfo.annotation` stays `float` or `int`; the serializer sits in
+  `FieldInfo.metadata`.
 - `optional_annotation.py` — the single source for destructuring a type
   annotation: union arms in every spelling (`Optional[T]`, `Union[T, None]`,
   `T | None`) and `Annotated` unwrapping. Ask through it rather than rebuilding

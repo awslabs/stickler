@@ -1069,6 +1069,7 @@ class JsonSchemaImporter:
             field_definitions=fields,
             match_threshold=match_threshold,
             base_class=StructuredModel,
+            scoreable_numbers=True,
         )
 
     def _comparison_from_extensions(
