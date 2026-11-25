@@ -28,11 +28,14 @@ from strands_evals.types.evaluation import EvaluationData  # noqa: E402
 from stickler import aggregate_from_comparisons, eval_for  # noqa: E402
 from stickler.utils.process_evaluation import ProcessEvaluation  # noqa: E402
 from tests.integrations.strands_corpus import (  # noqa: E402
+    CASE_IDS,
     CORPUS,
     MODELS,
     STRANDS_DEFAULT_THRESHOLD,
     Contact,
     Invoice,
+    case_by_id,
+    evaluate_direct,
     stored_comparison,
     strands_test_pass,
 )
@@ -54,7 +57,6 @@ PER_CASE_KEYS = {
     "f1",
     "field_scores",
 }
-CASE_IDS = [case.id for case in CORPUS]
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -94,15 +96,6 @@ def _row(reports, case):
     return row
 
 
-def _direct(case, threshold=STRANDS_DEFAULT_THRESHOLD, weight_hints=False):
-    spec = eval_for(case.model, match_threshold=threshold, weight_hints=weight_hints)
-    return spec.evaluate(case.expected, case.actual)
-
-
-def _case(case_id):
-    return next(case for case in CORPUS if case.id == case_id)
-
-
 # --- every case -----------------------------------------------------------------
 
 
@@ -124,7 +117,7 @@ class TestEveryCase:
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_row_agrees_with_stickler_directly(self, reports, case):
         row = _row(reports, case)
-        result = _direct(case)
+        result = evaluate_direct(case)
         assert row.score == result.overall_score
         assert row.metadata["field_scores"] == result.field_scores
         assert row.metadata["matched"] == result.matched
@@ -136,7 +129,7 @@ class TestEveryCase:
     def test_verdict_matches_the_reimplemented_guard(self, reports, case):
         # Proves strands_corpus.strands_test_pass is a faithful copy of 1.6.0.
         assert _row(reports, case).test_pass is strands_test_pass(
-            _direct(case), STRANDS_DEFAULT_THRESHOLD
+            evaluate_direct(case), STRANDS_DEFAULT_THRESHOLD
         )
 
     def test_verdicts_match_the_snapshot(self, reports):
@@ -157,54 +150,57 @@ class TestBehaviour:
         ["contact/identical", "invoice/identical", "lead/full_identical"],
     )
     def test_identical_scores_one_and_passes(self, reports, case_id):
-        row = _row(reports, _case(case_id))
+        row = _row(reports, case_by_id(case_id))
         assert row.score == 1.0
         assert row.test_pass is True
         assert row.reason == "all fields matched"
 
     def test_wrong_field_lowers_score_and_is_named(self, reports):
-        row = _row(reports, _case("contact/one_wrong_str"))
+        row = _row(reports, case_by_id("contact/one_wrong_str"))
         assert row.score < 1.0
         assert "email=0.00" in row.reason
 
     def test_wrong_nested_list_is_named(self, reports):
-        row = _row(reports, _case("invoice/line_item_missing"))
+        row = _row(reports, case_by_id("invoice/line_item_missing"))
         assert row.score < 1.0
         assert "line_items=" in row.reason
 
     def test_empty_prediction_fails_via_the_guard(self, reports):
-        row = _row(reports, _case("lead/sparse_empty_prediction"))
+        row = _row(reports, case_by_id("lead/sparse_empty_prediction"))
         assert row.score >= STRANDS_DEFAULT_THRESHOLD
         assert row.metadata["matched"] is True
         assert row.metadata["recall"] == 0.0
         assert row.test_pass is False
 
     def test_nothing_to_find_passes(self, reports):
-        row = _row(reports, _case("lead/nothing_to_find_empty"))
+        row = _row(reports, case_by_id("lead/nothing_to_find_empty"))
         assert row.score == 1.0
         assert row.test_pass is True
 
     def test_nothing_to_find_with_invention_fails(self, reports):
-        assert _row(reports, _case("lead/nothing_to_find_invented")).test_pass is False
+        assert (
+            _row(reports, case_by_id("lead/nothing_to_find_invented")).test_pass
+            is False
+        )
 
     @pytest.mark.parametrize("threshold", [0.5, 0.9])
     def test_threshold_reaches_stickler(self, threshold):
         cases = [case for case in CORPUS if case.model is Invoice]
         report = _run(Invoice, cases, match_threshold=threshold)
         for case, rows in zip(cases, report.detailed_results):
-            result = _direct(case, threshold)
+            result = evaluate_direct(case, threshold)
             assert rows[0].score == result.overall_score, case.id
             assert rows[0].test_pass is strands_test_pass(result, threshold), case.id
 
     def test_weight_hints_reach_stickler(self):
-        case = _case("invoice/wrong_total")
+        case = case_by_id("invoice/wrong_total")
         report = _run(Invoice, [case], weight_hints=True)
-        result = _direct(case, weight_hints=True)
+        result = evaluate_direct(case, weight_hints=True)
         assert report.detailed_results[0][0].score == result.overall_score
 
     @pytest.mark.parametrize("form", ["dict", "json"])
     def test_dict_and_json_outputs_score_as_the_instance(self, form):
-        case = _case("invoice/line_item_replaced")
+        case = case_by_id("invoice/line_item_replaced")
         dumped = case.actual.model_dump(mode="json")
         actual = dumped if form == "dict" else json.dumps(dumped)
         evaluator = StructuredOutputSimilarity(Invoice)
@@ -213,7 +209,7 @@ class TestBehaviour:
                 input=case.id, expected_output=case.expected, actual_output=actual
             )
         )
-        assert row.score == _direct(case).overall_score
+        assert row.score == evaluate_direct(case).overall_score
 
 
 # --- report rollups ---------------------------------------------------------------
@@ -227,7 +223,7 @@ class TestReport:
         assert [entry["case"] for entry in table] == [case.id for case in cases]
         for case, entry in zip(cases, table):
             assert set(entry) == PER_CASE_KEYS
-            result = _direct(case)
+            result = evaluate_direct(case)
             assert entry["evaluator"] == MARKER
             assert entry["model"] == model.__name__
             assert entry["overall_score"] == result.overall_score
@@ -246,7 +242,7 @@ class TestReport:
         evaluation = reports[model].metrics()
         assert type(evaluation) is ProcessEvaluation
         direct = aggregate_from_comparisons(
-            [stored_comparison(_direct(case)) for case in cases]
+            [stored_comparison(evaluate_direct(case)) for case in cases]
         )
         assert evaluation.document_count == len(cases)
         assert evaluation.field_metrics == direct.field_metrics
