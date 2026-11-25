@@ -4,10 +4,16 @@ Every spelling of "may be None" must be recognised, and a genuine multi-arm
 union must not be mistaken for one.
 """
 
+import ast
+import importlib.util
+from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional, Union
 
 from pydantic import Field
 
+from stickler.structured_object_evaluator.models import (
+    optional_annotation as model_optional_annotation,
+)
 from stickler.structured_object_evaluator.models.optional_annotation import (
     is_optional_union,
     is_union,
@@ -15,6 +21,7 @@ from stickler.structured_object_evaluator.models.optional_annotation import (
     unwrap_annotated,
     unwrap_optional,
 )
+from stickler.utils import optional_annotation as shared_optional_annotation
 
 
 class _A:
@@ -175,3 +182,69 @@ class TestUnwrapAnnotated:
     def test_pep604_annotated_optional_normalises_to_the_subscript_form(self):
         """`Annotated[T, ...] | None` and `Optional[Annotated[T, ...]]` are one type."""
         assert (Annotated[List[str], "m"] | None) == Optional[Annotated[List[str], "m"]]
+
+
+class TestSharedOptionalAnnotationModule:
+    """Verify the shared module is the single source of truth without heavy imports."""
+
+    def test_models_module_reexports_shared_functions(self):
+        for name in (
+            "is_union",
+            "union_args",
+            "is_optional_union",
+            "unwrap_optional",
+            "unwrap_annotated",
+        ):
+            assert getattr(model_optional_annotation, name) is getattr(
+                shared_optional_annotation, name
+            )
+
+    def test_shared_module_handles_optional_and_pep604_directly(self):
+        assert shared_optional_annotation.unwrap_optional(Optional[_A]) == (_A, True)
+        assert shared_optional_annotation.unwrap_optional(_A | None) == (_A, True)
+        assert shared_optional_annotation.is_optional_union(Optional[_A]) is True
+        assert shared_optional_annotation.is_optional_union(_A | None) is True
+        assert shared_optional_annotation.is_union(_A | _B) is True
+        assert set(shared_optional_annotation.union_args(_A | _B | None)) == {_A, _B}
+
+    def test_shared_module_and_consumers_introduce_no_heavy_cross_package_edges(self):
+        """The shared module stays stdlib-only and data_extractors stays decoupled."""
+        shared_path = Path(shared_optional_annotation.__file__).resolve()
+        shared_tree = ast.parse(shared_path.read_text(encoding="utf-8"))
+        shared_imports = set()
+        for node in ast.walk(shared_tree):
+            if isinstance(node, ast.Import):
+                shared_imports.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                shared_imports.add(node.module.split(".")[0])
+        assert shared_imports <= {"types", "typing"}
+
+        # Loading the shared module in isolation succeeds with zero stickler/pydantic imports.
+        spec = importlib.util.spec_from_file_location(
+            "_isolated_optional_annotation", shared_path
+        )
+        assert spec is not None and spec.loader is not None
+        isolated = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(isolated)
+        assert isolated.unwrap_optional(_A | None) == (_A, True)
+
+        # data_extractors must not import auto, structured_object_evaluator, or pydantic.
+        from stickler.reporting.html.utils import data_extractors
+
+        extractor_path = Path(data_extractors.__file__).resolve()
+        extractor_tree = ast.parse(extractor_path.read_text(encoding="utf-8"))
+        extractor_modules = []
+        for node in ast.walk(extractor_tree):
+            if isinstance(node, ast.Import):
+                extractor_modules.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                extractor_modules.append(node.module)
+        for forbidden in (
+            "pydantic",
+            "stickler.auto",
+            "stickler.structured_object_evaluator",
+        ):
+            assert not any(
+                m == forbidden or m.startswith(f"{forbidden}.")
+                for m in extractor_modules
+            ), f"data_extractors.py unexpectedly imports {forbidden}"
