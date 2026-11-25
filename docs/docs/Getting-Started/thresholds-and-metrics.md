@@ -436,7 +436,7 @@ Hungarian algorithm pairs:
 | GT Item | Pred Item | Overall Similarity | vs `match_threshold=0.7` | Result |
 |---------|-----------|-------------------|--------------------------|--------|
 | SKU-A, "Widget Alpha" | SKU-A, "Widget Alpha" | 1.0 | ≥ 0.7 | **TP** → recurse |
-| SKU-B, "Widget Beta" | SKU-B, "Widget Bet" | ~0.95 | ≥ 0.7 | **TP** → recurse |
+| SKU-B, "Widget Beta" | SKU-B, "Widget Bet" | ~0.97 | ≥ 0.7 | **TP** → recurse |
 | SKU-C, "Widget Gamma" | SKU-X, "New Item" | 0.083 | < 0.7 | **FD** → atomic |
 
 Both lists hold three items, so the Hungarian algorithm pairs every one of them and
@@ -448,8 +448,8 @@ appear only when the two lists differ in length once `None` elements are removed
 
 Within each matched pair that *meets* the threshold, the fields (sku, description)
 are evaluated and contribute to the aggregate counts. A below-threshold pair is
-treated as atomic and contributes one FD at the object level, with no field-level
-breakdown -- see
+treated as atomic, with no field-level breakdown: it is one FD in `overall` and
+adds no fields to `aggregate` -- see
 [Threshold-Gated Evaluation](../Advanced/threshold-gated-evaluation.md).
 
 ### Aggregate Confusion Matrix
@@ -472,6 +472,8 @@ Accuracy  = (TP + TN) / Total   = 5 / 7           = 0.714
 
 Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
 ```
+
+These counts are `confusion_matrix["aggregate"]`, the leaves. `result.f1` and bulk `cm_f1` read `confusion_matrix["overall"]`, which counts this example's top-level fields and list pairs: TP 3, FD 2, FN 1, F1 0.667. See [`overall` vs `aggregate`](../Guides/Evaluation/understanding-results.md#overall-vs-aggregate).
 
 ---
 
