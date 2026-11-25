@@ -649,9 +649,10 @@ def _print_field_row(
 
 
 def _matrix_widths(counts: List[int], total: int) -> List[int]:
-    """Cell widths by count share; non-zero gets 1+, the first largest gets spare."""
+    """Cell widths by count share; a positive count truncated to 0 gets 1, and the
+    first largest cell gets any spare."""
     widths = [
-        max(int((count / total) * _MATRIX_WIDTH), 1) if count > 0 else 0
+        (int((count / total) * _MATRIX_WIDTH) or 1) if count > 0 else 0
         for count in counts
     ]
     current_width = sum(widths)
