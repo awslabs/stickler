@@ -13,6 +13,7 @@ def _run_guard(tmp_path, test_directory, import_location, xfail=False, parallel=
     checkout = tmp_path / "checkout"
     tests = checkout / "tests"
     tests.mkdir(parents=True)
+    (checkout / "src").mkdir()
     (checkout / "pyproject.toml").write_text(
         '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
     )
@@ -25,6 +26,7 @@ def _run_guard(tmp_path, test_directory, import_location, xfail=False, parallel=
         "other_checkout": tmp_path / "other_checkout" / "src",
         "prefix_sibling": checkout / "src-other",
         "symlink": checkout / "src",
+        "different_case": checkout / "src",
         "namespace": tmp_path / "namespace" / "src",
     }[import_location]
     package = import_root / "stickler"
@@ -43,6 +45,11 @@ def _run_guard(tmp_path, test_directory, import_location, xfail=False, parallel=
         (package / "__init__.py").write_text(
             '"""Package for import-origin testing."""\n'
         )
+    if import_location == "different_case":
+        alias = checkout / "SRC"
+        if not alias.exists():
+            pytest.skip("The filesystem distinguishes case")
+        import_root = alias
     if import_location == "symlink":
         alias = tmp_path / "linked-src"
         try:
@@ -111,8 +118,9 @@ def test_current_checkout_runs_test_body(tmp_path, test_directory):
     assert marker.read_text() == "ran"
 
 
-def test_symlink_to_current_checkout_runs_test_body(tmp_path):
-    result, marker, _, _ = _run_guard(tmp_path, "", "symlink")
+@pytest.mark.parametrize("alias", ["symlink", "different_case"])
+def test_alias_to_current_checkout_runs_test_body(tmp_path, alias):
+    result, marker, _, _ = _run_guard(tmp_path, "", alias)
 
     assert result.returncode == pytest.ExitCode.OK, result.stdout + result.stderr
     assert marker.read_text() == "ran"

@@ -19,7 +19,14 @@ def pytest_sessionstart(session):
     """
     module_file = getattr(stickler, "__file__", None)
     imported = Path(module_file).resolve() if module_file else None
-    if imported is None or not imported.is_relative_to(CHECKOUT_SRC.resolve()):
+    if (
+        imported is None
+        or not CHECKOUT_SRC.is_dir()
+        or not any(
+            parent.is_dir() and parent.samefile(CHECKOUT_SRC)
+            for parent in imported.parents
+        )
+    ):
         origin = imported if imported is not None else "a package without __file__"
         pytest.exit(
             reason=f"stickler imported from {origin}, not this checkout ({CHECKOUT_SRC}). "
