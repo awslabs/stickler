@@ -1,7 +1,6 @@
 ---
 title: Best Practices
 ---
-
 # Best Practices
 
 This section covers practical guidance for getting the most out of Stickler: tuning thresholds, assigning weights, optimizing performance, debugging evaluation results, and designing effective models.
@@ -14,11 +13,11 @@ The threshold determines the minimum similarity score required for a field compa
 
 **Start with defaults, then adjust based on your data.** Run an initial evaluation with default thresholds, inspect the field-level scores, and tune from there.
 
-| Field Category | Threshold Range | Examples |
-|---|---|---|
-| Critical identifiers | 0.95 -- 1.0 | Invoice IDs, PO numbers, account codes |
-| Important operational fields | 0.8 -- 0.9 | Names, dates, addresses |
-| Flexible text fields | 0.5 -- 0.7 | Descriptions, notes, comments, metadata |
+| Field Category               | Threshold Range | Examples                                |
+| ---------------------------- | --------------- | --------------------------------------- |
+| Critical identifiers         | 0.95 -- 1.0     | Invoice IDs, PO numbers, account codes  |
+| Important operational fields | 0.8 -- 0.9      | Names, dates, addresses                 |
+| Flexible text fields         | 0.5 -- 0.7      | Descriptions, notes, comments, metadata |
 
 **Guidelines:**
 
@@ -56,18 +55,15 @@ Once you have calibrated thresholds, encode them as pytest unit tests so they do
 import pytest
 from stickler import LevenshteinComparator
 
-comparator = LevenshteinComparator()
-
 @pytest.mark.parametrize("gt,pred,expected_match", [
-    ("Acme Corporation", "Acme Corp", True),
-    ("Acme Corporation", "Beta Industries", False),
-    ("123 Main St", "123 Main Street", True),
-    ("123 Main St", "456 Oak Ave", False),
+    ("Acme Corporation", "Acme Corporaton", True),   # 0.94
+    ("Acme Corporation", "Beta Industries", False),  # 0.13
+    ("Jon Smith", "John Smith", True),               # 0.90
+    ("123 Main St", "456 Oak Ave", False),           # 0.18
 ])
-def test_levenshtein_calibration(gt, pred, expected_match):
-    score = comparator.compare(gt, pred)
-    threshold = 0.75  # Calibrated with SME labels
-    assert (score >= threshold) == expected_match
+def test_calibration(gt, pred, expected_match):
+    score = LevenshteinComparator().compare(gt, pred)
+    assert (score >= 0.75) == expected_match
 ```
 
 This ensures that future changes to comparators or normalization logic don't silently break your calibrated thresholds.
@@ -78,13 +74,13 @@ This ensures that future changes to comparators or normalization logic don't sil
 
 Weights reflect **business importance**, not data complexity. A simple string field that drives logistics routing should be weighted higher than a complex nested object that serves as supplementary metadata.
 
-| Priority | Weight Range | Use When |
-|---|---|---|
-| Critical | 2.5 -- 3.0 | Errors cause operational failures (IDs, amounts, status codes) |
-| High | 1.5 -- 2.0 | Errors require manual correction (names, dates, addresses) |
-| Normal | 1.0 | Standard fields with moderate impact |
-| Low | 0.5 -- 0.8 | Nice-to-have fields, secondary information |
-| Minimal | 0.1 -- 0.3 | Metadata, debug info, internal notes |
+| Priority | Weight Range | Use When                                                       |
+| -------- | ------------ | -------------------------------------------------------------- |
+| Critical | 2.5 -- 3.0   | Errors cause operational failures (IDs, amounts, status codes) |
+| High     | 1.5 -- 2.0   | Errors require manual correction (names, dates, addresses)     |
+| Normal   | 1.0          | Standard fields with moderate impact                           |
+| Low      | 0.5 -- 0.8   | Nice-to-have fields, secondary information                     |
+| Minimal  | 0.1 -- 0.3   | Metadata, debug info, internal notes                           |
 
 **How the weighted average works:**
 
@@ -97,12 +93,29 @@ A field with `weight=3.0` has three times the influence on the overall score com
 **Example: Invoice with business-aligned weights**
 
 ```python
+from typing import List
+from stickler import (
+    StructuredModel, ComparableField,
+    ExactComparator, NumericComparator, LevenshteinComparator, FuzzyComparator,
+)
+
+class LineItem(StructuredModel):
+    description: str = ComparableField(comparator=FuzzyComparator(), weight=1.0)
+    quantity: int = ComparableField(comparator=ExactComparator(), weight=1.2)
+    unit_price: float = ComparableField(
+        comparator=NumericComparator(absolute_tolerance=0.01), weight=1.5
+    )
+
 class Invoice(StructuredModel):
-    invoice_id: str = ComparableField(weight=3.0)    # Wrong ID = wrong customer
-    total_amount: float = ComparableField(weight=2.5) # Wrong amount = billing error
-    vendor_name: str = ComparableField(weight=1.5)    # Typo = manual lookup needed
-    line_items: List[LineItem] = ComparableField(weight=1.0)  # Detail verification
-    internal_notes: str = ComparableField(weight=0.2) # No operational impact
+    invoice_id: str = ComparableField(comparator=ExactComparator(), weight=3.0)
+    total_amount: float = ComparableField(
+        comparator=NumericComparator(absolute_tolerance=0.01), weight=2.5
+    )
+    vendor_name: str = ComparableField(
+        comparator=LevenshteinComparator(), threshold=0.8, weight=1.5
+    )
+    line_items: List[LineItem] = ComparableField(weight=1.0)
+    internal_notes: str = ComparableField(comparator=FuzzyComparator(), weight=0.2)
 ```
 
 !!! tip "Dataset-level headline: use `weighted_overall_score`"
@@ -116,15 +129,15 @@ class Invoice(StructuredModel):
 
 Comparators vary significantly in computational cost. Choose the simplest comparator that meets your accuracy needs.
 
-| Comparator | Relative Speed | When to Use |
-|---|---|---|
-| `ExactComparator` | Fastest | IDs, codes, booleans, enums |
-| `NumericComparator` | Fast | Prices, quantities, measurements |
-| `LevenshteinComparator` | Fast | Names, addresses, short text |
-| `FuzzyComparator` | Moderate | Descriptions, token-order-independent text |
-| `BERTComparator` | Slow | Deep semantic similarity |
-| `SemanticComparator` | Slow | Embedding-based semantic comparison |
-| `LLMComparator` | Slowest | Complex semantic evaluation with reasoning |
+| Comparator                | Relative Speed | When to Use                                |
+| ------------------------- | -------------- | ------------------------------------------ |
+| `ExactComparator`       | Fastest        | IDs, codes, booleans, enums                |
+| `NumericComparator`     | Fast           | Prices, quantities, measurements           |
+| `LevenshteinComparator` | Fast           | Names, addresses, short text               |
+| `FuzzyComparator`       | Moderate       | Descriptions, token-order-independent text |
+| `BERTComparator`        | Slow           | Deep semantic similarity                   |
+| `SemanticComparator`    | Slow           | Embedding-based semantic comparison        |
+| `LLMComparator`         | Slowest        | Complex semantic evaluation with reasoning |
 
 ### Use bulk evaluation for large datasets
 
@@ -183,13 +196,13 @@ result = ground_truth.compare_with(
 
 ### Common mistakes
 
-| Mistake | Symptom | Fix |
-|---|---|---|
-| Wrong comparator for field type | Unexpectedly low scores on text fields | Use `LevenshteinComparator` or `FuzzyComparator` instead of `ExactComparator` |
-| Threshold too high | Many fields classified as non-matches | Lower the threshold to match acceptable variation |
-| Threshold too low | Poor matches classified as matches | Raise the threshold to enforce stricter matching |
-| Missing weights on critical fields | Overall score does not reflect business impact | Add weights proportional to field importance |
-| Expecting list order to matter | `[a, b]` vs `[b, a]` scores 1.0 | A list field's elements are Hungarian-paired regardless of order ([list contract](../../Advanced/classification-logic.md#list-contract)); put the position in the data, such as a `line_number` field |
+| Mistake                            | Symptom                                        | Fix                                                                                                                                                                                                    |
+| ---------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Wrong comparator for field type    | Unexpectedly low scores on text fields         | Use `LevenshteinComparator` or `FuzzyComparator` instead of `ExactComparator`                                                                                                                    |
+| Threshold too high                 | Many fields classified as non-matches          | Lower the threshold to match acceptable variation                                                                                                                                                      |
+| Threshold too low                  | Poor matches classified as matches             | Raise the threshold to enforce stricter matching                                                                                                                                                       |
+| Missing weights on critical fields | Overall score does not reflect business impact | Add weights proportional to field importance                                                                                                                                                           |
+| Expecting list order to matter     | `[a, b]` vs `[b, a]` scores 1.0            | A list field's elements are Hungarian-paired regardless of order ([list contract](../../Advanced/classification-logic.md#list-contract)); put the position in the data, such as a `line_number` field |
 
 ---
 
@@ -254,4 +267,3 @@ thresholds the four primitives at `0.5`. See [Choosing a Configuration
 Path](../../Getting-Started/choosing-a-configuration-path.md).
 
 See the [Evaluation](../Evaluation/README.md) documentation for the complete extension reference.
-
