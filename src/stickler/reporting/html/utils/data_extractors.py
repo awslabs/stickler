@@ -76,9 +76,9 @@ class DataExtractor:
             records at all. `compare_with()` only writes the `non_matches` key
             when called with `document_non_matches=True`, and
             `ProcessEvaluation.non_matches` is None when the bulk evaluator was
-            built with `document_non_matches=False`, so an empty list and no
-            list mean different things and only the first one means the
-            document was clean.
+            built with `document_non_matches=False` or aggregated results without
+            the key, so an empty list and no list mean different things and only
+            the first one means the evaluated documents were clean.
         """
         if isinstance(results, ProcessEvaluation):
             return results.non_matches

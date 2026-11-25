@@ -39,9 +39,11 @@ Three states, and they must stay distinguishable:
 
 - `None`: no records collected. `compare_with()` writes the `non_matches` key only under
   `document_non_matches=True`, with or without `evaluator_format=True`, and `ProcessEvaluation.non_matches` is `None` when the bulk
-  evaluator was built with `document_non_matches=False`. Says nothing about whether fields
+  evaluator was built with `document_non_matches=False`, or has no records and was given a
+  result without the key (#425). Says nothing about whether fields
   matched, so the section reports the records as missing.
-- `[]`: collected, none produced. The only state that may claim success.
+- `[]`: collected, none produced. The only state that may claim success, and only when no document
+  raised: a document in `errors` was never compared (#425).
 - a populated list: rendered as the table, capped by `ReportConfig.max_non_matches_displayed`.
 
 The terminal printers in `structured_object_evaluator/utils/pretty_print.py` carry the same

@@ -127,7 +127,7 @@ final = evaluator.compute()
 | `field_metrics` | `dict` | Per-field metrics with the same confusion-matrix structure as `metrics`, plus `mean_score` (arithmetic mean of the per-document `threshold_applied_score` at that path) when that path was actually scored. Keyed by dotted field path (e.g., `"customer.name"`). |
 | `errors` | `list` | Records for any documents that raised exceptions during processing. |
 | `total_time` | `float` | Wall-clock time in seconds since the evaluator was created or last reset. |
-| `non_matches` | `list` | Detailed non-match records (when `document_non_matches=True`), each tagged with `doc_id`. |
+| `non_matches` | `list` or `None` | Detailed non-match records (when `document_non_matches=True`), each tagged with `doc_id`. `None` when no records were collected: `document_non_matches=False`, or no records and a `compare_with()` result without `non_matches`. |
 
 ---
 
