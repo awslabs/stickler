@@ -273,7 +273,8 @@ class ComparisonEngine:
                 "confidence_metrics": {...},  # If add_confidence_metrics=True
                 "auroc_confidence_metric": float,  # Deprecated, with confidence_metrics
                 "bbox_metrics": {...},  # If add_bbox_metrics=True
-                "prediction_raw": {...},  # If other was built by a top-level from_json call
+                "prediction_raw": {...},  # If other was built by from_json with
+                                          # process_rich_values on (the default)
                 "prediction_confidences": {...},  # Only when other has any, keyed by field path
                 "ground_truth_bboxes": {...},  # Only when this model has any, keyed by field path
                 "prediction_bboxes": {...}  # Only when other has any, keyed by field path

@@ -498,7 +498,8 @@ class StructuredModel(BaseModel):
         ...     )
         >>>
         >>> gt = Product(name="Widget", price=29.99)
-        >>> pred = Product(name="Widgit", price=29.99)  # Typo in name
+        >>> # "Gadget" scores 0.67 against "Widget", under the 0.8 threshold
+        >>> pred = Product(name="Gadget", price=29.99)
         >>>
         >>> # Detailed comparison with confusion matrix
         >>> result = gt.compare_with(pred, include_confusion_matrix=True)
@@ -507,7 +508,9 @@ class StructuredModel(BaseModel):
         >>> aggregate = matrix["aggregate"]
         >>> derived = aggregate["derived"]
         >>> print("TP:", overall["tp"], "FD:", overall["fd"])
-        >>> print("F1:", derived["cm_f1"])
+        TP: 1 FD: 1
+        >>> print(f"F1: {derived['cm_f1']:.2f}")
+        F1: 0.67
     """
 
     # Default match threshold - can be overridden in subclasses
@@ -1101,7 +1104,7 @@ class StructuredModel(BaseModel):
             process_rich_values: Whether to unwrap rich values on this call.
                 Set to False for recursive calls where the parent already handled it.
             process_confidence: Deprecated alias for ``process_rich_values``;
-                emits a DeprecationWarning.
+                emits a DeprecationWarning. Will be removed in 0.5.0.
 
         Returns:
             StructuredModel instance created from the JSON data
@@ -1196,6 +1199,10 @@ class StructuredModel(BaseModel):
                        "alias": "field_alias",  # Optional
                        "examples": ["example1", "example2"]  # Optional
                    }
+                   A field whose comparator is inferred ("auto", or
+                   infer_unspecified_fields) takes any threshold, weight and
+                   clip_under_threshold it does not state from inference, not
+                   from the defaults above.
 
         Returns:
             A fully functional StructuredModel subclass created with create_model()
@@ -1888,7 +1895,7 @@ class StructuredModel(BaseModel):
             - confidence_metrics: (optional) Confidence calibration metrics if requested
             - auroc_confidence_metric: (optional) Deprecated AUROC float, added alongside confidence_metrics when add_confidence_metrics=True
             - bbox_metrics: (optional) Bounding-box mAP metrics if add_bbox_metrics=True
-            - prediction_raw: (optional) The JSON that other was built from, present when other was built by a top-level from_json call
+            - prediction_raw: (optional) The JSON that other was built from, present when other was built by from_json with process_rich_values on (the default)
             - prediction_confidences: (optional) Confidence scores read from the rich values of other, keyed by field path, present only when there are any
             - ground_truth_bboxes: (optional) The _bbox of each field of this model that has one, keyed by field path, present only when there are any
             - prediction_bboxes: (optional) The same map for other

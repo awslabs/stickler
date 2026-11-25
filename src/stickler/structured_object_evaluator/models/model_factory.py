@@ -107,6 +107,10 @@ class ModelFactory:
                        "alias": "field_alias",  # Optional
                        "examples": ["example1", "example2"]  # Optional
                    }
+                   A field whose comparator is inferred ("auto", or
+                   infer_unspecified_fields) takes any threshold, weight and
+                   clip_under_threshold it does not state from inference, not
+                   from the defaults above.
             base_class: The base class to extend (typically StructuredModel).
                        If None, will be imported to avoid circular dependency.
             path_prefix: Dotted path of the field this model hangs off, ``""``

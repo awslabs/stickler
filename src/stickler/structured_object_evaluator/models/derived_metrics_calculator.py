@@ -24,7 +24,8 @@ class DerivedMetricsCalculator:
     - Calculates precision, recall, F1, and accuracy via MetricsHelper
     - Supports both traditional and FD-inclusive recall formulas
     - Handles both 'overall' and 'aggregate' metrics
-    - Preserves all existing result structure and metadata
+    - Keeps existing keys, except that a flat leaf field is rewrapped (see
+      ``add_derived_metrics_to_result``)
     
     Formulas (implemented in MetricsHelper):
     -----------------------------------------
@@ -72,7 +73,8 @@ class DerivedMetricsCalculator:
         2. Calculate derived metrics for 'overall' if present
         3. Calculate derived metrics for 'aggregate' if present
         4. Add a 'derived' field to each 'overall' and 'aggregate' dict
-        5. Preserve all existing keys and structure
+        5. Keep existing keys, rewrapping a flat leaf field as
+           ``{"overall": {...}}`` (see Notes)
         
         Args:
             result: Result from compare_recursive with confusion matrix metrics.
