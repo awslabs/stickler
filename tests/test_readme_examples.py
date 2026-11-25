@@ -71,7 +71,7 @@ def _annotated_rows(code, namespace=None):
         claims = []
         for comment in comments:
             if node.lineno <= comment.start[0] <= node.end_lineno:
-                claim = re.match(r"#\s*~?(\S+)", comment.string)
+                claim = re.match(r"#\s*(?:(?:~|≈)\s*|about\s+)?(\S+)", comment.string)
                 if claim and re.match(r"[+-]?(?:\d|\.\d)", claim.group(1)):
                     claims.append(claim.group(1))
         if not claims:
@@ -157,9 +157,10 @@ def _model_list_element(model, field):
     """The element class of a list-of-models field, else ``None``."""
     annotation, _ = model._unwrap_optional(model.model_fields[field].annotation)
     annotation = unwrap_annotated(annotation)
-    if not _annotation_is_list(annotation):
+    args = get_args(annotation)
+    if not _annotation_is_list(annotation) or not args:
         return None
-    item, _ = model._unwrap_optional(get_args(annotation)[0])
+    item, _ = model._unwrap_optional(args[0])
     item = unwrap_annotated(item)
     if isinstance(item, type) and issubclass(item, StructuredModel):
         return item
@@ -291,6 +292,11 @@ def test_extension_reference_defaults_match_an_undeclared_schema(
     table = _table_after(extension_reference, "| Extension | Type | Default |")
     default = {name.strip("`"): cells[1] for name, cells in table.items()}
 
+    for name in ("clip-under-threshold", "weight", "model-name", "match-threshold"):
+        assert f"x-aws-stickler-{name}" in default, (
+            f"Docs table changed: missing {name}"
+        )
+
     infos = [undeclared._get_comparison_info(f) for f in UNDECLARED_PROPERTIES]
     assert (
         default["x-aws-stickler-clip-under-threshold"]
@@ -344,7 +350,10 @@ def test_extension_reference_threshold_by_position(
     extension_reference, undeclared, position, fields
 ):
     table = _table_after(extension_reference, "| Position | Default threshold |")
-    published = float(re.match(r"`([0-9.]+)`", _row(table, position)[0]).group(1))
+    cell = _row(table, position)[0]
+    match = re.match(r"`([0-9.]+)`", cell)
+    assert match, f"Docs table changed: invalid threshold {cell!r} for {position!r}"
+    published = float(match.group(1))
     for field in fields:
         assert undeclared._get_comparison_info(field).threshold == published, field
 
@@ -410,7 +419,8 @@ def test_readme_extension_defaults_match_schema(readme, undeclared):
         (
             r"`([0-9.]+)` for a free-form\s+`\{\"type\": \"object\"\}`\s+"
             r"\(or an array of them\)\s+and for any property or array\s+`items`\s+"
-            r"with\s+`enum`,\s+`const`,\s+or a string\s+`format`",
+            r"with\s+`enum`,\s+`const`,\s+or a string\s+`format` of "
+            r"`date`/`date-time`/`uri`/`uuid`/`time`",
             [
                 "mapping",
                 "mappings",
@@ -584,17 +594,33 @@ def test_model_list_field_and_element_thresholds_are_distinct(wrapped):
     assert _matching_threshold(model, None) == 0.6
 
 
+@pytest.mark.parametrize("annotation", [list, list | None])
+def test_bare_list_uses_field_threshold(annotation):
+    class Document(StructuredModel):
+        items: annotation = ComparableField()
+
+    assert _model_list_element(Document, "items") is None
+    assert (
+        _matching_threshold(Document, "items")
+        == Document._get_comparison_info("items").threshold
+    )
+
+
 def test_module_import_defers_document_reads_and_schema_building(monkeypatch):
     def unavailable(*args, **kwargs):
         raise RuntimeError("fixture dependency unavailable")
 
+    monkeypatch.setattr("builtins.open", unavailable)
     monkeypatch.setattr(Path, "read_text", unavailable)
     monkeypatch.setattr(StructuredModel, "from_json_schema", unavailable)
     namespace = runpy.run_path(__file__)
     assert {"readme", "extension_reference", "undeclared"} <= namespace.keys()
 
 
-@pytest.mark.parametrize("annotation, claimed", [("-1.000", -1.0), ("1.000e-1", 0.1)])
+@pytest.mark.parametrize(
+    "annotation, claimed",
+    [("-1.000", -1.0), ("1.000e-1", 0.1), ("about 0.9", 0.9), ("≈0.9", 0.9)],
+)
 def test_numeric_annotations_are_not_dropped_or_truncated(annotation, claimed):
     code = f'print(f"Score: {{1.0}}")  # {annotation}'
     assert _annotated_rows(code) == [("Score", None, 1.0, claimed)]
