@@ -29,7 +29,8 @@ StructuredModel
 │       │       └── MetricsHelper       # Derived metrics (precision, recall, F1)
 │       ├── NonMatchCollector           # Non-match documentation
 │       ├── FieldComparisonCollector    # Field-level comparison docs
-│       └── ConfusionMatrixBuilder      # Aggregate metrics
+│       ├── AggregateMetricsCalculator  # Aggregate metrics
+│       └── DerivedMetricsCalculator    # Precision, recall, F1, accuracy
 │
 ├── ComparisonHelper          # List metrics & Hungarian integration
 │   └── ThresholdHelper       # Threshold comparison logic
@@ -49,7 +50,8 @@ StructuredModel
 | HungarianHelper | `models/hungarian_helper.py` |
 | NonMatchCollector | `models/non_match_collector.py` |
 | FieldComparisonCollector | `models/field_comparison_collector.py` |
-| ConfusionMatrixBuilder | `models/confusion_matrix_builder.py` |
+| AggregateMetricsCalculator | `models/aggregate_metrics_calculator.py` |
+| DerivedMetricsCalculator | `models/derived_metrics_calculator.py` |
 | NullHelper | `models/null_helper.py` |
 | ResultHelper | `models/result_helper.py` |
 | ThresholdHelper | `models/threshold_helper.py` |
@@ -287,12 +289,11 @@ else:
     Classification is separate and is never affected by this setting. A pair below
     the threshold is one `fd` whether or not its score is kept.
 
-    One gap remains, tracked in
-    [#330](https://github.com/awslabs/stickler/issues/330):
-    `List[StructuredModel]` does not honour the flag, because each pair is scored
-    through the item's own `compare_with` and clipping has already happened per
-    item. For the same reason its `raw_similarity_score` is unclipped only at the
-    list level.
+    Two gaps remain. `List[StructuredModel]` does not honour the flag
+    ([#415](https://github.com/awslabs/stickler/issues/415)), because each pair is
+    scored through the item's own `compare_with` and clipping has already happened
+    per item. For the same reason its `raw_similarity_score` is unclipped only at
+    the list level ([#437](https://github.com/awslabs/stickler/issues/437)).
 
 ### `_aggregate_to_overall()`
 
@@ -326,9 +327,11 @@ The single-traversal design collects all three in **one pass** through `compare_
 Optional features are computed only when requested:
 
 ```python
-# See: comparison_engine.py:279-306
+# See: ComparisonEngine.compare_with in comparison_engine.py
 if include_confusion_matrix:
-    confusion_matrix = self.confusion_matrix_builder.build_confusion_matrix(...)
+    confusion_matrix = AggregateMetricsCalculator().calculate_aggregate_metrics(...)
+    if add_derived_metrics:
+        confusion_matrix = DerivedMetricsCalculator().add_derived_metrics_to_result(...)
 if document_non_matches:
     non_matches = self.non_match_collector.collect_enhanced_non_matches(...)
 if document_field_comparisons:

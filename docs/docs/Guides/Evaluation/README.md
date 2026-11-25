@@ -67,7 +67,13 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 
 See the [Comparators](../Comparators/README.md) section for the complete list and detailed descriptions.
 
-**`threshold`** -- Acts as a binary classification cutoff. A similarity score at or above the threshold counts as a True Positive; below it counts as a False Discovery. See [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold). Choose stricter thresholds (0.9--1.0) for critical fields and looser thresholds (0.5--0.7) for flexible fields.
+**`threshold`** -- Acts as a binary classification cutoff. A similarity score at or above the threshold counts as a True Positive; below it counts as a False Discovery. See [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold). Choose stricter thresholds (0.9--1.0) for critical fields and looser thresholds (0.5--0.7) for flexible fields. The field's threshold, set here or adopted from the comparator, must be a number from 0.0 to 1.0; anything else raises `ValueError` when the class is defined. An `Annotated` field that names something defined further down, its type or a value in its `ComparableField(...)`, is not yet checked at class definition when its annotation is a string, as every annotation is under `from __future__ import annotations`. The message reads:
+
+```text
+ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField(threshold=85) is out of range. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write ComparableField(threshold=0.85). (Set at invoice_models.py:5.)
+```
+
+See [Valid Threshold Values](../../Getting-Started/thresholds-and-metrics.md#valid-threshold-values).
 
 **`weight`** -- Controls how much a field contributes to the overall score. The overall score is computed as:
 
@@ -172,8 +178,9 @@ print(f"F1:        {cm['derived']['cm_f1']:.3f}")
 
 # Inspect non-matches for debugging
 for nm in result.get('non_matches', []):
-    print(f"  {nm['field_path']}: {nm['non_match_type']} "
-          f"(score={nm['similarity_score']:.3f})")
+    score = nm.get('similarity_score')  # false discoveries only
+    print(f"  {nm['field_path']}: {nm['non_match_type']}"
+          + (f" (score={score:.3f})" if score is not None else ""))
 ```
 
 ---
@@ -188,14 +195,14 @@ Add these extensions to any property in your JSON Schema to control comparison b
 
 | Extension | Type | Default | Purpose |
 |-----------|------|---------|---------|
-| `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`) |
-| `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value warns there (in Python, `ComparableField(threshold=...)` on a `List[StructuredModel]` raises `ValueError`). Read, not ignored, on an array of free-form `{"type": "object"}` items |
+| `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`). On an object with `properties`, which is scored field by field, it has no effect except for a threshold it names, and warns |
+| `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value from 0.0 to 1.0 other than 0.5 warns there (in Python, `ComparableField(threshold=...)` on a `List[StructuredModel]` raises `ValueError`); any other value raises, naming `x-aws-stickler-match-threshold`. Read, not ignored, on an array of free-form `{"type": "object"}` items |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
-| `x-aws-stickler-clip-under-threshold` | boolean | `true` | Zero out scores below threshold. An inferred property takes it from inference (see below) |
+| `x-aws-stickler-clip-under-threshold` | boolean | `true`, `false` on a free-form object or an array of them | Zero out scores below threshold. An inferred property takes it from inference (see below) |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
 | `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold, weight and clip setting for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
-| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments passed to the named comparator |
+| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments passed to the named comparator. On an object with `properties` only its `threshold` is read; on an array of models nothing is. Every key not read warns |
 
 An unstated `x-aws-stickler-threshold` does not resolve to one number. It depends
 on the position, because different positions fall back to different defaults:
@@ -203,7 +210,7 @@ on the position, because different positions fall back to different defaults:
 | Position | Default threshold | Where it comes from |
 |---|---|---|
 | plain scalar (`string`, `number`, ...) | `0.5` | `ComparableField`'s own default |
-| object with `properties` (a nested model) | `0.7` | the class's `match_threshold` |
+| object with `properties` (a nested model) | `0.7` | a fixed importer default; the nested class's own `x-aws-stickler-match-threshold` does not change it |
 | free-form `{"type": "object"}` (a `Dict`), or an array of them | `1.0` | the mapping default |
 | array of plain scalars | `0.5` | `ComparableField`'s own default |
 | array of models | `0.5`, and never read from the schema | the element class's `match_threshold` gates instead |
@@ -211,8 +218,23 @@ on the position, because different positions fall back to different defaults:
 
 A scalar is plain when it has none of the keywords in the last row. Any other
 `format` (`email`, `hostname`, ...) leaves it plain. Declaring the key explicitly
-overrides the default in every position that reads it.
-`x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
+overrides the default in every position that reads it. Without it, a threshold
+named on the comparator, in `x-aws-stickler-comparator-config` or by a custom
+comparator's constructor, overrides the default instead, as it does on the
+Python path. Whichever the field uses must be a number from 0.0 to 1.0;
+any other value raises `ValueError` on import, quoting the key as written:
+
+```text
+ValueError: Invalid threshold for field 'total' of model 'Invoice': the field sets no "x-aws-stickler-threshold", so it adopts its comparator's: "x-aws-stickler-comparator-config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write "x-aws-stickler-comparator-config": {"threshold": 0.85}, or "x-aws-stickler-threshold": 0.85 on the property, which wins over the comparator's.
+```
+
+When `x-aws-stickler-threshold` is set, the comparator's threshold is not read
+and not checked. See [Valid Threshold Values](../../Getting-Started/thresholds-and-metrics.md#valid-threshold-values).
+
+`x-aws-stickler-clip-under-threshold` defaults to `true`, except on a free-form
+object or an array of them, where it defaults to `false` so a comparator such as
+`ANLSStarComparator` keeps its partial credit. The default `ExactComparator`
+scores each object `0.0` or `1.0`, so clipping does not change them.
 
 With `x-aws-stickler-infer-unspecified`, a scalar, a free-form object, or an
 array of either that names no comparator takes any threshold or clip setting it

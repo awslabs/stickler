@@ -12,6 +12,12 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `from_json()` (rich-value unwrapping) and `compare_with()` (delegates to the engine).
 - `comparable_field.py`, `field.py`, `comparison_info.py` — field declaration
   (`ComparableField`), per-field comparator/threshold/weight metadata.
+- `threshold_rule.py`: the rule a threshold or `match_threshold` must meet
+  (a number from 0.0 to 1.0; `as_threshold` converts a `Decimal`, `Fraction`,
+  numpy number or 0-d array with `float()`) and the one `ValueError` message
+  all three paths raise for it, spelled per path (`PYTHON`, `CONFIG`,
+  `SCHEMA`), with where it was set (`location`). The config importer's
+  wrappers re-raise it unprefixed (`is_threshold_error`).
 - `model_factory.py`, `field_converter.py`, `type_resolver.py` — building models
   from Stickler's compact JSON config.
 - `configuration_helper.py` — configuration helpers for comparison and ingestion.
@@ -65,8 +71,7 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   1.1.0 omits the key.
 
 **Metrics**
-- `confusion_matrix_builder.py`,
-  `derived_metrics_calculator.py`, `aggregate_metrics_calculator.py`,
+- `derived_metrics_calculator.py`, `aggregate_metrics_calculator.py`,
   `metrics_helper.py`, `threshold_helper.py` — confusion-matrix and derived/
   aggregate metric rollups.
 - `rich_value_helper.py` — unwraps the Rich Value Pattern

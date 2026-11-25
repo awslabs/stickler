@@ -7,7 +7,7 @@ structured object comparison.
 import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from .field_comparison_helper import FieldComparisonHelper
+from .field_comparison_helper import FieldComparisonHelper, _missing_side_reason
 from .null_helper import NullHelper
 from .reporting_context import ReportingContext
 from .threshold_helper import ThresholdHelper
@@ -161,15 +161,9 @@ class FieldComparisonCollector:
                         reason = f"below threshold ({raw_score:.3f} < {info.threshold})"
                     
                     # Use scoring's float-NaN-as-missing rule without changing the displayed values.
-                    gt_missing = gt_val is None or NullHelper.is_nan(gt_val)
-                    pred_missing = pred_val is None or NullHelper.is_nan(pred_val)
-                    if pred_missing and not gt_missing:
-                        reason = "false negative (unmatched ground truth)"
-                        is_match = False
-                        raw_score = 0.0
-                        weighted_score = 0.0
-                    elif gt_missing and not pred_missing:
-                        reason = "false alarm (unmatched prediction)"
+                    missing_reason = _missing_side_reason(gt_val, pred_val)
+                    if missing_reason is not None:
+                        reason = missing_reason
                         is_match = False
                         raw_score = 0.0
                         weighted_score = 0.0

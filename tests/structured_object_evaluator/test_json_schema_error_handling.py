@@ -24,7 +24,7 @@ class TestThresholdValidation:
             }
         }
         
-        with pytest.raises(ValueError, match="x-aws-stickler-threshold must be a number between 0.0 and 1.0"):
+        with pytest.raises(ValueError, match=r'"x-aws-stickler-threshold": .*A threshold is the minimum similarity score for a match, from 0\.0 to 1\.0'):
             StructuredModel.from_json_schema(schema)
 
     def test_threshold_above_one_raises_error(self):
@@ -39,7 +39,7 @@ class TestThresholdValidation:
             }
         }
         
-        with pytest.raises(ValueError, match="x-aws-stickler-threshold must be a number between 0.0 and 1.0"):
+        with pytest.raises(ValueError, match=r'"x-aws-stickler-threshold": .*A threshold is the minimum similarity score for a match, from 0\.0 to 1\.0'):
             StructuredModel.from_json_schema(schema)
 
     def test_threshold_non_numeric_raises_error(self):
@@ -54,7 +54,7 @@ class TestThresholdValidation:
             }
         }
         
-        with pytest.raises(ValueError, match="x-aws-stickler-threshold must be a number between 0.0 and 1.0"):
+        with pytest.raises(ValueError, match=r'"x-aws-stickler-threshold": .*A threshold is the minimum similarity score for a match, from 0\.0 to 1\.0'):
             StructuredModel.from_json_schema(schema)
 
     def test_threshold_exactly_zero_is_valid(self):
