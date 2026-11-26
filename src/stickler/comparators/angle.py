@@ -99,7 +99,10 @@ class AngleComparator(BaseComparator):
         # shortest way around the circle.
         full_turn = _FULL_TURN[self.angle_unit]
         difference = abs(
+            # requires-python is >=3.10, so math.remainder (3.7+) is always present.
+            # nosemgrep: python.lang.compatibility.python37.python37-compatibility-math1
             math.remainder(
+                # nosemgrep: python.lang.compatibility.python37.python37-compatibility-math1
                 math.remainder(float1, full_turn) - math.remainder(float2, full_turn),
                 full_turn,
             )
