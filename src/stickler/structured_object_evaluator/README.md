@@ -273,10 +273,11 @@ not the rest of the entry.
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
 `NumericComparator`, `DateComparator`, `FuzzyComparator`, `StructuredModelComparator`,
-`ANLSStarComparator`, `BBoxIoUComparator`, `SemanticComparator`, plus `BERTComparator` and
-`LLMComparator`, which need the `[bert]` and `[llm]` extras. Without the extra those two are not
-registered, so naming one raises `ValueError: Invalid x-aws-stickler-comparator 'BERTComparator'
-...` and the name is absent from the "Available" list the message prints.
+`ANLSStarComparator`, `BBoxIoUComparator`, `PointDistanceComparator`, `SemanticComparator`,
+plus `BERTComparator` and `LLMComparator`, which need the `[bert]` and `[llm]` extras. Without
+the extra those two are not registered, so naming one raises `ValueError: Invalid
+x-aws-stickler-comparator 'BERTComparator' ...` and the name is absent from the "Available" list
+the message prints.
 
 With no comparator given, the choice is made in two steps, in `_default_comparison` and
 `_evaluation_annotation` (`models/json_schema_importer.py`):
@@ -381,6 +382,7 @@ Available comparators:
 - `SemanticComparator`: Semantic similarity using embeddings
 - `StructuredModelComparator`: Recursive comparison of a nested model
 - `BBoxIoUComparator`: Bounding-box overlap by intersection over union
+- `PointDistanceComparator`: Euclidean distance between 2D or 3D points
 - `BERTComparator`, `LLMComparator`: Contextual and LLM-judged similarity; need the `[bert]` and
   `[llm]` extras
 

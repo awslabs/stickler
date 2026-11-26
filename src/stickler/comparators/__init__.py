@@ -18,6 +18,7 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.normalized import NormalizedComparator
 from stickler.comparators.numeric import NumericComparator, NumericExactC
 from stickler.comparators.phone import PhoneComparator
+from stickler.comparators.point_distance import PointDistanceComparator
 from stickler.comparators.semantic import SemanticComparator
 from stickler.comparators.structured import StructuredModelComparator
 from stickler.comparators.utils import generate_bedrock_embedding
@@ -113,6 +114,7 @@ except ImportError:
 __all__ = [
     "BaseComparator",
     "BBoxIoUComparator",
+    "PointDistanceComparator",
     "LevenshteinComparator",
     "NormalizedComparator",
     "NumericComparator",
