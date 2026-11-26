@@ -1,4 +1,4 @@
-# SDK Documentation
+# API Reference
 
 Complete API reference for the Stickler library.
 
