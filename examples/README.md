@@ -110,6 +110,14 @@ This directory contains comprehensive examples demonstrating the core functional
   - Runs on inferred configuration first, then repeats it with declared comparators and thresholds
   - Outputs are empty until you run it yourself
 
+- **`notebooks/Warehouse_3D_Detection_Regression.ipynb`** - Physical AI: 3D detection regression in a warehouse
+  - Real ground truth from NVIDIA Physical AI SmartSpaces (CC-BY-4.0), 341 MB, downloaded at a pinned revision
+  - Three schemas side by side: default `match_threshold`, `match_threshold = 1.0`, and `ComparableField(required_match=True)`
+  - Headline: only `required_match` makes Stickler's default report count like a detector; without it a checkpoint that lost 10% of people reads recall 0.97 and passes the gate
+  - Also a near-vehicle safety slice, a rare-class collapse, `non_matches` on a scene map, a nuScenes-style greedy cross-check and a pass/fail CI gate
+  - CPU only, about 5 min plus the download, about 2.2 GB peak memory
+  - Needs `required_match` from #539 (unreleased): `pip install "git+https://github.com/awslabs/stickler@refs/pull/539/head" "huggingface_hub>=0.25" "matplotlib>=3.8"`
+
 ## 🎯 What Each Example Demonstrates
 
 | Example | Individual Objects | List Comparison | Nested Structures | Error Analysis | Large Scale | Pretty Print |
