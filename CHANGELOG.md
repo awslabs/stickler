@@ -163,6 +163,10 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **`to_stickler_config()` exports a tuple field as a tuple.** It was written
+  as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
+  value. Tuples of primitives keep their element types (`Tuple[float, float]`);
+  others are written as `tuple`. `to_json_schema()` is unchanged.
 - **A comparator key on a nested model now warns instead of being dropped in
   silence or refused.** A nested model is scored field by field, so its
   comparator is never called, as on the Python path. `comparator` on a

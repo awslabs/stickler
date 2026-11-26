@@ -170,6 +170,22 @@ def _stickler_mapping_type(annotation: Any) -> str:
     return "dict"
 
 
+def _stickler_tuple_type(annotation: Any) -> str:
+    """``Tuple[float, int]`` for a tuple of named primitives, else ``tuple``.
+
+    ``model_from_json`` resolves both spellings. It has none for ``...`` or for
+    an element it cannot be handed by name, so those fall back to ``tuple``,
+    which keeps the field a tuple and drops the length and element checks.
+    """
+    names = [
+        "Any" if arg is Any else PYTHON_TYPE_TO_STICKLER_TYPE.get(arg)
+        for arg in get_args(annotation)
+    ]
+    if names and all(names):
+        return f"Tuple[{', '.join(names)}]"
+    return "tuple"
+
+
 class JsonSchemaFieldConverter:
     """Compatibility entry point for schema import and field export.
 
@@ -295,6 +311,8 @@ class JsonSchemaFieldConverter:
         # that could hold no mapping, including the `{}` its factory exports.
         if ConfigurationHelper.is_mapping_annotation(field_type):
             stickler_type = _stickler_mapping_type(field_type)
+        elif field_type is tuple or get_origin(field_type) is tuple:
+            stickler_type = _stickler_tuple_type(field_type)
         else:
             stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
         field_config = {"type": stickler_type}
