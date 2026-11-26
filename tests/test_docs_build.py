@@ -161,7 +161,9 @@ def test_duplicate_known_warning_fails(docs_project, second_line):
         f"    logger.warning({first!r})\n"
         f"    logger.warning({second!r})\n"
     )
-    assert result.stderr.count("No type or annotation for parameter '**field_kwargs'") == 2
+    assert (
+        result.stderr.count("No type or annotation for parameter '**field_kwargs'") == 2
+    )
     assert result.returncode != 0, result.stderr
     assert "Documentation check failed: 1 warning(s) or error(s)." in result.stderr
 
@@ -429,7 +431,10 @@ def test_real_site_review_cases(tmp_path, fault, from_docs):
             "# comment\n" + source.read_text(encoding="utf-8"), encoding="utf-8"
         )
     elif fault == "duplicate-warning":
-        source = tmp_path / "src/stickler/structured_object_evaluator/models/comparable_field.py"
+        source = (
+            tmp_path
+            / "src/stickler/structured_object_evaluator/models/comparable_field.py"
+        )
         parameter = "        **field_kwargs: Additional Pydantic Field arguments\n"
         content = source.read_text(encoding="utf-8")
         assert content.count(parameter) == 1
