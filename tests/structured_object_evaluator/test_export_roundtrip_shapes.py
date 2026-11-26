@@ -7,23 +7,24 @@ re-imported model could not load the data the original model accepted.
 
 A plain model is scored as one object, as a mapping is, so it now exports as a
 free-form object and comes back as `dict`, and a list of lists exports as nested
-arrays. `to_stickler_config()` has no type for a union with a model arm or for a
-StructuredModel inside a nested list. 1.0.1 ships no breaking change, so both
-exporters write those as 1.0.0 did and warn; 1.1.0 raises. `Optional` and
-`Annotated` are stripped first, so a nested model under `Field(...)` on an
-optional field exports as the model.
+arrays. The exporters have no type for a union with a model arm or for a
+StructuredModel inside a nested list. 1.0.x wrote those as a string, and 1.0.1
+and 1.0.2 also warned; from 1.1.0 both exporters raise `ValueError` naming the
+field. `Optional` and `Annotated` are stripped first, so a nested model under
+`Field(...)` on an optional field exports as the model.
 
-The warning reads the field, its list levels and the arms of a union, not other
-containers, so `Union[List[Card], str]` and `Tuple[Card, ...]` are not warned
-about and still export as `"string"`.
+The check reads the field, its list levels and the arms of a union, not other
+containers, so `Union[List[Card], str]` and `Tuple[Card, ...]` are not refused
+and still export as `"string"`. Those, and the other shapes model-export.md
+names as not round-tripping, are pinned here, so a test fails when one starts
+working and the page needs updating.
 """
 
-import inspect
 import warnings
-from typing import Annotated, Dict, List, Optional, Union
+from typing import Annotated, Dict, List, Optional, Tuple, Union
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.configuration_helper import (
@@ -224,88 +225,36 @@ UNION_ANNOTATIONS = {
         Annotated[Union[Card, Bank], "m"]
     ],
     "Union[Annotated[Card], Bank]": Union[Annotated[Card, "m"], Bank],
+    "Union[Annotated[Card], str]": Union[Annotated[Card, "m"], str],
     "List[Annotated[Union[Card, Bank]]]": List[Annotated[Union[Card, Bank], "m"]],
 }
 
 
-# What 1.0.0 wrote for each spelling, measured on v1.0.0: the JSON Schema
-# `type`/`items` and the Stickler config `type`. 1.0.0 unwrapped `Optional` once
-# and nothing else, so only the spelling with `Optional` outside `Annotated` is
-# nullable, and a list of lists is one array level.
-LEGACY_UNION_EXPORTS = {
-    "Union[Card, Bank]": ({"type": "string"}, "str"),
-    "Optional[Union[Card, Bank]]": ({"type": "string"}, "str"),
-    "Card | Bank": ({"type": "string"}, "str"),
-    "Union[Plain, str]": ({"type": "string"}, "str"),
-    "List[Union[Card, Bank]]": (
-        {"type": "array", "items": {"type": "string"}},
-        "List[Union]",
-    ),
-    "List[List[Union[Card, Bank]]]": (
-        {"type": "array", "items": {"type": "string"}},
-        "List[List]",
-    ),
-    "Optional[Annotated[Union[Card, Bank]]]": ({"type": ["string", "null"]}, "str"),
-    "Union[Annotated[Card], Bank]": ({"type": "string"}, "str"),
-    "List[Annotated[Union[Card, Bank]]]": (
-        {"type": "array", "items": {"type": "string"}},
-        "List[Annotated]",
-    ),
-}
-
-LEGACY_JSON_EXTENSIONS = {
-    "x-aws-stickler-clip-under-threshold": True,
-    "x-aws-stickler-comparator": "LevenshteinComparator",
-    "x-aws-stickler-comparator-config": {"normalize": True},
-    "x-aws-stickler-threshold": 0.9,
-    "x-aws-stickler-weight": 1.0,
-}
-
-LEGACY_STICKLER_SETTINGS = {
-    "clip_under_threshold": True,
-    "comparator": "LevenshteinComparator",
-    "comparator_config": {"normalize": True},
-    "default": None,
-    "required": False,
-    "threshold": 0.9,
-    "weight": 1.0,
-}
-
-
 def _export(model, path):
-    """Export, returning the one field's output and the legacy-shape warnings."""
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        if path == "json_schema":
-            exported = model.to_json_schema()["properties"]
-        else:
-            exported = model.to_stickler_config()["fields"]
-    legacy = [
-        w for w in caught if "This becomes a ValueError in 1.1.0" in str(w.message)
-    ]
-    return exported, legacy
+    if path == "json_schema":
+        return model.to_json_schema()
+    return model.to_stickler_config()
 
 
 @pytest.mark.parametrize("path", REIMPORT)
 @pytest.mark.parametrize("spelling", UNION_ANNOTATIONS)
-def test_a_union_with_a_model_arm_exports_as_1_0_0_did_and_warns(path, spelling):
+def test_a_union_with_a_model_arm_is_refused(path, spelling):
     annotation = UNION_ANNOTATIONS[spelling]
 
     class Holder(StructuredModel):
         either: annotation = ComparableField(threshold=0.9)
 
-    exported, legacy = _export(Holder, path)
-    json_type, stickler_type = LEGACY_UNION_EXPORTS[spelling]
-    if path == "json_schema":
-        assert exported["either"] == {**json_type, **LEGACY_JSON_EXTENSIONS}
-    else:
-        assert exported["either"] == {"type": stickler_type, **LEGACY_STICKLER_SETTINGS}
-    assert len(legacy) == 1
-    assert legacy[0].category is UserWarning
-    message = str(legacy[0].message)
-    assert f"field 'Holder.either' cannot export {annotation!r}" in message
-    assert "has no type for a union with a model arm" in message
-    assert "Declare the field as a single model type" in message
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(ValueError) as raised:
+            _export(Holder, path)
+    message = str(raised.value)
+    method = "to_json_schema()" if path == "json_schema" else "to_stickler_config()"
+    assert message.startswith(
+        f"{method} field 'Holder.either' cannot export {annotation!r}"
+    )
+    assert "no type for a union with a model arm" in message
+    assert "Declare the field (or its list element) as a single model type" in message
 
 
 NESTED_MODEL_LISTS = {
@@ -319,60 +268,202 @@ NESTED_MODEL_LISTS = {
 
 @pytest.mark.parametrize("path", REIMPORT)
 @pytest.mark.parametrize("spelling", NESTED_MODEL_LISTS)
-def test_a_structured_model_in_a_nested_list_exports_as_1_0_0_did_and_warns(
-    path, spelling
-):
+def test_a_structured_model_in_a_nested_list_is_refused(path, spelling):
     annotation = NESTED_MODEL_LISTS[spelling]
 
     class Holder(StructuredModel):
         grid: annotation = ComparableField()
 
-    exported, legacy = _export(Holder, path)
-    # 1.0.0: an array of strings, `List[List]` in a Stickler config.
-    if path == "json_schema":
-        assert exported["grid"] == {
-            "type": "array",
-            "items": {"type": "string"},
-            **LEGACY_JSON_EXTENSIONS,
-            "x-aws-stickler-threshold": 0.5,
-        }
-    else:
-        assert exported["grid"] == {
-            "type": "List[List]",
-            **LEGACY_STICKLER_SETTINGS,
-            "threshold": 0.5,
-        }
-    assert len(legacy) == 1
-    message = str(legacy[0].message)
-    assert "has no type for a StructuredModel inside a nested list" in message
-    assert "Wrap the inner list in its own StructuredModel" in message
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(ValueError) as raised:
+            _export(Holder, path)
+    message = str(raised.value)
+    method = "to_json_schema()" if path == "json_schema" else "to_stickler_config()"
+    assert message.startswith(
+        f"{method} field 'Holder.grid' cannot export {annotation!r}"
+    )
+    assert "no type for a StructuredModel inside a nested list" in message
+    assert (
+        "Wrap each inner list in its own StructuredModel, so that no list "
+        "directly holds a list of models" in message
+    )
+
+
+NESTED_MODEL_UNIONS = {
+    "List[List[Union[Card, Bank]]]": List[List[Union[Card, Bank]]],
+    "Optional[List[List[Union[Card, Bank]]]]": Optional[List[List[Union[Card, Bank]]]],
+    "list[list[Card | Bank]] | None": list[list[Card | Bank]] | None,
+    "List[Annotated[List[Union[Annotated[Card], Bank]]]]": List[
+        Annotated[List[Union[Annotated[Card, "m"], Bank]], "m"]
+    ],
+    "List[List[Union[Annotated[Card], str]]]": List[
+        List[Union[Annotated[Card, "m"], str]]
+    ],
+}
 
 
 @pytest.mark.parametrize("path", REIMPORT)
-def test_the_legacy_export_warning_points_at_the_callers_line(path):
+@pytest.mark.parametrize("spelling", NESTED_MODEL_UNIONS)
+def test_a_model_union_in_a_nested_list_gets_both_hints(path, spelling):
+    """A single StructuredModel there would still be a model in a nested list."""
+    annotation = NESTED_MODEL_UNIONS[spelling]
+
+    class Holder(StructuredModel):
+        grid: annotation = ComparableField()
+
+    with pytest.raises(ValueError) as raised:
+        _export(Holder, path)
+    message = str(raised.value)
+    assert "no type for a union with a model arm" in message
+    assert (
+        "Declare the field (or its list element) as a single model type, and if "
+        "you choose a StructuredModel, wrap each inner list in its own "
+        "StructuredModel" in message
+    )
+
+
+@pytest.mark.parametrize("path", REIMPORT)
+def test_a_plain_model_union_in_a_nested_list_gets_only_the_union_hint(path):
+    """`List[List[Plain]]` exports, so a single plain model is enough there."""
+
+    class Holder(StructuredModel):
+        grid: List[List[Union[Plain, str]]] = ComparableField()
+
+    with pytest.raises(ValueError) as raised:
+        _export(Holder, path)
+    message = str(raised.value)
+    assert "no type for a union with a model arm" in message
+    assert "Declare the field (or its list element) as a single model type" in message
+    assert "wrap each inner list" not in message
+
+
+@pytest.mark.parametrize("path", REIMPORT)
+@pytest.mark.parametrize("spelling", ["Union[Card, Bank]", "List[Union[Card, Bank]]"])
+def test_a_union_under_one_list_level_gets_only_the_union_hint(path, spelling):
+    annotation = UNION_ANNOTATIONS[spelling]
+
+    class Holder(StructuredModel):
+        either: annotation = ComparableField()
+
+    with pytest.raises(ValueError) as raised:
+        _export(Holder, path)
+    assert "wrap each inner list" not in str(raised.value)
+
+
+class _Row(StructuredModel):
+    cards: List[Card] = ComparableField()
+
+
+class _Plane(StructuredModel):
+    rows: List[_Row] = ComparableField()
+
+
+@pytest.mark.parametrize("path", REIMPORT)
+def test_following_the_nested_list_hint_exports_at_any_depth(path):
+    """Wrapping one level of `List[List[List[Card]]]` is still refused;
+    wrapping each inner list, as the message says, exports and reloads."""
+
+    class OneWrap(StructuredModel):
+        grid: List[List[_Row]] = ComparableField()
+
+    with pytest.raises(ValueError, match="inside a nested list"):
+        _export(OneWrap, path)
+
+    class Grid(StructuredModel):
+        planes: List[_Plane] = ComparableField()
+
+    data = {"planes": [{"rows": [{"cards": [{"pan": "1"}]}]}]}
+    rebuilt = REIMPORT[path](Grid)
+    assert rebuilt(**data).compare_with(rebuilt(**data))["overall_score"] == 1.0
+
+
+@pytest.mark.parametrize("path", REIMPORT)
+def test_only_the_export_is_refused(path):
+    """The model still builds and scores; only writing it out raises."""
+
     class Holder(StructuredModel):
         either: Union[Card, Bank] = ComparableField()
         grid: List[List[Card]] = ComparableField()
 
-    export = (
-        Holder.to_json_schema if path == "json_schema" else Holder.to_stickler_config
-    )
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        this_line = inspect.currentframe().f_lineno + 1
-        export()
-    legacy = [w for w in caught if "becomes a ValueError in 1.1.0" in str(w.message)]
-    # One per field per call: an export runs once, so it is not memoised.
-    assert [w.filename for w in legacy] == [__file__, __file__]
-    assert [w.lineno for w in legacy] == [this_line, this_line]
-    with warnings.catch_warnings(record=True) as again:
-        warnings.simplefilter("always")
-        export()
-    assert len([w for w in again if "1.1.0" in str(w.message)]) == 2
+    gt = Holder(either={"pan": "1"}, grid=[[{"pan": "1"}]])
+    pred = Holder(either={"pan": "1"}, grid=[[{"pan": "1"}]])
+    assert gt.compare_with(pred)["overall_score"] == 1.0
+    with pytest.raises(ValueError, match="'Holder.either'"):
+        _export(Holder, path)
 
 
-def test_a_union_built_from_a_schema_exports_as_1_0_0_did_and_warns():
-    """The schema-only loop from #349 C: import builds the union, export keeps 1.0.0's string."""
+# Shapes model-export.md names as still not round-tripping. Each test below asserts
+# the stated limitation, so it fails (and the page needs updating) once a shape works.
+OTHER_CONTAINERS = {
+    "Union[List[Card], str]": (Union[List[Card], str], [{"pan": "4111"}]),
+    "Union[Dict[str, Card], str]": (
+        Union[Dict[str, Card], str],
+        {"main": {"pan": "4111"}},
+    ),
+    "Tuple[Card, ...]": (Tuple[Card, ...], ({"pan": "4111"},)),
+}
+
+
+def _holder(annotation):
+    class Holder(StructuredModel):
+        other: annotation = ComparableField()
+
+    return Holder
+
+
+@pytest.mark.parametrize("path", REIMPORT)
+@pytest.mark.parametrize("spelling", OTHER_CONTAINERS)
+def test_other_containers_are_not_refused(path, spelling):
+    """The check reads only the field, its list levels and a union's arms."""
+    annotation, data = OTHER_CONTAINERS[spelling]
+    Holder = _holder(annotation)
+    Holder(other=data)
+
+    exported = _export(Holder, path)
+    fields = exported["properties"] if path == "json_schema" else exported["fields"]
+    assert fields["other"]["type"] == ("string" if path == "json_schema" else "str")
+    with pytest.raises(ValidationError):
+        REIMPORT[path](Holder)(other=data)
+
+
+@pytest.mark.parametrize("path", REIMPORT)
+def test_a_nested_list_of_scalar_unions_round_trips_only_through_the_config(path):
+    Holder = _holder(List[List[Union[str, int]]])
+    data = [["a", 1]]
+    Holder(other=data)
+    Reimported = REIMPORT[path](Holder)
+
+    if path == "json_schema":
+        exported = Holder.to_json_schema()["properties"]["other"]
+        assert exported["items"] == {"type": "array", "items": {"type": "string"}}
+        with pytest.raises(ValidationError):
+            Reimported(other=data)
+    else:
+        assert Holder.to_stickler_config()["fields"]["other"]["type"] == "List[List]"
+        assert Reimported(other=data).other == data
+
+
+@pytest.mark.parametrize("path", REIMPORT)
+def test_a_model_in_a_mapping_in_a_nested_list_loses_its_schema(path):
+    Holder = _holder(List[List[Dict[str, Card]]])
+    gt = [[{"main": {"pan": "4111111"}}]]
+    pred = [[{"main": {"pan": "4111112"}}]]
+    Reimported = REIMPORT[path](Holder)
+
+    if path == "json_schema":
+        exported = Holder.to_json_schema()["properties"]["other"]
+        assert exported["items"] == {"type": "array", "items": {"type": "object"}}
+    assert isinstance(Holder(other=gt).other[0][0]["main"], Card)
+    assert type(Reimported(other=gt).other[0][0]["main"]) is dict
+    original = Holder(other=gt).compare_with(Holder(other=pred))["overall_score"]
+    rebuilt = Reimported(other=gt).compare_with(Reimported(other=pred))["overall_score"]
+    assert rebuilt != pytest.approx(original)
+
+
+@pytest.mark.parametrize("path", REIMPORT)
+def test_a_union_built_from_a_schema_is_refused_on_export(path):
+    """The schema-only loop from #349 C: import builds the union, export refuses it."""
     schema = {
         "type": "object",
         "properties": {
@@ -397,25 +488,8 @@ def test_a_union_built_from_a_schema_exports_as_1_0_0_did_and_warns():
     }
     Imported = StructuredModel.from_json_schema(schema)
     Imported(payload={"iban": "DE89"})
-    exported, legacy = _export(Imported, "json_schema")
-    assert exported["payload"] == {
-        "type": "string",
-        "x-aws-stickler-clip-under-threshold": True,
-        "x-aws-stickler-comparator": "ExactComparator",
-        "x-aws-stickler-threshold": 1.0,
-        "x-aws-stickler-weight": 1.0,
-    }
-    assert len(legacy) == 1
-    exported, legacy = _export(Imported, "stickler_config")
-    assert exported["payload"] == {
-        "type": "str",
-        "comparator": "ExactComparator",
-        "threshold": 1.0,
-        "weight": 1.0,
-        "clip_under_threshold": True,
-        "required": True,
-    }
-    assert len(legacy) == 1
+    with pytest.raises(ValueError, match="no type for a union with a model arm"):
+        _export(Imported, path)
 
 
 class TestFieldToProperty:
@@ -428,10 +502,49 @@ class TestFieldToProperty:
             annotation, self.field_info
         )
 
-    def test_a_union_of_models_is_written_as_a_string_with_a_warning(self):
-        with pytest.warns(UserWarning, match="union with a model arm"):
-            prop = self._convert(Union[Card, Bank])
-        assert prop["type"] == "string"
+    def _to_config(self, annotation):
+        return JsonSchemaFieldConverter({}).field_to_stickler_config(
+            annotation, self.field_info
+        )
+
+    @pytest.mark.parametrize(
+        ("method", "annotation", "what"),
+        [
+            ("field_to_property", Union[Card, Bank], "a union with a model arm"),
+            ("field_to_stickler_config", Union[Card, Bank], "a union with a model arm"),
+            (
+                "field_to_property",
+                List[List[Card]],
+                "a StructuredModel inside a nested list",
+            ),
+            (
+                "field_to_stickler_config",
+                List[List[Card]],
+                "a StructuredModel inside a nested list",
+            ),
+        ],
+    )
+    def test_the_converters_refuse_these_shapes_and_name_the_type(
+        self, method, annotation, what
+    ):
+        convert = self._convert if method == "field_to_property" else self._to_config
+        with pytest.raises(ValueError) as raised:
+            convert(annotation)
+        message = str(raised.value)
+        assert message.startswith(f"{method}() cannot export {annotation!r}:")
+        assert f"no type for {what}" in message
+        assert message.endswith("or remove the field from the model you export.")
+
+    @pytest.mark.parametrize(
+        "method", ["field_to_property", "field_to_stickler_config"]
+    )
+    def test_both_converters_name_the_type_as_passed(self, method):
+        """field_to_property() unwraps Optional, but names the type it was given."""
+        convert = self._convert if method == "field_to_property" else self._to_config
+        annotation = Optional[List[List[Card]]]
+        with pytest.raises(ValueError) as raised:
+            convert(annotation)
+        assert str(raised.value).startswith(f"{method}() cannot export {annotation!r}:")
 
     def test_a_structured_model_is_still_refused(self):
         with pytest.raises(ValueError, match="StructuredModel"):
@@ -440,6 +553,21 @@ class TestFieldToProperty:
     def test_a_single_list_of_models_is_not_called_a_nested_list(self):
         with pytest.raises(ValueError, match="as a scalar"):
             self._convert(Optional[Annotated[List[Card], Field(description="d")]])
+
+    @pytest.mark.parametrize(
+        ("method", "written"),
+        [("field_to_property", "string"), ("field_to_stickler_config", "str")],
+    )
+    def test_a_list_of_lists_is_written_as_a_string_by_the_converters(
+        self, method, written
+    ):
+        """Named in model-export.md; to_json_schema() writes the same field correctly."""
+        convert = self._convert if method == "field_to_property" else self._to_config
+        assert convert(List[List[float]])["type"] == written
+        assert Shapes.to_json_schema()["properties"]["nested"]["items"] == {
+            "type": "array",
+            "items": {"type": "number"},
+        }
 
     def test_a_plain_model_is_written_as_an_object(self):
         assert self._convert(Plain)["type"] == "object"

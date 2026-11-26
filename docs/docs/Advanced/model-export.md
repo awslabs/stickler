@@ -21,10 +21,23 @@ not coerce values. A list of lists exports as nested arrays; `to_stickler_config
 `List[List]`, without the inner element type. A plain model inside a nested list comes back as a
 `dict`, which can score slightly differently there. `to_stickler_config()` has no type for a union
 with a model arm (`Union[Card, Bank]`, `Union[Plain, str]`) or for a `StructuredModel` inside a
-nested list (`List[List[Card]]`). Both methods still write these as 1.0.0 did, typed as a string,
-which does not re-import as the original field, and emit a `UserWarning` naming the field. From
-1.1.0 both raise `ValueError` for them
-([#349](https://github.com/awslabs/stickler/issues/349)).
+nested list (`List[List[Card]]`), so both methods raise `ValueError` for them, naming the field and
+how to change it. 1.0.x wrote these without the model (a string or a list of strings in a JSON
+Schema, `List[Union]` or `List[List]` in a Stickler config), which did not re-import as the
+original field, and 1.0.1 and 1.0.2 warned
+([#349](https://github.com/awslabs/stickler/issues/349)). The check reads the field, its
+list levels and the arms of a union, so other containers that hold a model, such as
+`Union[List[Card], str]`, `Union[Dict[str, Card], str]` or `Tuple[Card, ...]`, are still written as
+a string (`"string"`, `"str"` in a Stickler config), and the re-imported field rejects the original
+data. Three more cases are unchanged by this release:
+
+- `List[List[Union[str, int]]]`: `to_json_schema()` writes nested arrays of `"string"`, so the
+  re-imported field rejects `[["a", 1]]`. `to_stickler_config()` writes `List[List]`, which loads it.
+- `List[List[Dict[str, Card]]]`: `to_json_schema()` writes nested arrays of free-form objects and
+  `to_stickler_config()` writes `List[List]`; neither carries the model's schema. The re-imported field holds `dict` values, which score differently from `Card`.
+- `JsonSchemaFieldConverter.field_to_property()` and `field_to_stickler_config()`, called directly,
+  write a list of lists such as `List[List[float]]` as a string. `to_json_schema()` and
+  `to_stickler_config()` handle those fields themselves.
 
 A `Dict` field exports as `{"type": "object"}`, with `additionalProperties` for a primitive value
 type, and as `"Dict[str, int]"` in a Stickler config (`"dict"` when a key or value type has no config

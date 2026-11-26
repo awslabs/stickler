@@ -154,6 +154,21 @@ Each release links to full notes on the
   importer already refused the same misplacement
   ([#607](https://github.com/awslabs/stickler/issues/607)).
 
+- **Breaking:** `to_json_schema()` and `to_stickler_config()` raise `ValueError`
+  for a field `to_stickler_config()` has no type for: a union with a model arm
+  (`Union[Card, Bank]`, `Union[Plain, str]`, or a list of them such as
+  `List[Union[Card, Bank]]`) or a `StructuredModel` inside a nested list
+  (`List[List[Card]]`), however it is wrapped in `Optional` or `Annotated`.
+  `JsonSchemaFieldConverter.field_to_property()` and `field_to_stickler_config()`
+  raise for them too. 1.0.x wrote these without the model (a string or a list of
+  strings in a JSON Schema, `List[Union]` or `List[List]` in a config), which did
+  not re-import as the original field (1.0.0's `to_stickler_config()` raised
+  `AttributeError` on `List[A | B]`); 1.0.1 and 1.0.2 also warned that a later
+  release would raise (1.0.1 named 1.0.2; 1.0.2 moved it to 1.1.0, since patch
+  releases ship no breaking change). The exporters' error names the field and
+  how to change it; the model itself still builds and scores
+  ([#349](https://github.com/awslabs/stickler/issues/349)).
+
 ### Removed
 
 - The deprecated `stickler.structured_object_evaluator.models.confusion_matrix_calculator`
