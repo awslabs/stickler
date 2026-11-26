@@ -18,7 +18,7 @@ Customize evaluation behavior with thresholds, clipping, aggregation, and the ev
 
 ## [Use Cases](Use-Cases/README.md)
 
-Real-world patterns for document extraction, OCR evaluation, ML model output comparison, and ETL validation.
+Real-world patterns for document extraction, OCR evaluation, ML model output comparison, object detection, and ETL validation.
 
 ## [Best Practices](Best-Practices/README.md)
 

@@ -128,6 +128,12 @@ Enable `include_confusion_matrix=True` when calling `compare_with()` to get prec
 
 ---
 
+## Object Detection
+
+Score per-frame lists of detected objects (class and position) from robots and cameras against ground truth. See [Evaluating Object Detections from Robots and Cameras](object-detection.md).
+
+---
+
 ## ETL Validation
 
 Validate that ETL pipeline outputs match expected results. Stickler ensures data transformations produce the correct structured output by comparing field-by-field with appropriate tolerances.
@@ -195,6 +201,7 @@ Combine with `BulkStructuredModelEvaluator` and `save_metrics()` to produce eval
 | OCR Evaluation | Levenshtein | Character-level accuracy matters |
 | Entity Extraction | Exact, Levenshtein | Entity type must be exact; names can be lenient |
 | ML Model Evaluation | Exact, Numeric | Use confusion matrix for classification metrics |
+| Object Detection | Exact, Numeric, BBoxIoU | Set `match_threshold = 1.0` so every field decides the pair |
 | ETL Validation | Exact, Numeric | Tight tolerances for deterministic pipelines |
 | Data Quality Monitoring | Exact, Numeric, Levenshtein | Track scores over time to detect drift |
 
