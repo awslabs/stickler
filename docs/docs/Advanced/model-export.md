@@ -33,11 +33,14 @@ name). Through JSON Schema it re-imports as `dict`, so the value type is not enf
 produces (`[]`, `{}`, a set as a list) and re-imports as that default. Any other factory, or one on
 a field exported as a scalar such as `Set[str]`, exports no default and re-imports as `None`.
 
-A `Tuple` of `str`, `int`, `float`, `bool` or `Any` exports to a Stickler config as its typing
-string (`"Tuple[float, float, float, float]"`) and re-imports as that tuple. Any other tuple,
-including `Tuple[int, ...]`, is written as `tuple`: it re-imports as a tuple without the length
-and element checks. The default of a tuple field becomes a list in JSON and re-imports as a
-tuple; a tuple inside a list default, as in `List[Tuple[int, int]]`, stays a list.
+A `Tuple` of `str`, `int`, `float`, `bool`, `Any` or such tuples exports to a Stickler config as
+its typing string (`"Tuple[float, float, float, float]"`, `"Tuple[int, ...]"`,
+`"Tuple[Tuple[float, float], Tuple[float, float]]"`), as does a list of one
+(`"List[Tuple[float, float, float, float]]"`), and re-imports as that type. Any other tuple, such
+as `Tuple[Optional[int], int]`, is written as `tuple`: it re-imports as a tuple without the length
+and element checks. `model_from_json()` reads `...` only as the second of two `Tuple` arguments.
+The default of a tuple field becomes a list in JSON and re-imports as a tuple, nested tuples
+included; a tuple inside a list default, as in `List[Tuple[int, int]]`, stays a list.
 `to_json_schema()` has no tuple type and writes it as `"string"`.
 
 A field type an exporter does not map is written as a string (`"string"`, `"str"`, or `string`

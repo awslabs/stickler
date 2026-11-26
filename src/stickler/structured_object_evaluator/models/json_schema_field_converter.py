@@ -175,29 +175,45 @@ def _stickler_mapping_type(annotation: Any) -> str:
     be handed by name (a model, a nested container) falls back to ``dict``,
     which keeps the field a mapping and drops only the per-value check.
     """
-    names = [
-        "Any" if arg is Any else PYTHON_TYPE_TO_STICKLER_TYPE.get(arg)
-        for arg in get_args(annotation)
-    ]
+    names = [_stickler_scalar_name(arg) for arg in get_args(annotation)]
     if len(names) == 2 and all(names):
         return f"Dict[{names[0]}, {names[1]}]"
     return "dict"
 
 
-def _stickler_tuple_type(annotation: Any) -> str:
-    """``Tuple[float, int]`` for a tuple of named primitives, else ``tuple``.
+def _stickler_scalar_name(annotation: Any) -> Optional[str]:
+    """The config name of a primitive or ``Any``, else None."""
+    return "Any" if annotation is Any else PYTHON_TYPE_TO_STICKLER_TYPE.get(annotation)
 
-    ``model_from_json`` resolves both spellings. It has none for ``...`` or for
-    an element it cannot be handed by name, so those fall back to ``tuple``,
-    which keeps the field a tuple and drops the length and element checks.
+
+def _stickler_tuple_name(annotation: Any) -> Optional[str]:
+    """The config name of a tuple whose every leaf has one, else None.
+
+    ``Tuple[float, float]``, ``Tuple[int, ...]`` and nested tuples such as
+    ``Tuple[Tuple[float, float], Tuple[float, float]]``. A bare ``tuple`` or
+    an element with no name (``Optional[int]``, a model) gives None.
     """
-    names = [
-        "Any" if arg is Any else PYTHON_TYPE_TO_STICKLER_TYPE.get(arg)
-        for arg in get_args(annotation)
-    ]
-    if names and all(names):
-        return f"Tuple[{', '.join(names)}]"
-    return "tuple"
+    args = get_args(annotation)
+    if not ConfigurationHelper.is_tuple_annotation(annotation):
+        return None
+    if len(args) == 2 and args[1] is Ellipsis:
+        args = args[:1]
+        suffix = ", ..."
+    else:
+        suffix = ""
+    names = [_stickler_scalar_name(arg) or _stickler_tuple_name(arg) for arg in args]
+    if not names or not all(names):
+        return None
+    return f"Tuple[{', '.join(names)}{suffix}]"
+
+
+def _stickler_tuple_type(annotation: Any) -> str:
+    """The config type of a tuple: its name, or ``tuple`` when it has none.
+
+    ``model_from_json`` resolves both. ``tuple`` keeps the field a tuple and
+    drops the length and element checks.
+    """
+    return _stickler_tuple_name(annotation) or "tuple"
 
 
 def string_accepts_every_value(annotation: Any) -> bool:
@@ -409,7 +425,7 @@ class JsonSchemaFieldConverter:
             stickler_type = _stickler_mapping_type(field_type)
         elif ConfigurationHelper.is_plain_model_annotation(field_type):
             stickler_type = "dict"
-        elif field_type is tuple or get_origin(field_type) is tuple:
+        elif ConfigurationHelper.is_tuple_annotation(field_type):
             # Every tuple gets a type model_from_json() reads back, so none
             # reaches the warning below.
             stickler_type = _stickler_tuple_type(field_type)

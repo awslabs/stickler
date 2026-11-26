@@ -396,6 +396,14 @@ class ConfigurationHelper:
             return False
 
     @staticmethod
+    def is_tuple_annotation(annotation) -> bool:
+        """Whether an annotation is ``tuple`` or a parameterized tuple.
+
+        ``Optional[...]`` is not unwrapped.
+        """
+        return annotation is tuple or get_origin(annotation) is tuple
+
+    @staticmethod
     def is_plain_model_field_type(field_info) -> bool:
         """Whether a field's annotation is a plain model. See is_plain_model_annotation."""
         try:

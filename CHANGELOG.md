@@ -9,6 +9,11 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- `model_from_json()` reads a variable-length tuple, `"Tuple[int, ...]"`; a
+  config that uses `...` cannot be read by earlier versions.
+
 ### Changed
 
 - **The Stickler-config and JSON Schema importers now resolve an unstated
@@ -167,6 +172,16 @@ Each release links to full notes on the
   as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
   value. Tuples of primitives keep their element types (`Tuple[float, float]`);
   others are written as `tuple`. `to_json_schema()` is unchanged.
+- **`to_stickler_config()` names variable-length, listed and nested tuples.**
+  `Tuple[float, ...]` and `Tuple[Tuple[float, float], Tuple[float, float]]`
+  were written as `tuple`, and `List[Tuple[float, float, float, float]]` as
+  `List[Tuple]`, so the rebuilt field accepted a 3-element or string box. Each
+  is now written by name, and an optional list element keeps its `Optional`
+  (`List[Optional[Tuple[float, float]]]`); a tuple with an element that has
+  no config name, such as `Optional[float]`, is still `tuple`. A nested tuple
+  default re-imports as tuples at every level, not as inner lists.
+  `model_from_json()` raises `ValueError` for `...` anywhere but the second of
+  two `Tuple` arguments.
 - **An exported field type that re-imports as a string field now warns.**
   `to_json_schema()` and `to_stickler_config()` still write a type they do not
   map as a string, and now emit a `UserWarning` naming the model, the field and
