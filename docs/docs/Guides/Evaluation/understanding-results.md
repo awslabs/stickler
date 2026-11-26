@@ -36,13 +36,13 @@ A weighted average of all field scores, ranging from 0.0 to 1.0. Calculated as:
 overall_score = sum(field_score * field_weight) / sum(field_weights)
 ```
 
-Fields with `clip_under_threshold=True` (the default) contribute 0.0 if they score below their threshold, rather than their partial similarity.
+Fields with `clip_under_threshold=True` contribute 0.0 if they score below their threshold, rather than their partial similarity. On a `StructuredModel` declared in Python that is the default, except on dict and plain-model fields. JSON Schema and the zero-config path have their own defaults ([JSON Schema](README.md#extension-reference), [zero-config](../../API-Reference/auto.md#inference)). A list field follows the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 A field absent on both sides scores `1.0` and carries its full weight: a value the model correctly left blank is a value it got right. On a schema where most fields are usually empty this makes `overall_score` behave more like accuracy than like a hit rate. See [Sparse Objects](../../Getting-Started/thresholds-and-metrics.md#sparse-objects) for which metric answers which question.
 
 ### `field_scores` (dict)
 
-Maps each field name to its similarity score (0.0 to 1.0). For nested objects, the value is the weighted average of the sub-fields. For lists, it reflects the Hungarian-matched aggregate.
+Maps each field name to its similarity score (0.0 to 1.0). For nested objects, the value is the weighted average of the sub-fields. For lists, it is the sum of the Hungarian pair scores divided by the longer list's length ([Score](../../Advanced/classification-logic.md#list-contract)): the [Transaction example](../../Advanced/hungarian-matching.md#step-4-list-score) scores (0.667 + 0.5 + 0.0) / 3 = 0.3889.
 
 ### Asking whether anything failed
 
@@ -105,7 +105,7 @@ The `confusion_matrix` object has four keys:
 - **`overall`** -- Metrics for this node's direct children. Where the field is a list, those children are item pairings rather than leaves.
 - **`fields`** -- Field-by-field breakdown, with nested structure for objects and lists.
 - **`non_matches`** -- Always `[]`, a placeholder, also in evaluator-format output. With `document_non_matches=True` the records are in the result's top-level `non_matches`.
-- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`. A single nested `StructuredModel` field is not excluded; its leaves are always counted. Where a list's items were *all* rejected the counts become object rows rather than primitive-field metrics, so check that before computing a leaf rate ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). See [`overall` vs `aggregate`](#overall-vs-aggregate).
+- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`, and unmatched (FN/FA) items when a sibling was accepted ([Recursion](../../Advanced/classification-logic.md#list-contract)). A single nested `StructuredModel` field is not excluded; its leaves are always counted. Where a list's items were *all* rejected the counts become object rows rather than primitive-field metrics, so check that before computing a leaf rate ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). See [`overall` vs `aggregate`](#overall-vs-aggregate).
 
 ### `overall` vs `aggregate`
 
@@ -323,16 +323,20 @@ result = ground_truth.compare_with(prediction, document_non_matches=True)
 
 ### Non-Match Entry Structure
 
-Each entry in the `non_matches` list contains:
+Which keys an entry has depends on the field and the non-match type:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `field_path` | string | Dot-notation path to the field (e.g., `"contact.phone"`, `"products[0].name"`). |
-| `non_match_type` | string | One of `"false_discovery"`, `"false_alarm"`, or `"false_negative"`. |
+| `field_path` | string | Path to the field (`"contact.phone"`, `"products[0]"`, `"products[0].name"`). |
+| `non_match_type` | string | `"false_discovery"`, `"false_alarm"` or `"false_negative"`. |
 | `ground_truth_value` | any | The expected value (null for false alarms). |
 | `prediction_value` | any | The predicted value (null for false negatives). |
-| `similarity_score` | float | The raw similarity score between the two values. |
-| `details` | dict | Additional context, including a `"reason"` string (e.g., `"below threshold (0.300 < 1.0)"`). |
+| `similarity_score` | float | False discoveries only. |
+| `details` | dict | Scalar and nested fields: holds `"reason"` (e.g., `"below threshold (0.300 < 1.0)"`). |
+| `reason` | string | List records: the reason, in place of `details`. |
+| `similarity` | float | Whole list-item false discoveries: the same value as `similarity_score`. |
+
+A list item that matches overall but has a sub-field below its threshold produces a record at the sub-field (`"products[0].name"`), not at the item. That record has `reason` (currently always `"field mismatch"`) and `similarity_score`, with no `similarity` and no `details`.
 
 ### Non-Match Types
 
@@ -358,10 +362,12 @@ print(f"False Negatives:   {len(false_negatives)} (missed fields)")
 
 # Inspect the worst false discoveries
 for nm in sorted(false_discoveries, key=lambda x: x['similarity_score']):
+    reason = nm.get('details', {}).get('reason') or nm.get('reason')
     print(f"  {nm['field_path']}: "
           f"expected={nm['ground_truth_value']!r}, "
           f"got={nm['prediction_value']!r}, "
-          f"similarity={nm['similarity_score']:.3f}")
+          f"similarity={nm['similarity_score']:.3f}, "
+          f"reason={reason}")
 ```
 
 For list fields (e.g., products, line items), non-match entries can be at the object level. The `ground_truth_value` and `prediction_value` will be dictionaries representing the full object, allowing you to inspect which specific sub-fields caused the mismatch.
@@ -370,7 +376,7 @@ For list fields (e.g., products, line items), non-match entries can be at the ob
 
 ## Field Comparisons
 
-When you pass `document_field_comparisons=True`, the result includes a `field_comparisons` list documenting every individual field comparison -- both matches and non-matches.
+When you pass `document_field_comparisons=True`, the result includes a `field_comparisons` list documenting every individual field comparison -- both matches and non-matches. For a list there is one row per element of a primitive, dict or plain-model list, one row per leaf of a TP `StructuredModel` item, and one object row per FD, FN or FA item ([Reports](../../Advanced/classification-logic.md#list-contract)). Inside a list item, a nested list or object gets one row instead of being expanded, a [known gap](../../Advanced/classification-logic.md#list-contract).
 
 ```python
 result = ground_truth.compare_with(prediction, document_field_comparisons=True)
@@ -388,9 +394,9 @@ Each entry contains:
 | `expected_value` | any | The ground truth value. |
 | `actual_key` | string | Field path in prediction (may differ for list items due to Hungarian matching). |
 | `actual_value` | any | The predicted value. |
-| `match` | bool | Whether the score met the threshold. |
-| `score` | float | Raw similarity score. |
-| `weighted_score` | float | Score multiplied by the field's weight. |
+| `match` | bool | Whether the row's own classification is TP or TN: a value or object row met its threshold; a list row had every element paired as a TP ([Reports](../../Advanced/classification-logic.md#list-contract)). |
+| `score` | float | Raw similarity score. Inside a list item it is the clipped score, a [known gap](../../Advanced/classification-logic.md#list-contract). |
+| `weighted_score` | float | For a value row, the clipped score multiplied by the field's weight. A list element row ignores the list field's weight: a primitive element row carries its raw, unclipped similarity, an object row carries its score, and a leaf of a TP item uses the leaf's own weight. |
 | `reason` | string | Human-readable explanation. |
 
 This is useful for comprehensive auditing of all comparisons, not just failures.

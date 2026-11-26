@@ -29,7 +29,8 @@ StructuredModel
 │       │       └── MetricsHelper       # Derived metrics (precision, recall, F1)
 │       ├── NonMatchCollector           # Non-match documentation
 │       ├── FieldComparisonCollector    # Field-level comparison docs
-│       └── ConfusionMatrixBuilder      # Aggregate metrics
+│       ├── AggregateMetricsCalculator  # Aggregate metrics
+│       └── DerivedMetricsCalculator    # Precision, recall, F1, accuracy
 │
 ├── ComparisonHelper          # List metrics & Hungarian integration
 │   └── ThresholdHelper       # Threshold comparison logic
@@ -49,7 +50,8 @@ StructuredModel
 | HungarianHelper | `models/hungarian_helper.py` |
 | NonMatchCollector | `models/non_match_collector.py` |
 | FieldComparisonCollector | `models/field_comparison_collector.py` |
-| ConfusionMatrixBuilder | `models/confusion_matrix_builder.py` |
+| AggregateMetricsCalculator | `models/aggregate_metrics_calculator.py` |
+| DerivedMetricsCalculator | `models/derived_metrics_calculator.py` |
 | NullHelper | `models/null_helper.py` |
 | ResultHelper | `models/result_helper.py` |
 | ThresholdHelper | `models/threshold_helper.py` |
@@ -232,7 +234,7 @@ Every field comparison produces three score variants:
 
 | Score | Description |
 |-------|-------------|
-| `raw_similarity_score` | Unclipped score (0.0–1.0). On a list node it is the coverage-scaled mean of the matched pairs' unclipped scores, `sum(pair scores) / max(len(gt), len(pred))`, which is what `compare()` returns for the field. On a `List[StructuredModel]` each pair's score is the item's own `overall_score`, so it is still clipped inside each item. No score or count reads it. `EvalResult.explain()` shows it (`raw_similarity`, `verdict`) for each top-level field. On a scalar field it also decides `match` in `field_comparisons`, the label confidence metrics score against, and gives an FD non-match record its similarity and reason |
+| `raw_similarity_score` | Unclipped score (0.0–1.0). On a list node it is the coverage-scaled mean of the matched pairs' unclipped scores, `sum(pair scores) / max(len(gt), len(pred))`, which is what `compare()` returns for the field. On a `List[StructuredModel]` each pair's score is the item's own `overall_score`, so it is still clipped inside each item. No score or count reads it. `EvalResult.explain()` shows it (`raw_similarity`, `verdict`) for each top-level field. On a scalar field it also decides `match` in `field_comparisons`, the label confidence metrics score against, and gives an FD non-match record its similarity and reason (see [Score](../../Advanced/classification-logic.md#list-contract)) |
 | `similarity_score` | Maintained for API compatibility. Equal to `raw_similarity_score` on a scalar or nested model, and to `threshold_applied_score` on a list node |
 | `threshold_applied_score` | Raw score with `clip_under_threshold` applied (0.0 if below threshold and clipping is enabled). The score: `field_scores` and `overall_score` read it |
 
@@ -248,7 +250,7 @@ Weights are configured per-field via `ComparableField` metadata. Default weight 
 
 ### `clip_under_threshold`
 
-When enabled on a field (the default), a score below the threshold contributes 0.0 instead of its partial similarity. This holds for **every** field kind; the layer that applies it differs.
+When enabled on a field, a score below the threshold contributes 0.0 instead of its partial similarity. On a `StructuredModel` declared in Python it is on by default, except on dict and plain-model fields and lists of them. JSON Schema and the zero-config path have their own defaults ([JSON Schema](../../Guides/Evaluation/README.md#extension-reference), [zero-config](../../API-Reference/auto.md#inference)). It holds for every field kind except `List[StructuredModel]`, where it currently has no effect, a known gap (see the warning below); the layer that applies it differs.
 
 For a primitive or a single nested `StructuredModel`, `FieldComparator` clips when producing `threshold_applied_score`, and the engine's percolation loop uses the already-clipped score:
 
@@ -287,12 +289,11 @@ else:
     Classification is separate and is never affected by this setting. A pair below
     the threshold is one `fd` whether or not its score is kept.
 
-    One gap remains, tracked in
-    [#330](https://github.com/awslabs/stickler/issues/330):
-    `List[StructuredModel]` does not honour the flag, because each pair is scored
-    through the item's own `compare_with` and clipping has already happened per
-    item. For the same reason its `raw_similarity_score` is unclipped only at the
-    list level.
+    Two gaps remain. `List[StructuredModel]` does not honour the flag
+    ([#415](https://github.com/awslabs/stickler/issues/415)), because each pair is
+    scored through the item's own `compare_with` and clipping has already happened
+    per item. For the same reason its `raw_similarity_score` is unclipped only at
+    the list level ([#437](https://github.com/awslabs/stickler/issues/437)).
 
 ### `_aggregate_to_overall()`
 
@@ -326,9 +327,11 @@ The single-traversal design collects all three in **one pass** through `compare_
 Optional features are computed only when requested:
 
 ```python
-# See: comparison_engine.py:279-306
+# See: ComparisonEngine.compare_with in comparison_engine.py
 if include_confusion_matrix:
-    confusion_matrix = self.confusion_matrix_builder.build_confusion_matrix(...)
+    confusion_matrix = AggregateMetricsCalculator().calculate_aggregate_metrics(...)
+    if add_derived_metrics:
+        confusion_matrix = DerivedMetricsCalculator().add_derived_metrics_to_result(...)
 if document_non_matches:
     non_matches = self.non_match_collector.collect_enhanced_non_matches(...)
 if document_field_comparisons:

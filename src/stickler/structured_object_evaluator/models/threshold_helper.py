@@ -1,6 +1,8 @@
 """Threshold checking helper for StructuredModel comparisons."""
 
-from typing import Any, Optional
+import contextlib
+import contextvars
+from typing import Any, Iterator, Optional
 
 from stickler.utils.deprecation import warn_once
 
@@ -87,6 +89,28 @@ def model_identity(model_name: str, field_names: Any = ()) -> str:
     return f"{model_name}(fields: {joined})" if joined else model_name
 
 
+#: Set while ``stickler.auto.builder`` builds classes for a runtime ``False``.
+_FROM_A_BOOL: contextvars.ContextVar = contextvars.ContextVar(
+    "stickler_threshold_from_a_bool", default=False
+)
+
+
+@contextlib.contextmanager
+def threshold_from_a_bool() -> Iterator[None]:
+    """Skip the zero-threshold warning while building from a runtime ``bool``.
+
+    ``evaluate(..., match_threshold=False)`` builds its classes with 0.0, the
+    number ``False`` counts as, since the class check refuses a ``bool``.
+    ``warn_if_threshold_is_zero`` never warns for a ``bool``, so this keeps it
+    silent for the 0.0 that stands in for one.
+    """
+    token = _FROM_A_BOOL.set(True)
+    try:
+        yield
+    finally:
+        _FROM_A_BOOL.reset(token)
+
+
 def warn_if_threshold_is_zero(
     value: Optional[float], context: str, parameter: str
 ) -> None:
@@ -122,7 +146,7 @@ def warn_if_threshold_is_zero(
     # `bool` is an `int`, and `False == 0.0`, so an unguarded numeric check
     # reports `match_threshold = False` as "sets match_threshold=0.0" -- a value
     # the user never wrote. A wrong type is not this function's business.
-    if isinstance(value, bool):
+    if isinstance(value, bool) or _FROM_A_BOOL.get():
         return
     if value is None or not isinstance(value, (int, float)):
         return

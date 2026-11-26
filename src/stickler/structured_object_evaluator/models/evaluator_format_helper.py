@@ -146,7 +146,7 @@ class EvaluatorFormatHelper:
         # Records when they were collected; otherwise `[]`, as 1.0.0 always
         # wrote. That `[]` cannot tell "not collected" from "none found", so the
         # printers read it as "No non-matches found" (#413). 1.0.1 keeps it for
-        # 1.0.0 callers and warns (`StructuredModel.compare_with`); 1.0.2 omits
+        # 1.0.0 callers and warns (`StructuredModel.compare_with`); 1.1.0 omits
         # the key instead, as the default compare_with() dict does.
         formatted["non_matches"] = result.get("non_matches", [])
         return formatted

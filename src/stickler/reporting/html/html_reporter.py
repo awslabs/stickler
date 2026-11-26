@@ -5,6 +5,7 @@ Simple HTML reporter for evaluation results - v0.
 import html
 import json
 import logging
+import math
 import os
 import shutil
 import time
@@ -25,20 +26,44 @@ logger = logging.getLogger(__name__)
 # the JSON identical to the page's JavaScript while no document value can end
 # the block early (#431). `json.dumps` already escapes U+2028/U+2029 under its
 # default `ensure_ascii=True`, so those two entries do not change today's
-# output; they are kept so the table stays correct if that ever changes, since
-# both are line terminators outside a JS string literal.
-_SCRIPT_SAFE = str.maketrans({
-    "<": "\\u003c",
-    ">": "\\u003e",
-    "&": "\\u0026",
-    "\u2028": "\\u2028",
-    "\u2029": "\\u2029",
-})
+# output; they are kept so the escapes stay correct if that ever changes, since
+# both are line terminators outside a JS string literal. The escapes are
+# applied with `str.replace`, not `str.translate`: `translate` with
+# multi-character replacements leaves CPython's ASCII fast path at the first
+# `<`, `>` or `&`, which made large reports about ten times slower to write
+# (#457).
+_SCRIPT_SAFE_ESCAPES = (
+    ("<", "\\u003c"),
+    (">", "\\u003e"),
+    ("&", "\\u0026"),
+    ("\u2028", "\\u2028"),
+    ("\u2029", "\\u2029"),
+)
+
+
+def _null_constant(_constant: str) -> None:
+    """``parse_constant`` hook: read ``NaN``, ``Infinity`` and ``-Infinity`` as ``None``."""
+    return None
+
+
+def _finite_float_or_null(text: str) -> Optional[float]:
+    """``parse_float`` hook: an overflowing literal such as ``1e999`` reads as ``None``, not inf."""
+    value = float(text)
+    return value if math.isfinite(value) else None
 
 
 def _json_for_script(value: Any) -> str:
-    """Serialize ``value`` as JSON that is safe to place inside ``<script>``."""
-    return json.dumps(value).translate(_SCRIPT_SAFE)
+    """Serialize ``value`` as JSON that is safe to place inside ``<script>``.
+
+    ``allow_nan=False`` because ``NaN``/``Infinity`` tokens are not JSON: the
+    page would still run, but anything that extracts the payload and parses it
+    fails (#450). Non-finite numbers are turned into ``None`` where the data
+    enters the report, so one reaching here is a bug and raises ``ValueError``.
+    """
+    script_safe_json = json.dumps(value, allow_nan=False)
+    for unsafe_char, json_escape in _SCRIPT_SAFE_ESCAPES:
+        script_safe_json = script_safe_json.replace(unsafe_char, json_escape)
+    return script_safe_json
 
 
 class EvaluationHTMLReporter:
@@ -180,13 +205,25 @@ class EvaluationHTMLReporter:
                 for line in f:
                     line = line.strip()
                     if line:
-                        doc_data = json.loads(line)
+                        # The writer has written null since #450, but files
+                        # from older runs or other tools can hold bare NaN,
+                        # or a literal like 1e999 that overflows to inf.
+                        doc_data = json.loads(
+                            line,
+                            parse_constant=_null_constant,
+                            parse_float=_finite_float_or_null,
+                        )
                         # The page finds the selected document by comparing ids
                         # as strings, and the tables write str(doc_id), so a
                         # numeric id (ordinary from a DataFrame) is embedded as
                         # one. Left as a number, selecting it matched nothing and
                         # the page kept showing aggregate numbers.
                         doc_id = doc_data.get("doc_id") if isinstance(doc_data, dict) else None
+                        if doc_id is None and isinstance(doc_data, dict) and "doc_id" in doc_data:
+                            # A bare NaN or Infinity id from an older file
+                            # read as None above. Re-read the line (rare) to
+                            # keep the "nan"/"inf"/"-inf" the tables show.
+                            doc_id = json.loads(line).get("doc_id")
                         if doc_id is not None and not isinstance(doc_id, str):
                             doc_data["doc_id"] = str(doc_id)
                         individual_docs.append(doc_data)
@@ -307,10 +344,8 @@ class EvaluationHTMLReporter:
         return sections
     
     def _get_document_count(self, results: Union[Dict, ProcessEvaluation]) -> int:
-        """Get document count by counting unique doc_ids from available data."""
-        if isinstance(results, ProcessEvaluation):
-           return getattr(results, 'document_count', 1)
-        return 1
+        """Get document count from the results."""
+        return DataExtractor.get_document_count(results)
         
     def _generate_title(self, results: Union[Dict, ProcessEvaluation], is_bulk: bool) -> str:
         """Generate report title."""
@@ -322,6 +357,17 @@ class EvaluationHTMLReporter:
     def _get_javascript(self, individual_docs: List[Dict], model_schema: StructuredModel) -> str:
         """Generate JavaScript section with external file reference and data initialization."""
         field_thresholds = DataExtractor.extract_all_field_thresholds(model_schema) if model_schema else None
+        if field_thresholds:
+            # A flat {field path: float} map. ComparableField refuses a NaN or
+            # infinite threshold at class definition, but a field the check
+            # cannot read yet (a string `Annotated` annotation naming a type
+            # defined further down) still loads one. It is no usable
+            # threshold, so drop it as if unset rather than fail the report.
+            field_thresholds = {
+                path: threshold
+                for path, threshold in field_thresholds.items()
+                if not isinstance(threshold, float) or math.isfinite(threshold)
+            }
         
         # Convert documents and analysis to JSON for JavaScript
         docs_json = _json_for_script(individual_docs)

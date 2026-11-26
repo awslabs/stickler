@@ -11,7 +11,7 @@ comparison logic.
 
 Note:
     This comparator requires the optional 'llm' dependencies. Install with:
-    pip install stickler-eval[llm]
+    pip install "stickler-eval[llm]"
 
 Example:
     Integration with StructuredModel:
@@ -25,7 +25,8 @@ Example:
 """
 
 import html
-from typing import TYPE_CHECKING, Any, Dict, Union
+import warnings
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from stickler.comparators.base import BaseComparator
 
@@ -50,6 +51,42 @@ except ImportError:
 
     class NoCredentialsError(Exception):
         pass
+
+
+#: Quote, backtick and markdown-emphasis characters stripped from both ends of
+#: a reply, along with whitespace, before it is read as a verdict.
+_VERDICT_WRAPPERS = "\"'`*_“”‘’"
+#: Characters additionally stripped from the end, e.g. ``true.``.
+_VERDICT_TRAILING_PUNCTUATION = ".,;:!?"
+#: Longest reply shown in the unparseable-verdict warning.
+_REPLY_PREVIEW_CHARS = 80
+
+
+def _parse_verdict(response: str) -> Optional[bool]:
+    """Read an LLM reply as a ``true``/``false`` verdict (#506).
+
+    Repeatedly strips surrounding whitespace (``str.strip()``, so non-breaking
+    spaces too), quotes, backticks and markdown emphasis from both ends, and
+    punctuation from the end, then lower-cases. Returns ``True`` only for
+    exactly ``true``, ``False`` for exactly ``false``, and ``None`` for anything
+    else: a substring test would score "untrue" or "not true" as a match.
+    """
+    verdict = response
+    while True:
+        stripped = (
+            verdict.strip()
+            .strip(_VERDICT_WRAPPERS)
+            .rstrip(_VERDICT_TRAILING_PUNCTUATION)
+        )
+        if stripped == verdict:
+            break
+        verdict = stripped
+    verdict = verdict.lower()
+    if verdict == "true":
+        return True
+    if verdict == "false":
+        return False
+    return None
 
 
 class LLMComparator(BaseComparator):
@@ -112,7 +149,7 @@ class LLMComparator(BaseComparator):
         if not STRANDS_AVAILABLE:
             raise ImportError(
                 "LLMComparator requires the 'strands-agents' package. "
-                "Install it with: pip install stickler-eval[llm]"
+                'Install it with: pip install "stickler-eval[llm]"'
             )
 
         if model is None:
@@ -205,14 +242,18 @@ class LLMComparator(BaseComparator):
             value2: Second value to compare. Can be any type that converts to string.
 
         Returns:
-            float: Binary similarity score:
-                - 1.0 if the LLM determines the values are equivalent
-                - 0.0 if the LLM determines the values are not equivalent
-                - 0.0 if an error occurs during comparison
+            float: 1.0 if the normalized reply is exactly ``true``, otherwise 0.0.
+                Normalizing strips surrounding whitespace, quotes, backticks and
+                markdown emphasis, strips trailing ``.,;:!?``, and ignores case. A
+                reply that is neither ``true`` nor ``false`` also emits a
+                ``UserWarning``.
+
+        Raises:
+            NoCredentialsError: If AWS credentials are not found.
+            Exception: Any other error from the LLM call is re-raised.
 
         Note:
-            - Error handling: Returns 0.0 for any exceptions during LLM calls
-            - Cost consideration: Each call incurs API costs and latency
+            Cost consideration: Each call incurs API costs and latency.
 
         Example:
             >>> comparator = LLMComparator()
@@ -231,12 +272,6 @@ class LLMComparator(BaseComparator):
         try:
             # Get LLM response
             response = self._invoke_agent(formatted_prompt)
-            # Parse response to boolean
-            response_lower = response.strip().lower()
-            if "true" in response_lower:
-                return 1.0
-            else:
-                return 0.0
 
         except NoCredentialsError:
             print("Error: AWS credentials not found.")
@@ -245,6 +280,24 @@ class LLMComparator(BaseComparator):
         except Exception as e:
             print(f"Error during LLM call: {e}")
             raise
+
+        verdict = _parse_verdict(response)
+        if verdict is None:
+            preview = response
+            if len(preview) > _REPLY_PREVIEW_CHARS:
+                preview = preview[:_REPLY_PREVIEW_CHARS] + "..."
+            warnings.warn(
+                f"LLMComparator could not read the model's reply as 'true' or "
+                f"'false', so it scored 0.0. Reply: {preview!r}",
+                UserWarning,
+                # _compare (1) -> BaseComparator.compare (2) -> compare()'s
+                # caller (3). That is user code only for a direct compare();
+                # via __call__, binary_compare, get_comparison_details or
+                # compare_with it lands inside stickler.
+                stacklevel=3,
+            )
+            return 0.0
+        return 1.0 if verdict else 0.0
 
     def get_comparison_details(self, value1: Any, value2: Any) -> Dict[str, Any]:
         """Get detailed information about a comparison operation.

@@ -18,7 +18,7 @@ from stickler import ExactComparator, NumericComparator
 class Invoice(StructuredModel):
     invoice_id: str = ComparableField(comparator=ExactComparator(), weight=3.0)   # Must match perfectly, high weight
     total: float = ComparableField(comparator=NumericComparator(tolerance=0.01), weight=2.0)  # Allow rounding
-    vendor: str = ComparableField(weight=1.0)  # Fuzzy text match by default
+    vendor: str = ComparableField(weight=1.0)  # Levenshtein (edit distance) by default
 
 # 2. Compare ground truth vs AI prediction
 gt = Invoice(invoice_id="INV-001", total=1250.00, vendor="Acme Corp")
@@ -26,9 +26,9 @@ pred = Invoice(invoice_id="INV-001", total=1250.00, vendor="ACME Corporation")
 result = gt.compare_with(pred)
 
 # 3. Get a single weighted score + per-field breakdown
-print(f"Score: {result['overall_score']:.3f}")  # 0.786
+print(f"Score: {result['overall_score']:.3f}")  # 0.927
 print(result['field_scores'])
-# {'invoice_id': 1.0, 'total': 1.0, 'vendor': 0.786}
+# {'invoice_id': 1.0, 'total': 1.0, 'vendor': 0.5625}
 ```
 
 ---

@@ -4,7 +4,7 @@ This guide covers coding conventions and standards for the Stickler project.
 
 ## Overview
 
-Stickler follows Python best practices with **Ruff** for linting. The project uses modern Python features (3.12+) including type hints and Pydantic for data validation.
+Stickler follows Python best practices with **Ruff** for linting. The project uses modern Python features (3.10+) including type hints and Pydantic for data validation.
 
 > **Using pip + venv?** All commands below use `uv run`. If you installed with `pip install -e ".[dev]"`, run tools directly (e.g., `ruff` instead of `uv run ruff`).
 
@@ -46,7 +46,7 @@ The settings file configures VS Code to automatically format Python files on sav
 
 ### CI Integration
 
-Linting runs automatically on every push and pull request via GitHub Actions. While currently non-blocking, you should address linting issues before submitting PRs.
+Linting runs automatically on every push and pull request via GitHub Actions, and the job fails on any finding. Run `uv run ruff check .` before submitting a PR.
 
 ## Naming Conventions
 
@@ -147,7 +147,7 @@ result = ...         # Too generic
 
 ## Type Hints
 
-All public APIs should have type hints. The project uses Python 3.12+ typing features.
+All public APIs should have type hints. The project uses Python 3.10+ typing features.
 
 ### Basic Type Hints
 

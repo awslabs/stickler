@@ -11,6 +11,8 @@ from pydantic import Field
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
+from .threshold_rule import caller_location, normalize_threshold
+
 # The threshold a field gets when it names neither a threshold nor a comparator
 # threshold. Kept as a named constant rather than a literal because it is a
 # placeholder: the contract says an unspecified field is inferred from its type
@@ -73,6 +75,28 @@ def _named_comparator_threshold(comparator: BaseComparator) -> Optional[float]:
     return getattr(comparator, "threshold", None)
 
 
+def _mark_unstated(field, *, threshold: bool = False, clip: bool = False) -> None:
+    """Record that an importer, not the author, supplied ``threshold`` / ``clip``.
+
+    The importers have defaults ``ComparableField`` cannot express: a JSON Schema
+    type default such as ``ExactComparator@1.0`` for an enum, a nested object's
+    0.7, an inferred value. They pass the number, then clear the marker here, so
+    the markers keep meaning "the author wrote this on the field". Passing the
+    number alone marked every imported field as explicitly configured (#334).
+
+    Written onto the closure ``ComparableField`` just returned, which no caller
+    holds a reference to yet, so the shared-field hazard in
+    ``StructuredModel._install_object_grade_comparators`` does not apply.
+    """
+    extra = field.json_schema_extra
+    if not callable(extra):
+        return
+    if threshold:
+        extra._threshold_explicit = False
+    if clip:
+        extra._clip_explicit = False
+
+
 def ComparableField(
     comparator: Optional[BaseComparator] = None,
     threshold: Optional[float] = None,
@@ -109,6 +133,18 @@ def ComparableField(
                       ComparableField(comparator=ExactComparator())
                       # 0.5. A comparator's *default* threshold is not adopted;
                       # see _named_comparator_threshold for why.
+
+                  The threshold the field ends up with, its own or the
+                  comparator's, must be a number from 0.0 to 1.0; a
+                  ``Decimal``, ``Fraction`` or numpy number is converted to
+                  ``float``. Anything else (85, -1, "0.9", True, NaN) raises
+                  ``ValueError`` when the ``StructuredModel`` class is
+                  defined, naming the model, the field, the value and the
+                  line of this call. See ``threshold_rule``. Not yet
+                  checked then: an ``Annotated`` field that names something
+                  defined further down, its type or a value in this call,
+                  when its annotation is a string, as every annotation is
+                  under ``from __future__ import annotations``.
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: unset, which means
                  None, or what ``default_factory`` returns if one is given).
@@ -189,6 +225,15 @@ def ComparableField(
             if from_comparator is not None
             else _LEGACY_DEFAULT_THRESHOLD
         )
+    # A valid Decimal, Fraction or numpy number becomes the float `float()`
+    # gives, so the field's metadata, `explain()` and the field threshold both
+    # exports write are a float. The comparator keeps the value it was given:
+    # one that exports its own threshold (ANLSStarComparator's config) still
+    # writes it as given. An invalid one is kept as written, for the error the
+    # class raises when it is defined. So is the value as written, for the
+    # error a List[StructuredModel] field raises for a valid one.
+    threshold_as_written = threshold
+    threshold = normalize_threshold(threshold)
 
     # Create serializable metadata for JSON schema compatibility
     serializable_metadata = {
@@ -215,6 +260,11 @@ def ComparableField(
     json_schema_extra_func._required_match = required_match
     json_schema_extra_func._clip_under_threshold = clip_under_threshold
     json_schema_extra_func._comparison_metadata = serializable_metadata
+    # `file:line` of this call, for the threshold error, which is raised when
+    # the class is defined and so would otherwise point only at its `class` line.
+    set_at = caller_location()
+    json_schema_extra_func._set_at = set_at
+    json_schema_extra_func._threshold_as_written = threshold_as_written
 
     # Merge with existing json_schema_extra if provided
     existing_json_schema_extra = field_kwargs.get("json_schema_extra", {})
@@ -234,6 +284,8 @@ def ComparableField(
         enhanced_json_schema_extra._required_match = required_match
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
+        enhanced_json_schema_extra._set_at = set_at
+        enhanced_json_schema_extra._threshold_as_written = threshold_as_written
         final_json_schema_extra = enhanced_json_schema_extra
     elif isinstance(existing_json_schema_extra, dict):
 
@@ -251,6 +303,8 @@ def ComparableField(
         enhanced_json_schema_extra._required_match = required_match
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
+        enhanced_json_schema_extra._set_at = set_at
+        enhanced_json_schema_extra._threshold_as_written = threshold_as_written
         final_json_schema_extra = enhanced_json_schema_extra
     else:
         final_json_schema_extra = json_schema_extra_func

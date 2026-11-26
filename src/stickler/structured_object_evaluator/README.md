@@ -17,7 +17,7 @@ Key components:
 The Structured Object Evaluator is part of the `stickler` package. Install it using pip:
 
 ```bash
-pip install stickler
+pip install stickler-eval
 ```
 
 ## Usage
@@ -230,11 +230,13 @@ result = gt.compare_with(pred)
 
 - `x-aws-stickler-comparator`: comparator **class name**, such as `"ExactComparator"`, `"FuzzyComparator"`, `"LevenshteinComparator"`, `"SemanticComparator"`. Lowercase aliases are not accepted and raise.
 - `x-aws-stickler-comparator-config`: keyword arguments for that comparator's constructor
-- `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: 0.5)
+- `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: a threshold named on the comparator, in `x-aws-stickler-comparator-config` or by a custom comparator's constructor, else the type default). Whichever the field uses must be a number from 0.0 to 1.0, or the import raises `ValueError` naming the model, the field and the key as written
 - `x-aws-stickler-weight`: field importance weight (default: 1.0)
-- `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true)
+- `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true; false on a free-form object or an array of them)
 
-**Object-level extensions**, valid on the root schema or on any object-typed property:
+An object with `properties` is scored field by field, so `x-aws-stickler-comparator` has no effect there and warns; only the threshold the comparator names, in `-comparator-config` or its constructor, is read. The comparator stays installed, as on the Python path, so `explain()` reports what the schema wrote. On an array of models `-comparator-config` is not read and warns; `x-aws-stickler-comparator` is accepted only as `LevenshteinComparator`, and any other raises ([#468](https://github.com/awslabs/stickler/issues/468)). The config path does the same for `comparator` and `comparator_config` on `structured_model`, `optional_structured_model` and `list_structured_model`, except that `comparator` on `list_structured_model` raises.
+
+**Object-level extensions**, valid on the root schema or on any object-typed property that builds its own class (see below):
 
 - `x-aws-stickler-model-name`: the generated class name (default: `DynamicModel`)
 - `x-aws-stickler-match-threshold`: the score at which two objects count as the same object (default: 0.7)
@@ -243,7 +245,30 @@ The two sets are not interchangeable, and position matters. A field-level key on
 the root, or an object-level key on a scalar field, is not read, so it is
 rejected rather than dropped. An unrecognized or misspelled `x-aws-stickler-*`
 key raises and names the closest valid key for that position; unrelated `x-*`
-extensions from other tooling are left alone.
+extensions from other tooling are left alone. A nested `["object", "null"]` or
+`["object"]` node reads the same keys as an `"object"` one; the root must be
+`"object"`. A `$defs`
+entry that a `$ref` reaches is checked (one nothing reaches has its nested
+schemas checked, not its own keys): with `properties` it reads only
+object-level keys, otherwise none. Field-level keys go on the property that
+uses the definition: beside the `$ref`, or beside the `anyOf`/`oneOf` whose arm
+the `$ref` is (and the `allOf`, for an object with `properties` when it and
+each alias hop to it are typed `"object"` or untyped). For `items`, or an arm
+of them, they go on the array property, which reads only the weight for an
+array of objects.
+Object-level keys beside a non-root `$ref` are not read (they go on the target),
+nor on an `allOf` arm or an object reached only through `allOf` or a root
+`$ref`, so they raise there. On an object-typed property at these positions
+they are ignored with a warning instead, which becomes a `ValueError` in 1.1.0.
+The same holds inside any `$ref` target that a position building a class
+references, wherever it sits (for example `#/components/...`, or under `not`,
+`then`, `additionalProperties` or an `x-*` key in a `$defs` entry). On a `$ref`
+target that is not a whole entry, the keys beside its own `$ref` are checked on
+a property or `items` node anywhere in a `$defs` entry outside an `x-*` key
+(`#/$defs/W/not/items`), and dropped elsewhere: at the top of another node of
+an entry (`#/$defs/W/not`), under an `x-*` key, or outside `$defs`
+(`#/components/R`). A `$ref` to one node of an entry builds only that node,
+not the rest of the entry.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
@@ -313,6 +338,30 @@ ComparableField(
                                          # prediction scores rather than failing validation
 )
 ```
+
+The threshold the field ends up with, `threshold` or one adopted from the comparator, must be a
+number from 0.0 to 1.0, and so must `match_threshold`. A `Decimal`, `Fraction`, numpy number or
+0-d numpy array is converted with `float()` (`threshold_rule.as_threshold`), and the comparator
+keeps the value it was given. A numpy float16 or float32 threshold or `match_threshold` is then
+compared as a Python float, not in its own dtype, so a score within its rounding below it is an FD
+where it was a TP.
+`StructuredModel` checks it when the class is defined, in `__pydantic_init_subclass__` over
+`model_fields`, so an `Annotated[...]` field and a module using `from __future__ import
+annotations` are covered; `ComparableField` does not know the model or the field name yet, and
+records its call site for the message. A field whose annotation is still a forward reference then
+is checked as adopting its comparator's threshold, even when it is visibly a list (`List["Item"]`),
+since stickler cannot tell yet whether the element is a model and nothing re-checks it once it
+resolves. An `Annotated` annotation that names something defined further down, its type or a value
+in its metadata, is not yet checked at class definition when it is a string (quoted whole, or under
+`from __future__ import annotations`): pydantic holds it as one string until `model_rebuild()`, so
+its `ComparableField` does not exist yet. A PEP 695 alias is read as the type it names once the
+type it names is defined; before that, it is checked as adopting.
+The importers check the same rule on load, with the shared message from `threshold_rule`. A
+comparator threshold the field overrides, or one on a resolved `List[StructuredModel]` field, is not
+checked. The runtime `match_threshold` is outside the rule: for a plain pydantic model
+`stickler.auto.builder` keeps its own check (`match_threshold must be a number between 0.0 and
+1.0`), which converts an in-range value to `float` with `as_threshold` and keeps `bool` as 1.0 or
+0.0, and for a `StructuredModel` it is not checked.
 
 `default_factory` is honored, for a mutable default such as `default_factory=list`. Combining
 it with a `default` value raises `TypeError`, as in Pydantic, `None` included. `default=...` and

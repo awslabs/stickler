@@ -254,7 +254,7 @@ class TestCreateModelFromFields:
         }
 
         # Too low
-        with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+        with pytest.raises(ValueError, match="Invalid match threshold for model .*from 0.0 to 1.0"):
             ModelFactory.create_model_from_fields(
                 model_name="Test",
                 field_definitions=field_definitions,
@@ -262,7 +262,7 @@ class TestCreateModelFromFields:
             )
 
         # Too high
-        with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+        with pytest.raises(ValueError, match="Invalid match threshold for model .*from 0.0 to 1.0"):
             ModelFactory.create_model_from_fields(
                 model_name="Test",
                 field_definitions=field_definitions,
@@ -270,7 +270,7 @@ class TestCreateModelFromFields:
             )
 
         # Not a number
-        with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+        with pytest.raises(ValueError, match="Invalid match threshold for model .*from 0.0 to 1.0"):
             ModelFactory.create_model_from_fields(
                 model_name="Test",
                 field_definitions=field_definitions,

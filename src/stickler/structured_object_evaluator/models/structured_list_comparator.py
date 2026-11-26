@@ -7,7 +7,7 @@ evaluation are separate: only assigned pairs that meet the element model's
 ``match_threshold`` are evaluated field by field.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
@@ -15,6 +15,7 @@ from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .reporting_context import ReportingContext
+from .result_helper import ResultHelper
 from .threshold_helper import ThresholdHelper
 
 if TYPE_CHECKING:
@@ -214,7 +215,7 @@ class StructuredListComparator:
             no pair clipped, and is reported as ``raw_similarity_score`` only.
             Each pair's score is the item's own ``overall_score``, which has
             already clipped the item's fields, so ``raw_score`` is unclipped at
-            the list level only (#330).
+            the list level only (#437).
         """
         from .comparison_engine import ComparisonEngine
         from .structured_model import StructuredModel
@@ -298,17 +299,49 @@ class StructuredListComparator:
                 (gt_idx, pred_idx, similarity)
                 for (gt_idx, pred_idx, similarity), is_match in zip(matched_pairs, verdicts)
                 if is_match
+                and gt_idx < len(gt_list)
+                and pred_idx < len(pred_list)
+                and isinstance(gt_list[gt_idx], StructuredModel)
             ]
 
             if good_matched_pairs:
-                for sub_field_name in model_class.model_fields:
+                # A list may hold more than one model class. As at top level,
+                # a pair is classified on its GT item's own fields, so collect
+                # the fields of every class, the first element's first.
+                classes = [model_class] + [
+                    type(gt_list[gt_idx]) for gt_idx, _, _ in good_matched_pairs
+                ]
+                sub_field_names = dict.fromkeys(
+                    name for cls in classes for name in cls.model_fields
+                )
+                # If the first element's pair is not a match, the first matched
+                # element may be of another class, so each pair is read by its
+                # own class rather than handed that one's annotation.
+                first_is_matched = any(
+                    gt_idx == 0 for gt_idx, _, _ in good_matched_pairs
+                )
+
+                for sub_field_name in sub_field_names:
                     if sub_field_name == "extra_fields":
                         continue
 
+                    pairs = [
+                        pair
+                        for pair in good_matched_pairs
+                        if sub_field_name in type(gt_list[pair[0]]).model_fields
+                    ]
+                    owner = type(gt_list[pairs[0][0]]) if pairs else model_class
+                    reader = owner if first_is_matched else None
+                    # Before #400 only the first element's class was read, and a
+                    # field it did not route as a nested model or a list never
+                    # reached the dispatcher. Such a field counts a pair the
+                    # dispatcher raises on, rather than raise.
+                    may_fall_back = not _routes_directly(model_class, sub_field_name)
+
                     # Check if this field is a List[StructuredModel] that needs hierarchical treatment
-                    field_info = model_class.model_fields.get(sub_field_name)
+                    field_info = owner.model_fields.get(sub_field_name)
                     is_hierarchical_field = (
-                        field_info and model_class._is_structured_field_type(field_info)
+                        field_info and owner._is_structured_field_type(field_info)
                     )
 
                     if is_hierarchical_field:
@@ -317,7 +350,9 @@ class StructuredListComparator:
                             sub_field_name,
                             gt_list,
                             pred_list,
-                            good_matched_pairs,
+                            pairs,
+                            reader,
+                            may_fall_back,
                         )
                     else:
                         # Handle primitive fields with simple aggregation - ONLY for good matches
@@ -325,10 +360,104 @@ class StructuredListComparator:
                             sub_field_name,
                             gt_list,
                             pred_list,
-                            good_matched_pairs,
+                            pairs,
+                            owner,
+                            reader,
+                            may_fall_back,
                         )
 
         return field_details
+
+    @staticmethod
+    def _dispatch_pairs(
+        sub_field_name: str,
+        gt_list: List["StructuredModel"],
+        pred_list: List["StructuredModel"],
+        matched_pairs: List,
+        reader: Optional[type] = None,
+        may_fall_back: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Classify one sub-field of each matched pair, as at top level.
+
+        Each pair goes through the GT item's dispatcher. A prediction of
+        another class may not have the field, so it reads as missing, as at top
+        level.
+
+        Args:
+            reader: The class whose annotation of the sub-field decides how
+                every pair is read, or ``None`` for each pair's GT item's
+                class. A sub-field it declares as neither a nested model nor a
+                list, such as ``Any`` or ``Union[A, B]``, is read by value.
+                Two rules then differ from the dispatcher, which picks null
+                rules from the annotation. An empty list is null, as the
+                classification docs say, so two absent values are a TN and an
+                absent list facing a non-list reads as ``None``; two lists
+                still go to the list comparator. Two models of different
+                classes are classified by :func:`_compare_with_result`. If the
+                dispatcher raises, two lists are classified by
+                :func:`_comparator_result`, and two models by
+                :func:`_compare_with_result`.
+            may_fall_back: Whether a pair not read by value is classified the
+                same way when the dispatcher raises, rather than raise. True
+                for a sub-field the list's first element's class does not
+                route as a nested model or a list, which before #400 never
+                reached the dispatcher.
+        """
+        pair_results = []
+        for gt_idx, pred_idx, _ in matched_pairs:
+            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                gt_item = gt_list[gt_idx]
+                gt_sub_value = getattr(gt_item, sub_field_name, None)
+                pred_sub_value = getattr(pred_list[pred_idx], sub_field_name, None)
+                by_value = not _routes_directly(reader or type(gt_item), sub_field_name)
+
+                if by_value:
+                    if _are_models_of_other_classes(gt_sub_value, pred_sub_value):
+                        pair_results.append(
+                            _compare_with_result(
+                                gt_item, sub_field_name, gt_sub_value, pred_sub_value
+                            )
+                        )
+                        continue
+
+                    gt_absent = _is_absent(gt_sub_value)
+                    pred_absent = _is_absent(pred_sub_value)
+                    if gt_absent and pred_absent:
+                        weight = gt_item._get_comparison_info(sub_field_name).weight
+                        pair_results.append(
+                            ResultHelper.create_true_negative_result(weight)
+                        )
+                        continue
+                    if not (
+                        isinstance(gt_sub_value, list)
+                        and isinstance(pred_sub_value, list)
+                    ):
+                        gt_sub_value = None if gt_absent else gt_sub_value
+                        pred_sub_value = None if pred_absent else pred_sub_value
+
+                try:
+                    pair_result = gt_item._dispatch_field_comparison(
+                        sub_field_name, gt_sub_value, pred_sub_value
+                    )
+                except (AttributeError, TypeError):
+                    if not (by_value or may_fall_back):
+                        raise
+                    if isinstance(gt_sub_value, list) and isinstance(
+                        pred_sub_value, list
+                    ):
+                        pair_result = _comparator_result(
+                            gt_item, sub_field_name, gt_sub_value, pred_sub_value
+                        )
+                    elif isinstance(gt_sub_value, StructuredModel) and isinstance(
+                        pred_sub_value, StructuredModel
+                    ):
+                        pair_result = _compare_with_result(
+                            gt_item, sub_field_name, gt_sub_value, pred_sub_value
+                        )
+                    else:
+                        raise
+                pair_results.append(pair_result)
+        return pair_results
 
     def _handle_hierarchical_field(
         self,
@@ -336,28 +465,21 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         matched_pairs: List,
+        reader: Optional[type] = None,
+        may_fall_back: bool = False,
     ) -> Dict[str, Any]:
         """Handle hierarchical List[StructuredModel] fields with TRUE recursive aggregation.
 
         CRITICAL FIX: Now uses proper recursion to handle arbitrary nesting depth.
+
+        Args:
+            reader, may_fall_back: As for :meth:`_dispatch_pairs`.
         """
 
-        # Collect all pair results for recursive aggregation
-        pair_results = []
-
         # Process good matched pairs only
-        for gt_idx, pred_idx, similarity in matched_pairs:
-            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                gt_item = gt_list[gt_idx]
-                pred_item = pred_list[pred_idx]
-                gt_sub_value = getattr(gt_item, sub_field_name)
-                pred_sub_value = getattr(pred_item, sub_field_name)
-
-                # Get hierarchical comparison for this pair
-                pair_result = gt_item._dispatch_field_comparison(
-                    sub_field_name, gt_sub_value, pred_sub_value
-                )
-                pair_results.append(pair_result)
+        pair_results = self._dispatch_pairs(
+            sub_field_name, gt_list, pred_list, matched_pairs, reader, may_fall_back
+        )
 
         # Use recursive aggregation function
         aggregated_result = self._recursive_aggregate_metrics(pair_results)
@@ -499,66 +621,133 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         matched_pairs: List,
+        owner: type,
+        reader: Optional[type] = None,
+        may_fall_back: bool = False,
     ) -> Dict[str, Any]:
         """Handle non-hierarchical fields with aggregation across matched pairs.
 
         Handles both true primitive fields (str, int, etc.) and simple list fields
-        (List[str], List[int], etc.). Simple list fields are dispatched through
-        _dispatch_field_comparison to use PrimitiveListComparator for element-level
-        comparison, rather than being treated as atomic primitive values.
+        (List[str], List[int], etc.). Every pair is classified through
+        _dispatch_field_comparison, as at top level, so a simple list field uses
+        PrimitiveListComparator for element-level comparison, and keeps its
+        nested ``fields``. In any other field, such as ``Any`` or
+        ``Union[A, B]``, a model keeps its nested ``fields`` for ``aggregate``
+        when every pair has them, and a model of another class than the GT
+        value is classified by its ``compare_with()`` score, with no nested
+        ``fields``.
+
+        Args:
+            owner: The model class that declares ``sub_field_name``, whose
+                annotation decides the result's shape.
+            reader, may_fall_back: As for :meth:`_dispatch_pairs`.
 
         See: https://github.com/awslabs/stickler/issues/33
         """
+        is_simple_list = _annotation_is_list(owner.model_fields[sub_field_name].annotation)
+        # Classify through the dispatcher, as top level does. Calling the
+        # comparator directly skipped its guards, so a dict it cannot score
+        # raised instead of scoring an FD (#400). A list-annotated field, such
+        # as `Union[str, List[str]]`, already sent every pair straight to the
+        # dispatcher, so it is not read by value.
+        pair_results = self._dispatch_pairs(
+            sub_field_name, gt_list, pred_list, matched_pairs, reader, may_fall_back
+        )
+        aggregated_result = self._recursive_aggregate_metrics(pair_results)
 
-        # Check if this field is a simple list type (e.g., List[str]) by inspecting
-        # the first available GT item's model definition.
-        is_simple_list = False
-        element = NullHelper.first_present(gt_list, pred_list)
-        if isinstance(element, StructuredModel):
-            is_simple_list = element._is_list_field(sub_field_name)
+        # `aggregate` sums a node's children when it has any, so keep the
+        # subtree only if every pair has one. Otherwise a pair with flat
+        # counts, such as a model against `None`, would drop out of it.
+        every_pair_has_fields = bool(pair_results) and all(
+            result.get("fields") for result in pair_results
+        )
+        if not is_simple_list and not every_pair_has_fields:
+            # A leaf: counts only, as before.
+            return {"overall": aggregated_result["overall"]}
 
-        if is_simple_list:
-            # Simple list fields (List[str], List[int], etc.) need element-level
-            # comparison via _dispatch_field_comparison → PrimitiveListComparator.
-            # Use the same aggregation pattern as _handle_hierarchical_field.
-            pair_results = []
+        self._add_derived_metrics_recursively(aggregated_result)
+        return aggregated_result
 
-            for gt_idx, pred_idx, similarity in matched_pairs:
-                if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                    gt_item = gt_list[gt_idx]
-                    pred_item = pred_list[pred_idx]
-                    gt_sub_value = getattr(gt_item, sub_field_name)
-                    pred_sub_value = getattr(pred_item, sub_field_name)
 
-                    pair_result = gt_item._dispatch_field_comparison(
-                        sub_field_name, gt_sub_value, pred_sub_value
-                    )
-                    pair_results.append(pair_result)
+def _routes_directly(cls: type, field_name: str) -> bool:
+    """Whether ``cls`` declares ``field_name`` as a nested model or a list.
 
-            aggregated_result = self._recursive_aggregate_metrics(pair_results)
+    Such a field, such as ``Optional[Inner]`` or ``List[Any]``, goes to the
+    dispatcher directly. Any other, such as ``Any`` or ``Union[A, B]``, is read
+    by value first. A field ``cls`` does not declare is neither.
+    """
+    info = cls.model_fields.get(field_name)
+    return info is not None and (
+        cls._is_structured_field_type(info) or _annotation_is_list(info.annotation)
+    )
 
-            self._add_derived_metrics_recursively(aggregated_result)
-            return aggregated_result
 
-        # True primitive fields — use flat classification
-        sub_field_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+def _is_absent(value: Any) -> bool:
+    """Whether a value is absent, by its own type rather than its annotation."""
+    if isinstance(value, list):
+        return NullHelper.is_effectively_null_for_lists(value)
+    return NullHelper.is_effectively_null_for_primitives(value)
 
-        for gt_idx, pred_idx, similarity in matched_pairs:
-            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                gt_item = gt_list[gt_idx]
-                pred_item = pred_list[pred_idx]
-                gt_sub_value = getattr(gt_item, sub_field_name)
-                pred_sub_value = getattr(pred_item, sub_field_name)
 
-                field_classification = gt_item._classify_field_for_confusion_matrix(
-                    sub_field_name, pred_sub_value
-                )
+def _are_models_of_other_classes(gt_value: Any, pred_value: Any) -> bool:
+    """Whether both values are models, of different exact classes."""
+    return (
+        isinstance(gt_value, StructuredModel)
+        and isinstance(pred_value, StructuredModel)
+        and type(gt_value) is not type(pred_value)
+    )
 
-                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                    sub_field_metrics[metric] += field_classification.get(metric, 0)
 
-        return {"overall": sub_field_metrics}
+def _compare_with_result(
+    gt_item: "StructuredModel", sub_field_name: str, gt_value: Any, pred_value: Any
+) -> Dict[str, Any]:
+    """One TP or FD for two models in a list item, from ``gt_value.compare_with()``.
+
+    The verdict is ``gt_value.compare_with(pred_value)`` against the field's
+    threshold. For two models of different classes, that reads a field the
+    prediction lacks as missing, so ``Search(query)`` vs ``Browse(url)``
+    scores 0.0, an FD. The dispatcher would use ``compare()``, which skips such
+    a field and scores that pair 1.0 (#327). For two models of one class, it
+    is used only when the dispatcher raises: the item's ``compare_with()``
+    returns a score without recursing, so the pair keeps the count it had
+    before #400. If the models' own ``compare_with()`` recurses, it raises the
+    same way. No nested ``fields`` are kept, so ``aggregate`` counts the pair
+    as this one TP or FD.
+    """
+    threshold = gt_item._get_comparison_info(sub_field_name).threshold
+    score = gt_value.compare_with(pred_value)["overall_score"]
+    return _tp_or_fd(score, threshold)
+
+
+def _comparator_result(
+    gt_item: "StructuredModel", sub_field_name: str, gt_value: list, pred_value: list
+) -> Dict[str, Any]:
+    """One TP or FD from the field's comparator, for two lists the dispatcher cannot score.
+
+    The dispatcher scores a list whose first GT element is a model as a list of
+    models. That raises when a matched GT element has no ``compare_with()``, or
+    when a prediction is a plain pydantic model. At top level, and in a list
+    item whose ``compare_with()`` recurses, scoring the item raises first. An
+    item whose ``compare_with()`` returns a score without recursing never
+    scores the field, so the pair keeps the count it had before #400: the
+    comparator's score for the two lists, absent elements dropped, against the
+    field's threshold. No nested ``fields`` are kept.
+    """
+    info = gt_item._get_comparison_info(sub_field_name)
+    score = info.comparator.compare(
+        NullHelper.present(gt_value), NullHelper.present(pred_value)
+    )
+    return _tp_or_fd(score, info.threshold)
+
+
+def _tp_or_fd(score: float, threshold: float) -> Dict[str, Any]:
+    """A TP if ``score`` meets ``threshold``, else an FD, with no nested ``fields``."""
+    if ThresholdHelper.is_above_threshold(score, threshold):
+        counts = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+    else:
+        counts = {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0}
+    return {"overall": counts, "fields": {}}
 
 
 # Import needed at bottom to avoid circular imports
-from .structured_model import StructuredModel
+from .structured_model import StructuredModel, _annotation_is_list  # noqa: E402

@@ -23,7 +23,7 @@ not coerce values. A list of lists exports as nested arrays; `to_stickler_config
 with a model arm (`Union[Card, Bank]`, `Union[Plain, str]`) or for a `StructuredModel` inside a
 nested list (`List[List[Card]]`). Both methods still write these as 1.0.0 did, typed as a string,
 which does not re-import as the original field, and emit a `UserWarning` naming the field. From
-1.0.2 both raise `ValueError` for them
+1.1.0 both raise `ValueError` for them
 ([#349](https://github.com/awslabs/stickler/issues/349)).
 
 A `Dict` field exports as `{"type": "object"}`, with `additionalProperties` for a primitive value
@@ -241,8 +241,14 @@ so a prediction element that is not a mapping raises instead of scoring `0.0`. A
 inside `Annotated` (`List[Annotated[Optional[Dict], ...]]`) loses its `null`; write
 `Optional[Annotated[...]]` instead.
 
-A mapping field that is not in a list, and a list whose element is a union such as
-`List[Union[Dict, str]]`, still export as a string ([#349](https://github.com/awslabs/stickler/issues/349)).
+A mapping field that is not in a list still exports as a string. A list whose element is a union
+of built-in scalars, such as `List[Union[int, str]]`, including an `Optional` element, round-trips
+through `to_stickler_config()`. `to_json_schema()` still exports its items as `string`, so that
+re-import rejects non-string elements. A list whose element is any other union, such as
+`List[Union[Dict, str]]`, exports `string` items from `to_json_schema()` and `List[Union]` from
+`to_stickler_config()`, which `model_from_json()` rejects. The config format cannot carry a
+`union_mode` set on the element, so `List[Annotated[Union[int, str], Field(union_mode=...)]]`
+rebuilds with Pydantic's default smart mode.
 
 ## Round-Trip Examples
 
