@@ -610,6 +610,13 @@ class FieldConverter:
         # broken model.
         if default is None:
             field_type = Optional[field_type]
+        # JSON has no tuple, so a tuple default arrives as a list. pydantic
+        # does not validate a default, so it stayed a list and scored 0.0
+        # against the equal tuple the original model scored 1.0 (#636).
+        elif (field_type is tuple or get_origin(field_type) is tuple) and isinstance(
+            default, list
+        ):
+            default = tuple(default)
 
         # Create ComparableField
         comparable_field = ComparableField(
