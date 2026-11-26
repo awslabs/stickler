@@ -73,9 +73,21 @@ def test_invalid_config_raises(kwargs):
         AngleComparator(**kwargs)
 
 
-@pytest.mark.parametrize("bad", ["10", True, math.inf, Decimal("10"), [10], 10**400])
-def test_malformed_input_scores_zero(bad):
-    assert AngleComparator(max_angular_difference=5).compare(bad, 10) == 0.0
+# Each bad value is numerically equal or close to its partner, so only the
+# input check can make the score 0.0.
+@pytest.mark.parametrize(
+    "bad, partner",
+    [
+        ("10", 10),
+        (True, 1),
+        (math.inf, 10),
+        (Decimal("10"), 10),
+        ([10], 10),
+        (10**400, 10),
+    ],
+)
+def test_malformed_input_scores_zero(bad, partner):
+    assert AngleComparator(max_angular_difference=5).compare(bad, partner) == 0.0
 
 
 def test_missing_values_follow_the_shared_policy():
@@ -89,7 +101,12 @@ def test_config_round_trips():
         type(AngleComparator(max_angular_difference=5).max_angular_difference) is float
     )
     yaw = AngleComparator(max_angular_difference=0.1, angle_unit="radians")
-    assert AngleComparator(**yaw.config).config == yaw.config
+    rebuilt = AngleComparator(**yaw.config)
+    assert rebuilt.config == yaw.config
+    # Behaviour, so dropping either key from config fails: a full turn in
+    # radians needs angle_unit, and 0.05 needs the tolerance.
+    assert rebuilt.compare(0, 2 * math.pi) == 1.0
+    assert rebuilt.compare(0, 0.05) == 1.0
 
 
 def test_structured_model_field_and_list_field():
