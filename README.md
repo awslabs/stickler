@@ -284,6 +284,7 @@ Omitting it is safe but blunt. The fallback reads structure and never field name
 | `"LevenshteinComparator"` | Names, addresses, text with typos | Calculates edit distance between strings. Score = 1 - (edits / max_length) |
 | `"ExactComparator"` | IDs, codes, booleans, exact matches | Returns 1.0 for exact match, 0.0 otherwise |
 | `"NumericComparator"` | Prices, quantities, measurements | Compares numbers with configurable tolerance |
+| `"AngleComparator"` | Heading, yaw, orientation | Matches when the shortest difference around the circle is within `max_angular_difference` |
 | `"FuzzyComparator"` | Flexible text, descriptions | Token-based fuzzy matching (order-independent) |
 | `"SemanticComparator"` | Semantic similarity | Embedding-based comparison for meaning |
 | `"BERTComparator"` | Deep semantic understanding | BERT model for contextual similarity. Needs the `[bert]` extra |

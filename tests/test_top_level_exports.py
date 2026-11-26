@@ -13,6 +13,7 @@ import stickler
 
 # Mapping of public name -> canonical source module
 ALWAYS_AVAILABLE_EXPORTS = {
+    "AngleComparator": "stickler.comparators.angle",
     "BaseComparator": "stickler.comparators.base",
     "BBoxIoUComparator": "stickler.comparators.bbox",
     "DateComparator": "stickler.comparators.date",

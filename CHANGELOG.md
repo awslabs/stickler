@@ -9,6 +9,14 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- `AngleComparator`, which compares angles such as heading or yaw by their
+  shortest difference around the circle, so `359` and `1` are 2 degrees apart.
+  It scores 1.0 within `max_angular_difference` and 0.0 beyond it, in
+  `angle_unit` `"degrees"` (default) or `"radians"`. Invalid configuration
+  raises `ValueError`; a non-numeric or infinite angle scores 0.0.
+
 ### Changed
 
 - **The Stickler-config and JSON Schema importers now resolve an unstated

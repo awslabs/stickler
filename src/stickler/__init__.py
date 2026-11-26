@@ -12,6 +12,7 @@ import sys as _sys
 # Zero-config evaluation of vanilla pydantic models (no StructuredModel
 # subclass or schema required). See stickler/auto/README.md.
 from .auto import EvalResult, EvalSpec, eval_for, evaluate
+from .comparators.angle import AngleComparator
 from .comparators.anls import ANLSStarComparator
 
 # Always-available comparators (core deps)
@@ -158,6 +159,7 @@ __all__ = [
     # Comparators (always available)
     "BaseComparator",
     "ANLSStarComparator",
+    "AngleComparator",
     "ExactComparator",
     "PhoneComparator",
     "DateComparator",

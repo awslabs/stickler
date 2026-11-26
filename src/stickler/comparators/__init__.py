@@ -9,6 +9,7 @@ import importlib as _il
 import importlib.util as _ilu
 import sys as _sys
 
+from stickler.comparators.angle import AngleComparator
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.bbox import BBoxIoUComparator
@@ -119,6 +120,7 @@ __all__ = [
     "NumericExactC",
     "ExactComparator",
     "ANLSStarComparator",
+    "AngleComparator",
     "PhoneComparator",
     "DateComparator",
     "StructuredModelComparator",

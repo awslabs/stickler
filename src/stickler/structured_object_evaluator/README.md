@@ -273,7 +273,7 @@ not the rest of the entry.
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
 `NumericComparator`, `DateComparator`, `FuzzyComparator`, `StructuredModelComparator`,
-`ANLSStarComparator`, `BBoxIoUComparator`, `SemanticComparator`, plus `BERTComparator` and
+`ANLSStarComparator`, `AngleComparator`, `BBoxIoUComparator`, `SemanticComparator`, plus `BERTComparator` and
 `LLMComparator`, which need the `[bert]` and `[llm]` extras. Without the extra those two are not
 registered, so naming one raises `ValueError: Invalid x-aws-stickler-comparator 'BERTComparator'
 ...` and the name is absent from the "Available" list the message prints.
@@ -376,6 +376,7 @@ Available comparators:
 - `ExactComparator`: Exact match comparison
 - `FuzzyComparator`: Token-based fuzzy matching, order-independent
 - `NumericComparator`: Numeric comparison with tolerance
+- `AngleComparator`: Angle comparison with wraparound, such as heading or yaw
 - `DateComparator`: Date comparison across formats
 - `PhoneComparator`: Phone-number comparison, normalizing formatting
 - `SemanticComparator`: Semantic similarity using embeddings
