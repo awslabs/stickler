@@ -2,7 +2,7 @@
 
 Deterministic, non-LLM date comparator. Parses both sides into ``datetime``
 (or a date range) and scores per the tier system documented in
-`DateComparator guide <https://awslabs.github.io/stickler/Guides/Comparators/date-comparator/>`_.
+[DateComparator guide](https://awslabs.github.io/stickler/Guides/Comparators/date-comparator/).
 
 Scoring tiers:
 
@@ -142,7 +142,7 @@ _ParseResult = Union[_ParsedSingle, _ParsedRange, None]
 class DateComparator(BaseComparator):
     """Deterministic date comparator with year/range awareness.
 
-    See the `DateComparator guide <https://awslabs.github.io/stickler/Guides/Comparators/date-comparator/>`_
+    See the [DateComparator guide](https://awslabs.github.io/stickler/Guides/Comparators/date-comparator/)
     for the full behavior reference, configuration matrix, and corner cases.
 
     Args:

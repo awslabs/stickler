@@ -1,4 +1,4 @@
-"""Build docs, tolerating each of six known annotation warnings once per build.
+"""Build docs, tolerating each of five known annotation warnings once per build.
 
 Python warnings (such as DeprecationWarning) are not routed into this gate.
 """
@@ -22,7 +22,6 @@ _GRIFFE_WARNINGS = {
         "models/structured_model.py: No type or annotation for returned value 1",
         "models/comparable_field.py: No type or annotation for parameter '**field_kwargs'",
         "models/comparable_field.py: No type or annotation for returned value 1",
-        "models/field.py: No type or annotation for parameter '**kwargs'",
     )
 }
 

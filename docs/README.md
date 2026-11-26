@@ -60,7 +60,7 @@ uv run --frozen pytest tests/test_docs_build.py
 
 The checker fails on logged MkDocs warnings and errors, including awesome-nav
 failures, orphan pages, missing pages/images/anchors, broken API references, and
-unrecognized or absolute links. It tolerates each of the six existing griffe
+unrecognized or absolute links. It tolerates each of the five existing griffe
 annotation warnings once per build, identified by logger, file and message in
 `check_links.py`. Line numbers may change; duplicate or changed warnings and all
 errors fail. All warnings remain visible, and no autorefs warning is exempt. Python
