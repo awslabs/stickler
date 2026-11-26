@@ -411,14 +411,18 @@ actually score.
 
 Compares two bounding boxes using Intersection over Union (IoU) as the similarity score. Accepts both two-point (`[[x1, y1], [x2, y2]]`) and flat (`[x1, y1, x2, y2]`) formats. Coordinates are automatically normalized so that x1 <= x2 and y1 <= y2.
 
+A list field holding one box, such as `List[float]`, is scored as that one box, not paired element by element: one TP or FD, one FN or FA against `None`, `[]` or a list of only `None`, and one FD against a malformed value. A list of boxes (`List[List[float]]`) is paired box by box. A bare `list` follows the ground-truth value.
+
 **When to use:** Evaluating spatial localization accuracy for document fields, signature detection, logo identification, or any use case where you need to measure how well a predicted bounding box overlaps with ground truth.
 
 ```python
+from typing import Tuple
+
 from stickler import StructuredModel, ComparableField
 from stickler.comparators import BBoxIoUComparator
 
 class DocumentField(StructuredModel):
-    bbox: list = ComparableField(
+    bbox: Tuple[float, float, float, float] = ComparableField(
         comparator=BBoxIoUComparator(threshold=0.5),
         weight=1.0
     )
