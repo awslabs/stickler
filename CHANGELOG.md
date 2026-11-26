@@ -163,6 +163,10 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **`LLMComparator` no longer raises `KeyError: 'text'` when the reply does not
+  start with a text block**, as with a reasoning model that sends
+  `reasoningContent` first. The verdict is read from the reply's text blocks; a
+  reply with none still raises, now as a `ValueError` that says so.
 - **A comparator key on a nested model now warns instead of being dropped in
   silence or refused.** A nested model is scored field by field, so its
   comparator is never called, as on the Python path. `comparator` on a

@@ -111,6 +111,19 @@ class TestLLMComparator:
         )
         assert new_comp.agent is self.mock_agent_class.return_value
 
+    def test_compare_skips_non_text_blocks(self):
+        """A reasoning model puts a ``reasoningContent`` block before the text."""
+        mock_result = MagicMock()
+        mock_result.message = {
+            "content": [
+                {"reasoningContent": {"reasoningText": {"text": "false?"}}},
+                {"text": "true"},
+            ]
+        }
+        self.mock_agent.return_value = mock_result
+
+        assert self.comparator.compare("St.", "Street") == 1.0
+
     @pytest.mark.parametrize(
         "response", ["true", "TRUE", "True", " true ", "  TRUE  "]
     )
