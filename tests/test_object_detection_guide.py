@@ -21,7 +21,7 @@ GUIDE = (
 
 def test_guide_examples_print_the_shown_output():
     pairs = re.findall(r"```python\n(.*?)```\s*```text\n(.*?)```", GUIDE, re.S)
-    assert len(pairs) == len(re.findall(r"```python\n", GUIDE)) == 7
+    assert len(pairs) == len(re.findall(r"```python\n", GUIDE)) == 8
     namespace = {}
     for code, shown in pairs:
         out = io.StringIO()

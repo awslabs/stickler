@@ -80,7 +80,7 @@ aggregate {'tp': 7, 'fd': 1, 'fn': 0, 'fa': 0}
 
 An `x` off by 1.0 m, twice its tolerance, gives the same counts. The error shows only in `aggregate`, as one wrong field.
 
-To make every field decide the pair, set `match_threshold = 1.0` on the detection class. Raising the weight of one field protects that field only, because the other fields can still carry the mean over the bar.
+To make every field decide the pair, set `match_threshold = 1.0` on the detection class. This works because every field here scores only `0.0` or `1.0`. With a graded score such as IoU, `1.0` rejects every imperfect match; see [2D boxes](#2d-boxes). Raising the weight of one field protects that field only, because the other fields can still carry the mean over the bar.
 
 ```python
 class StrictDet(Det):
@@ -122,7 +122,7 @@ aggregate {'tp': 4, 'fd': 0, 'fn': 0, 'fa': 0}
 
 ## 2D boxes
 
-For camera boxes, score the box with `BBoxIoUComparator`. Its score is the intersection over union (IoU), and the field `threshold` is the IoU cut. Give the box as a tuple of corners, `(x1, y1, x2, y2)`. A `List` field is paired element by element and does not reach the comparator. Convert `(x, y, width, height)` boxes, as COCO and YOLO store them, to corners first: read as corners they give a wrong IoU and no error.
+For camera boxes, score the box with `BBoxIoUComparator`. Its score is the intersection over union (IoU). Give the box as a tuple of corners, `(x1, y1, x2, y2)`. A `List` field is paired element by element and does not reach the comparator. Convert `(x, y, width, height)` boxes, as COCO and YOLO store them, to corners first: read as corners they give a wrong IoU and no error.
 
 ```python
 from typing import Tuple
@@ -142,7 +142,7 @@ class BoxFrame(StructuredModel):
 
 
 box_truth = [{"cls": "Person", "box": (0, 0, 100, 50)}]
-for box in [(10, 5, 110, 55), (40, 20, 140, 70)]:
+for box in [(10, 5, 110, 55), (40, 0, 140, 50)]:
     iou = BBoxIoUComparator().compare(box_truth[0]["box"], box)
     print(f"IoU {iou:.2f}")
     show(BoxFrame, box_truth, [{"cls": "Person", "box": box}])
@@ -152,16 +152,52 @@ for box in [(10, 5, 110, 55), (40, 20, 140, 70)]:
 IoU 0.68
 overall   {'tp': 1, 'fd': 0, 'fn': 0, 'fa': 0}
 aggregate {'tp': 2, 'fd': 0, 'fn': 0, 'fa': 0}
-IoU 0.22
+IoU 0.43
+overall   {'tp': 1, 'fd': 0, 'fn': 0, 'fa': 0}
+aggregate {'tp': 1, 'fd': 1, 'fn': 0, 'fa': 0}
+```
+
+The box at IoU 0.43 is a TP. Pairing uses the raw IoU, not the IoU after the field `threshold`: the pair scores `(1 + 0.43) / 2 = 0.71`, which meets `0.7`. The field `threshold` only sets the box field's own score to `0.0`, so the miss shows in `aggregate` as one FD.
+
+To require the right class and an IoU of at least `0.5`, set `match_threshold = 0.75`. With two fields at equal weight, the right class at IoU `0.5` scores `(1 + 0.5) / 2 = 0.75`, and a wrong class scores at most `0.5`:
+
+```python
+class IoUBox(Box):
+    match_threshold = 0.75
+
+
+class IoUBoxFrame(StructuredModel):
+    dets: List[IoUBox] = ComparableField()
+
+
+cases = [
+    ("Person", (10, 5, 110, 55)),
+    ("Person", (40, 0, 140, 50)),
+    ("Pallet", (0, 0, 100, 50)),
+]
+for cls, box in cases:
+    iou = BBoxIoUComparator().compare(box_truth[0]["box"], box)
+    print(f"{cls} IoU {iou:.2f}")
+    show(IoUBoxFrame, box_truth, [{"cls": cls, "box": box}])
+```
+
+```text
+Person IoU 0.68
+overall   {'tp': 1, 'fd': 0, 'fn': 0, 'fa': 0}
+aggregate {'tp': 2, 'fd': 0, 'fn': 0, 'fa': 0}
+Person IoU 0.43
+overall   {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
+aggregate {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
+Pallet IoU 1.00
 overall   {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
 aggregate {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
 ```
 
-An IoU below the field threshold scores `0.0`, so the pair falls to `0.5` and is an FD. [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md#scope) covers one box per document field, not many boxes of one class per frame.
+For other fields or weights, set `match_threshold` to the pair score of the weakest match you accept. [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md#scope) covers one box per document field, not many boxes of one class per frame.
 
 ## Read the results
 
-On the list field, `overall` counts objects and `aggregate` counts field values inside the paired objects. Read `overall` for detection precision and recall. `aggregate` covers only the fields of TP pairs, so with `match_threshold = 1.0` a failed pair adds nothing to it. See [`overall` vs `aggregate`](../Evaluation/understanding-results.md#overall-vs-aggregate). To see what failed, read `non_matches`: each FD row holds both objects.
+On the list field, `overall` counts objects and `aggregate` counts field values inside the paired objects. Read `overall` for detection precision and recall. `aggregate` covers only the fields of TP pairs, so with `match_threshold = 1.0` a failed pair adds nothing to it, unless every pair in the list failed. Then `aggregate` counts objects, as in the FD rows above ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). Summed over frames, those object counts mix with field counts. See [`overall` vs `aggregate`](../Evaluation/understanding-results.md#overall-vs-aggregate). To see what failed, read `non_matches`: each FD row holds both objects.
 
 ```python
 x_off = [pred[0], {**pred[1], "x": 3.1}]

@@ -201,7 +201,7 @@ Combine with `BulkStructuredModelEvaluator` and `save_metrics()` to produce eval
 | OCR Evaluation | Levenshtein | Character-level accuracy matters |
 | Entity Extraction | Exact, Levenshtein | Entity type must be exact; names can be lenient |
 | ML Model Evaluation | Exact, Numeric | Use confusion matrix for classification metrics |
-| Object Detection | Exact, Numeric, BBoxIoU | Set `match_threshold = 1.0` so every field decides the pair |
+| Object Detection | Exact, Numeric, BBoxIoU | Set `match_threshold` so a wrong field rejects the pair: `1.0` when every field scores 0 or 1, the [IoU arithmetic](object-detection.md#2d-boxes) for boxes |
 | ETL Validation | Exact, Numeric | Tight tolerances for deterministic pipelines |
 | Data Quality Monitoring | Exact, Numeric, Levenshtein | Track scores over time to detect drift |
 
