@@ -683,24 +683,30 @@ class StructuredModel(BaseModel):
     def fails_required_match(self, other: Any) -> bool:
         """Whether a required field of either object is not matched by the other.
 
-        Both sides are read, so swapping ground truth and prediction gives the
-        same answer when their classes differ.
+        ``self`` is the ground truth. Both classes' required fields are read, so
+        swapping ground truth and prediction gives the same answer when their
+        classes differ. Every field is scored ground truth first, as the field
+        itself is scored, because a comparator such as
+        ``NumericComparator(relative_tolerance=...)`` is not symmetric.
         """
-        if self._fails_own_required_match(other):
+        if self._fails_required_fields_of(self.__class__, other):
             return True
-        return isinstance(other, StructuredModel) and other._fails_own_required_match(
-            self
+        return (
+            isinstance(other, StructuredModel)
+            and other.__class__ is not self.__class__
+            and self._fails_required_fields_of(other.__class__, other)
         )
 
-    def _fails_own_required_match(self, other: Any) -> bool:
-        """Whether a field required by this object's class fails against ``other``.
+    def _fails_required_fields_of(self, owner_class: type, other: Any) -> bool:
+        """Whether a field ``owner_class`` requires fails, with ``self`` as ground truth.
 
         A value null on one side fails and null on both passes. Otherwise the
-        field fails when its raw score is not at or above its resolved threshold,
-        by the same test every other classification gate uses.
+        field fails when the owner class's comparator, given the ground truth
+        value first, scores it under the owner class's resolved threshold, by
+        the same test every other classification gate uses.
         """
-        for field_name in self.__class__._required_match_fields:
-            mine = getattr(self, field_name)
+        for field_name in owner_class._required_match_fields:
+            mine = getattr(self, field_name, None)
             theirs = getattr(other, field_name, None)
             mine_is_null = NullHelper.is_effectively_null_for_primitives(mine)
             theirs_is_null = NullHelper.is_effectively_null_for_primitives(theirs)
@@ -708,9 +714,9 @@ class StructuredModel(BaseModel):
                 if mine_is_null != theirs_is_null:
                     return True
                 continue
-            threshold = self.__class__._get_comparison_info(field_name).threshold
-            score = self.compare_field_raw(field_name, theirs)
-            if not ThresholdHelper.is_above_threshold(score, threshold):
+            info = owner_class._get_comparison_info(field_name)
+            score = info.comparator.compare(mine, theirs)
+            if not ThresholdHelper.is_above_threshold(score, info.threshold):
                 return True
         return False
 

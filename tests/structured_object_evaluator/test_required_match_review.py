@@ -16,6 +16,7 @@ from typing import List, Literal, Optional, Union
 import pytest
 
 from stickler.algorithms.hungarian import HungarianMatcher
+from stickler.comparators import NumericComparator
 from stickler.structured_object_evaluator import ComparableField, StructuredModel
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
@@ -181,6 +182,38 @@ def test_a_field_required_on_one_class_and_absent_on_the_other_vetoes_both_ways(
 @pytest.mark.parametrize("other", [None, {}, "text", 3, []])
 def test_a_non_model_partner_is_a_veto_and_does_not_raise(other):
     assert Detection(**detection()).fails_required_match(other) is True
+
+
+# the direction a required field is scored in
+
+
+class Reading(StructuredModel):
+    match_threshold = 0.5
+    x: float = ComparableField(
+        comparator=NumericComparator(relative_tolerance=0.1),
+        threshold=1.0,
+        required_match=True,
+    )
+    name: str = exact()
+
+
+class Readings(StructuredModel):
+    items: List[Reading] = ComparableField()
+
+
+def test_a_required_field_is_scored_ground_truth_first_as_the_field_is():
+    # 90 is within 10% of 100, but 100 is not within 10% of 90. The field
+    # itself is a TP, so the pair must not be vetoed by the reverse direction.
+    gt, pred = Reading(x=100.0, name="a"), Reading(x=90.0, name="a")
+
+    field = gt.compare_with(pred, include_confusion_matrix=True)["confusion_matrix"]
+    items = Readings(items=[gt]).compare_with(
+        Readings(items=[pred]), include_confusion_matrix=True
+    )["confusion_matrix"]["fields"]["items"]["overall"]
+
+    assert field["fields"]["x"]["overall"]["tp"] == 1
+    assert gt.fails_required_match(pred) is False
+    assert (items["tp"], items["fn"], items["fa"]) == (1, 0, 0)
 
 
 # the nested refusal and the rejected types
