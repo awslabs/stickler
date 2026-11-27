@@ -118,8 +118,8 @@ class TestSectionGenerator:
         assert '<div class="metric-value">1</div>' in result
         assert 'None' not in result
 
-    def test_executive_summary_does_not_score_a_bool_metric(self):
-        """bool is an int subclass, so True must not render as a coloured 1.000."""
+    def test_executive_summary_card_does_not_score_a_bool_metric(self):
+        """A True card is not a coloured 1.000: bool is an int subclass (#467)."""
         generator = SectionGenerator({'overall': {'cm_f1': True}}, self.mock_viz_engine)
 
         result = generator.generate_executive_summary(ReportConfig())
