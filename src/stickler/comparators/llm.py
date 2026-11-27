@@ -28,7 +28,7 @@ import html
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
-from stickler.comparators.base import BaseComparator
+from stickler.comparators.base import BaseComparator, _is_missing
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from jinja2 import Template
@@ -262,25 +262,36 @@ class LLMComparator(BaseComparator):
             >>> comparator.compare("apple", "orange")
             0.0
         """
-        # Format the prompt with your values
-        formatted_prompt = self.prompt_template.render(
+        try:
+            response = self._invoke_agent(self._render_prompt(value1, value2))
+        except NoCredentialsError:
+            print("Error: AWS credentials not found.")
+            raise
+        except Exception as e:
+            print(f"Error during LLM call: {e}")
+            raise
+
+        # _score_reply (1) -> _compare (2) -> BaseComparator.compare (3) ->
+        # compare()'s caller (4). That is user code only for a direct
+        # compare(); via __call__, binary_compare or compare_with it lands
+        # inside stickler.
+        return self._score_reply(response, stacklevel=4)
+
+    def _render_prompt(self, value1: Any, value2: Any) -> str:
+        """Format the comparison prompt for two values."""
+        return self.prompt_template.render(
             value1=html.escape(str(value1)),
             value2=html.escape(str(value2)),
             eval_guidelines=self.eval_guidelines,
         )
 
-        try:
-            # Get LLM response
-            response = self._invoke_agent(formatted_prompt)
+    def _score_reply(self, response: str, stacklevel: int) -> float:
+        """Score a model reply: 1.0 for ``true``, otherwise 0.0.
 
-        except NoCredentialsError:
-            print("Error: AWS credentials not found.")
-            raise
-
-        except Exception as e:
-            print(f"Error during LLM call: {e}")
-            raise
-
+        A reply that is neither ``true`` nor ``false`` also emits a
+        ``UserWarning``. ``stacklevel`` goes straight to ``warnings.warn``, so
+        each caller can attribute the warning to its own caller.
+        """
         verdict = _parse_verdict(response)
         if verdict is None:
             preview = response
@@ -290,11 +301,7 @@ class LLMComparator(BaseComparator):
                 f"LLMComparator could not read the model's reply as 'true' or "
                 f"'false', so it scored 0.0. Reply: {preview!r}",
                 UserWarning,
-                # _compare (1) -> BaseComparator.compare (2) -> compare()'s
-                # caller (3). That is user code only for a direct compare();
-                # via __call__, binary_compare, get_comparison_details or
-                # compare_with it lands inside stickler.
-                stacklevel=3,
+                stacklevel=stacklevel,
             )
             return 0.0
         return 1.0 if verdict else 0.0
@@ -307,14 +314,19 @@ class LLMComparator(BaseComparator):
         final comparison result. Useful for debugging, auditing, and understanding
         how the LLM made its decision.
 
+        The model is called once, and ``comparison_result`` scores that same
+        reply, as :meth:`compare` would. If either value is ``None`` or NaN, the
+        model is not called: the result follows the ``None`` policy of
+        :meth:`compare`, and ``prompt`` and ``llm_response`` are ``None``.
+
         Args:
             value1: First value to compare. Can be any type that converts to string.
             value2: Second value to compare. Can be any type that converts to string.
 
         Returns:
             Dict[str, Any]: Dictionary containing comparison details:
-                - 'prompt' (str): The formatted prompt sent to the LLM
-                - 'llm_response' (str): Raw response from the LLM
+                - 'prompt' (str or None): The formatted prompt sent to the LLM
+                - 'llm_response' (str or None): Raw response from the LLM
                 - 'model_id' (Union[Model, str]): The model used (string ID or Model instance)
                 - 'comparison_result' (float): Final similarity score (0.0 or 1.0)
 
@@ -332,19 +344,26 @@ class LLMComparator(BaseComparator):
             >>> print('guidelines' in details['prompt'])
             True
         """
-        formatted_prompt = self.prompt_template.render(
-            value1=html.escape(str(value1)),
-            value2=html.escape(str(value2)),
-            eval_guidelines=self.eval_guidelines,
-        )
+        if _is_missing(value1) or _is_missing(value2):
+            # Scored by the shared None policy, exactly as compare() would,
+            # so the model is not asked.
+            return {
+                "prompt": None,
+                "llm_response": None,
+                "model_id": self.model,
+                "comparison_result": self.compare(value1, value2),
+            }
 
+        formatted_prompt = self._render_prompt(value1, value2)
         try:
             response = self._invoke_agent(formatted_prompt)
             return {
                 "prompt": formatted_prompt,
                 "llm_response": response,
                 "model_id": self.model,
-                "comparison_result": self.compare(value1, value2),
+                # Scores the reply shown above, without a second call (#589).
+                # _score_reply (1) -> get_comparison_details (2) -> caller (3).
+                "comparison_result": self._score_reply(response, stacklevel=3),
             }
         except Exception as e:
             return {"error": str(e), "comparison_result": False}
