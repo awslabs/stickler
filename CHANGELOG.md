@@ -11,6 +11,27 @@ Each release links to full notes on the
 
 ### Added
 
+- `AngleComparator`, which compares angles such as heading or yaw by their
+  shortest difference around the circle, so `359` and `1` are 2 degrees apart.
+  It scores 1.0 within `max_angular_difference` and 0.0 beyond it, in
+  `angle_unit` `"degrees"` (default) or `"radians"`. Invalid configuration
+  raises `ValueError`; a non-numeric or infinite angle scores 0.0.
+- `PointDistanceComparator` scores two 2D or 3D points by Euclidean distance,
+  `max(0.0, 1.0 - distance / max_distance)`. Positions scored as separate `x`,
+  `y` and `z` fields under `NumericComparator(absolute_tolerance=...)` gate on
+  a box and give no partial credit; this gates on a radius of
+  `max_distance * (1 - threshold)` and scores by distance. `max_distance` is
+  required and must be a finite number greater than 0, or construction raises
+  `ValueError`. Points are lists, tuples or 1D NumPy arrays of
+  `numbers.Real` coordinates. A point of the wrong length, a 2D point against
+  a 3D one, and non-numeric (including `Decimal`) or non-finite coordinates
+  score 0.0. Exported from `stickler` and `stickler.comparators`, and named by
+  `"PointDistanceComparator"` in a Stickler config or
+  `x-aws-stickler-comparator`, with `max_distance` in the comparator config.
+  Annotate a single point field as a `Tuple`: a `List[float]` point field
+  always scores 0.0. A `Tuple` field exports as a string type, so a single
+  point field does not round-trip through `to_json_schema()` or
+  `to_stickler_config()`; a list of points does.
 - `ComparableField(required_match=True)` makes a primitive field a veto when
   objects are paired in a list: a pair whose required field is not at or above
   its threshold is excluded before the assignment and counts as one false
