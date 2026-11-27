@@ -163,7 +163,7 @@ class TestANestedModelIsNeverExportedAsAScalar:
     def test_unmodelled_scalar_types_still_export_as_string(self):
         """The raise must not widen to every dict miss.
 
-        `Decimal`, `UUID` and enums legitimately fall back to `"string"`.
+        `Decimal` and `UUID` fall back to `"string"`, with a warning (#636).
         """
         from decimal import Decimal
         from uuid import UUID
@@ -175,7 +175,8 @@ class TestANestedModelIsNeverExportedAsAScalar:
         converter = JsonSchemaFieldConverter({})
         field_info = Pep604Scalar.model_fields["s"]
         for scalar_type in (Decimal, UUID):
-            prop = converter.field_to_property(scalar_type, field_info)
+            with pytest.warns(UserWarning, match="has no export type"):
+                prop = converter.field_to_property(scalar_type, field_info)
             assert prop["type"] == "string"
 
 

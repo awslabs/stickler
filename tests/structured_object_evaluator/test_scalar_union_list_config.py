@@ -152,9 +152,14 @@ def test_scalar_union_list_preserves_defaults_and_comparison_settings(
     ],
 )
 def test_unsupported_union_arm_keeps_legacy_list_union(annotation):
-    """An arm the config cannot name must not be exported as another type."""
+    """An arm the config cannot name must not be exported as another type.
+
+    `model_from_json()` cannot read `List[Union]`, so the export warns (#636).
+    """
 
     class Original(StructuredModel):
         values: annotation = ComparableField(default=..., comparator=ExactComparator())
 
-    assert Original.to_stickler_config()["fields"]["values"]["type"] == "List[Union]"
+    with pytest.warns(UserWarning, match='written as "List\\[Union\\]"'):
+        config = Original.to_stickler_config()
+    assert config["fields"]["values"]["type"] == "List[Union]"

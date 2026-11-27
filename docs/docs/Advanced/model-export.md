@@ -33,6 +33,25 @@ name). Through JSON Schema it re-imports as `dict`, so the value type is not enf
 produces (`[]`, `{}`, a set as a list) and re-imports as that default. Any other factory, or one on
 a field exported as a scalar such as `Set[str]`, exports no default and re-imports as `None`.
 
+A `Tuple` of `str`, `int`, `float`, `bool` or `Any` exports to a Stickler config as its typing
+string (`"Tuple[float, float, float, float]"`) and re-imports as that tuple. Any other tuple,
+including `Tuple[int, ...]`, is written as `tuple`: it re-imports as a tuple without the length
+and element checks. The default of a tuple field becomes a list in JSON and re-imports as a
+tuple; a tuple inside a list default, as in `List[Tuple[int, int]]`, stays a list.
+`to_json_schema()` has no tuple type and writes it as `"string"`.
+
+A field type an exporter does not map is written as a string (`"string"`, `"str"`, or `string`
+items for a list element). It emits a `UserWarning` naming the model, the field and the type when
+the re-imported string field rejects some of the original's values: `Decimal`, `UUID`, `date`,
+`datetime`, `Set`, a tuple in `to_json_schema()`, `bytes` (non-UTF-8 bytes are rejected), `Any`
+and `Union[int, str]` (a number is rejected), an enum with a non-string value such as an `IntEnum`
+(the raw `1` is rejected), and a list of any of these in `to_json_schema()`. An enum whose values
+are all strings, and a `Literal` of strings or of such members, are accepted by a string field and
+do not warn. A `NewType` or `type` alias is judged as the type it names.
+`to_stickler_config()` writes a list element by its type name, so it warns when
+`model_from_json()` cannot read that name, as for `List[Decimal]`, `List[Literal["a"]]` or
+`List[Union]` ([#636](https://github.com/awslabs/stickler/issues/636)).
+
 A Stickler config has no nullable flag: `model_from_json()` makes a field `Optional` only when its
 default is `None`. So on an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
 default, from a factory or written literally. The field re-imports nullable with a `None` default,

@@ -191,7 +191,20 @@ Each release links to full notes on the
   as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
   value. Tuples of primitives keep their element types (`Tuple[float, float]`);
   others are written as `tuple`. `to_json_schema()` is unchanged.
-
+- **An exported field type that re-imports as a string field now warns.**
+  `to_json_schema()` and `to_stickler_config()` still write a type they do not
+  map as a string, and now emit a `UserWarning` naming the model, the field and
+  the type when the rebuilt string field rejects some of its values: `Decimal`,
+  `UUID`, dates, sets, `bytes`, `Any`, `Union[int, str]`, an `IntEnum`, a tuple
+  in `to_json_schema()`, and a list of these in `to_json_schema()`. An enum with
+  only string values, a `Literal` of strings, and a `NewType` or `type` alias of
+  `str` do not warn. `to_stickler_config()` also warns for a list element type
+  `model_from_json()` cannot read, such as `List[Decimal]`. `model_from_json()`
+  turns a list default on a tuple field back into a tuple
+  ([#636](https://github.com/awslabs/stickler/issues/636)).
+- `model_from_json()` raises `ValueError` for a bare `Union` or `Optional`, in
+  any position (`"List[Union]"`). Before, the result depended on the Python
+  version; up to 3.13 `list[Union]` accepted any value unvalidated.
 - **`BBoxIoUComparator` on a list field scores the box, not its coordinates.**
   A field holding one box as a list (`List[float]`, `Optional[List[float]]`,
   `Sequence[float]`, bare `list`, or a JSON Schema `array` or config `list`
