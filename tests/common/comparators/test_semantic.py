@@ -238,12 +238,10 @@ def test_bad_shapes_raise_like_scipy(x, y):
         cosine(x, y)
 
 
-def test_complex_input_raises_like_scipy():
+def test_complex_input_raises():
+    # scipy >= 1.17 raises here too; 1.15 (Python 3.10) returned 0j instead.
     with pytest.raises(TypeError):
         _cosine_distance([1 + 1j, 2.0], [1.0, 2.0])
-    cosine = _scipy_cosine()
-    with pytest.raises(TypeError):
-        cosine([1 + 1j, 2.0], [1.0, 2.0])
 
 
 def test_semantic_comparator_scores_without_scipy():

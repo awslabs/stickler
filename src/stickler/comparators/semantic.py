@@ -25,7 +25,7 @@ def _cosine_distance(x, y) -> float:
 
     Raises:
         ValueError: If either input is not 1-D, or the lengths differ.
-        TypeError: If either input is complex, as scipy does.
+        TypeError: If either input is complex, as scipy 1.17+ does.
     """
     u = np.asarray(x)
     v = np.asarray(y)
