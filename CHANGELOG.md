@@ -163,6 +163,11 @@ Each release links to full notes on the
 
 ### Fixed
 
+- `FuzzyComparator` raises `ValueError` for an unknown `method` instead of
+  silently using `ratio`. A misspelled name such as `"token_sort"`, in Python or
+  in a config, must be changed to one of `ratio`, `partial_ratio`,
+  `token_sort_ratio` or `token_set_ratio`.
+
 - **A comparator key on a nested model now warns instead of being dropped in
   silence or refused.** A nested model is scored field by field, so its
   comparator is never called, as on the Python path. `comparator` on a
