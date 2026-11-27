@@ -154,6 +154,29 @@ Each release links to full notes on the
   importer already refused the same misplacement
   ([#607](https://github.com/awslabs/stickler/issues/607)).
 
+- **`from_json_schema()` raises `ValueError` for the model keys that 1.0.2
+  only warned about.** This is a breaking change: a schema that loaded on
+  1.0.x with that warning now raises. `x-aws-stickler-model-name`,
+  `x-aws-stickler-match-threshold` and `x-aws-stickler-infer-unspecified` are
+  not read at two positions on an object-typed property, and 1.0.x dropped
+  them there:
+  - beside a `$ref` on a property typed `"object"` or a list form that
+    includes it (`["object", "null"]`), such as `{"type": "object", "$ref":
+    "#/$defs/Row", "x-aws-stickler-match-threshold": 0.93}`, which built `Row`
+    at `0.7`. Put the keys on the target;
+  - on a property reached only through the root `$ref` or an `allOf` arm, such
+    as a root `{"$ref": "#/$defs/Wrap/properties/inner"}`, which built
+    `DynamicModel` or `AllOfModel` at `0.7`. Put them on the root, beside its
+    `$ref`, or reference the object without `allOf`.
+
+  The error names the key, its position and where it is read, as at the
+  positions that already raised. It is raised before the import builds, so a
+  schema that also fails for another reason, such as a root `$ref` to a
+  property typed `["object", "null"]`, now gives this error. The nodes that
+  1.0.2 left unchecked, such as a `$ref` target under an `x-*` key, still
+  import with the keys dropped
+  ([#609](https://github.com/awslabs/stickler/issues/609)).
+
 ### Removed
 
 - The deprecated `stickler.structured_object_evaluator.models.confusion_matrix_calculator`
