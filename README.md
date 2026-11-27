@@ -21,7 +21,7 @@ That installs the comparison engine and confidence calibration, which is everyth
 
 | Extra | Adds | For |
 |---|---|---|
-| `[semantic]` | boto3, scipy | `SemanticComparator` (Bedrock embeddings) |
+| `[semantic]` | boto3 | `SemanticComparator` (Bedrock embeddings) |
 | `[llm]` | strands-agents, jinja2 | `LLMComparator` (LLM-as-judge comparison) |
 | `[bert]` | evaluate, torch, bert-score | `BERTComparator` (BERTScore similarity) |
 | `[docsplit]` | pandas | Document packet splitting metrics |

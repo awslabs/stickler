@@ -28,7 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # mapped to the extra that owns them.
 FORBIDDEN_ON_CORE_PATH = {
     "pandas": "docsplit / reporting",
-    "scipy": "semantic / development metric oracle",
+    "scipy": "development metric oracle",
     "sklearn": "development metric oracle",
     "jinja2": "llm",
     "torch": "bert",
