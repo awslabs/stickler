@@ -322,7 +322,33 @@ class TestEvaluationHTMLReporter:
             title = self.reporter._generate_title(mock_process_eval, True)
         
         assert title == "Evaluation Report - 15 Documents"
-    
+
+    def test_bulk_title_never_shows_none_document_count(self):
+        """A ProcessEvaluation without document_count counts as 1, not None (#467)."""
+        results = ProcessEvaluation(metrics={})
+
+        assert "- 1 Document" in self.reporter._generate_title(results, True)
+        assert self.reporter._get_document_count(results) == 1
+
+    def test_generate_report_never_shows_none_document_count(self):
+        """generate_report's metadata and bulk page title use the count (#467)."""
+        report = self.reporter.generate_report(ProcessEvaluation(metrics={}), self.output_path)
+        with open(self.output_path, encoding='utf-8') as f:
+            page = f.read()
+
+        assert report.success, report.errors
+        assert report.metadata["document_count"] == 1
+        assert '<title>Evaluation Report - 1 Document' in page
+
+        report = self.reporter.generate_report({'overall': {}, 'document_count': 7}, self.output_path)
+
+        assert report.success, report.errors
+        assert report.metadata["document_count"] == 7
+
+    def test_get_document_count_reads_a_results_dict_key(self):
+        """_get_document_count reads a results dict's document_count key (#467)."""
+        assert self.reporter._get_document_count({'overall': {}, 'document_count': 7}) == 7
+
     def test_generate_title_individual_results(self):
         """Test title generation for individual results."""
         individual_results = {'overall': {'cm_f1': 0.85}}
