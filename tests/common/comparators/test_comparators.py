@@ -4,6 +4,7 @@ This module tests the functionality of all comparators in the common module
 to ensure they work correctly and maintain compatibility with existing code.
 """
 
+import pytest
 
 from stickler.comparators import (
     LevenshteinComparator,
@@ -173,6 +174,12 @@ if FUZZY_AVAILABLE:
 
             # Test token set (common tokens matter)
             assert token_set.compare("python is great and fast", "python is fast") > 0.8
+
+        @pytest.mark.parametrize("method", ["token_sort", "weighted_ratio", ""])
+        def test_unknown_method_raises(self, method):
+            """An unknown method is rejected instead of falling back to ratio."""
+            with pytest.raises(ValueError, match="Unknown fuzzy method"):
+                FuzzyComparator(method=method)
 
         def test_binary_compare(self):
             """Test binary_compare returns correct (tp, fp) tuples."""

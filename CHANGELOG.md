@@ -154,6 +154,11 @@ Each release links to full notes on the
   importer already refused the same misplacement
   ([#607](https://github.com/awslabs/stickler/issues/607)).
 
+- `FuzzyComparator` raises `ValueError` for an unknown `method` instead of
+  silently using `ratio`. A misspelled name such as `"token_sort"`, in Python or
+  in a config, must be changed to one of `ratio`, `partial_ratio`,
+  `token_sort_ratio` or `token_set_ratio`.
+
 ### Removed
 
 - The deprecated `stickler.structured_object_evaluator.models.confusion_matrix_calculator`

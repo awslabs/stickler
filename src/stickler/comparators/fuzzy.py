@@ -51,6 +51,7 @@ class FuzzyComparator(BaseComparator):
 
         Raises:
             ImportError: If rapidfuzz library is not available
+            ValueError: If method is not one of the options above
         """
         super().__init__(threshold=threshold)
 
@@ -64,12 +65,18 @@ class FuzzyComparator(BaseComparator):
         self._normalize = normalize
 
         # Select the appropriate fuzzy matching function
-        self._fuzzy_func = {
+        fuzzy_funcs = {
             "ratio": fuzz.ratio,
             "partial_ratio": fuzz.partial_ratio,
             "token_sort_ratio": fuzz.token_sort_ratio,
             "token_set_ratio": fuzz.token_set_ratio,
-        }.get(method, fuzz.ratio)
+        }
+        if method not in fuzzy_funcs:
+            raise ValueError(
+                f"Unknown fuzzy method {method!r}. "
+                f"Expected one of: {', '.join(fuzzy_funcs)}"
+            )
+        self._fuzzy_func = fuzzy_funcs[method]
 
     @property
     def name(self) -> str:

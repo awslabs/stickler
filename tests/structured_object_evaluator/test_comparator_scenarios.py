@@ -25,7 +25,7 @@ class TestComparatorsScenarios:
             self.fuzzy_token_sort = FuzzyComparator(method="token_sort_ratio")
             self.fuzzy_token_set = FuzzyComparator(method="token_set_ratio")
             self.fuzzy_partial = FuzzyComparator(method="partial_ratio")
-            self.fuzzy_weighted = FuzzyComparator(method="weighted_ratio")
+            self.fuzzy_weighted = FuzzyComparator(method="ratio")
 
     def test_names_and_people(self):
         """Test comparators with names and people data."""
