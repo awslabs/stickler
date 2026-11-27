@@ -215,6 +215,10 @@ Each release links to full notes on the
 
 ### Documentation
 
+- A new use-case guide, Evaluating Object Detections from Robots and Cameras,
+  scores per-frame lists of detected objects against ground truth
+  ([#538](https://github.com/awslabs/stickler/issues/538)).
+
 - The comparator guide has a Language Support section
   ([#592](https://github.com/awslabs/stickler/issues/592)). It gives the score
   each text comparator returns for Arabic spelling variants, diacritics,
