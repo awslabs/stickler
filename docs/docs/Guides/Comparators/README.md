@@ -45,9 +45,11 @@ See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) fo
 | [**NormalizedComparator**](#normalizedcomparator) | Text where formatting differences are noise | Instant | No | Binary (0.0 or 1.0) |
 | [**LevenshteinComparator**](#levenshteincomparator) | Names, addresses, text with typos | Instant | No | Continuous (0.0--1.0) |
 | [**NumericComparator**](#numericcomparator) | Prices, quantities, measurements | Instant | No | Binary (0.0 or 1.0) |
+| [**AngleComparator**](#anglecomparator) | Heading, yaw, orientation | Instant | No | Binary (0.0 or 1.0) |
 | [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
 | [**BBoxIoUComparator**](#bboxioucomparator) | Bounding boxes, spatial localization | Instant | No | Continuous (0.0--1.0) |
+| [**PointDistanceComparator**](#pointdistancecomparator) | 2D or 3D positions, keypoints | Instant | No | Continuous (0.0--1.0) |
 | [**ANLSStarComparator**](#anlsstarcomparator) | Dicts and nested structures whose keys you do not declare | Moderate | No | Continuous (0.0--1.0) |
 | [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
 | [**BERTComparator**](#bertcomparator) | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
@@ -165,6 +167,32 @@ class Invoice(StructuredModel):
 | `relative_tolerance` | `0.0` | Relative tolerance (e.g., `0.1` = 10%) |
 | `absolute_tolerance` | `0.0` | Absolute tolerance (e.g., `0.01` for cents) |
 | `tolerance` | `None` | Alias for `absolute_tolerance` (backward compatibility) |
+
+---
+
+### AngleComparator
+
+Compares two angles by their shortest difference around the circle, so `359` and `1` are 2 degrees apart. Returns 1.0 if that difference is at most `max_angular_difference`, 0.0 otherwise. Strings, booleans, `Decimal` and infinite values score 0.0.
+
+**When to use:** Heading, yaw or any orientation field, alone or in a `List[float]`.
+
+```python
+from stickler import StructuredModel, ComparableField
+from stickler import AngleComparator
+
+class Pose(StructuredModel):
+    yaw: float = ComparableField(
+        comparator=AngleComparator(max_angular_difference=5)
+    )
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `threshold` | `1.0` | Similarity threshold for binary classification |
+| `max_angular_difference` | `0.0` | Largest difference that matches, in `angle_unit`; must be less than half a turn |
+| `angle_unit` | `"degrees"` | `"degrees"` or `"radians"`, for inputs and tolerance |
 
 ---
 
@@ -436,6 +464,39 @@ class DocumentField(StructuredModel):
 
 !!! tip "Rich Value Pattern"
     For end-to-end mAP evaluation with per-field breakdown, use the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) feature instead of using BBoxIoUComparator directly.
+
+---
+
+### PointDistanceComparator
+
+Scores two 2D (`[x, y]`) or 3D (`[x, y, z]`) points by Euclidean distance: `max(0.0, 1.0 - distance / max_distance)`. A match is a point within a radius of `max_distance * (1 - threshold)`, where separate `x`, `y`, `z` fields under `NumericComparator` gate on a box and give no partial credit.
+
+**When to use:** Object positions, keypoints, or any location scored by how far the prediction is from ground truth.
+
+```python
+from typing import List, Tuple
+
+from stickler import ComparableField, PointDistanceComparator, StructuredModel
+
+class Scene(StructuredModel):
+    position: Tuple[float, float, float] = ComparableField(
+        comparator=PointDistanceComparator(max_distance=0.5)
+    )
+    keypoints: List[List[float]] = ComparableField(
+        comparator=PointDistanceComparator(max_distance=0.5)
+    )
+```
+
+Annotate a single point as a `Tuple`: a `list` or `List[float]` point field always scores 0.0, even against an identical point, because the comparator never sees the whole point. In a Stickler config a single point is `"type": "tuple"`; JSON Schema cannot declare one, and a `Tuple` field exports as `"type": "string"`, so it does not round-trip. A list of points imports and exports in both formats.
+
+Lists, tuples and 1D NumPy arrays of `numbers.Real` coordinates are accepted. A point of the wrong length, a 2D point against a 3D one, and non-numeric (including `Decimal`) or non-finite coordinates score 0.0.
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `max_distance` | required | Distance at which the score reaches 0.0, in coordinate units. Must be a finite number greater than 0 |
+| `threshold` | `0.5` | Score threshold for binary match classification, a match within half of `max_distance` |
 
 ---
 
