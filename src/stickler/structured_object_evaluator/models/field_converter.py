@@ -18,6 +18,7 @@ from .comparable_field import (
     _named_comparator_threshold,
 )
 from .comparator_registry import create_comparator, normalize_comparator_config
+from .configuration_helper import ConfigurationHelper
 from .threshold_rule import (
     CONFIG,
     ComparatorSource,
@@ -80,6 +81,20 @@ ACCEPTED_FIELD_CONFIG_KEYS = frozenset(
 #: validate_fields_config, its module-level wrapper, create_model_from_json,
 #: model_from_json, caller.
 _UNKNOWN_KEY_STACKLEVEL = 7
+
+
+def _tuple_default(value: Any, annotation: Any) -> Any:
+    """A JSON list as the tuple ``annotation`` names, at every tuple level."""
+    if not (
+        isinstance(value, list) and ConfigurationHelper.is_tuple_annotation(annotation)
+    ):
+        return value
+    args = get_args(annotation)
+    if len(args) == 2 and args[1] is Ellipsis:
+        args = (args[0],) * len(value)
+    elif len(args) != len(value):
+        return tuple(value)
+    return tuple(_tuple_default(item, arg) for item, arg in zip(value, args))
 
 
 def _infer_spec(
@@ -613,10 +628,8 @@ class FieldConverter:
         # JSON has no tuple, so a tuple default arrives as a list. pydantic
         # does not validate a default, so it stayed a list and scored 0.0
         # against the equal tuple the original model scored 1.0 (#636).
-        elif (field_type is tuple or get_origin(field_type) is tuple) and isinstance(
-            default, list
-        ):
-            default = tuple(default)
+        elif ConfigurationHelper.is_tuple_annotation(field_type):
+            default = _tuple_default(default, field_type)
 
         # Create ComparableField
         comparable_field = ComparableField(

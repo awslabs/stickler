@@ -2817,6 +2817,15 @@ class StructuredModel(BaseModel):
                         if "comparator_config" not in extensions:
                             field_config.pop("comparator_config", None)
                         field_config.update(extensions)
+                    elif ConfigurationHelper.is_tuple_annotation(element_type):
+                        # Named as the singular field is, so the rebuilt list
+                        # keeps the element's length and types.
+                        tuple_type = field_config["type"]
+                        field_config["type"] = (
+                            f"List[Optional[{tuple_type}]]"
+                            if element_is_nullable
+                            else f"List[{tuple_type}]"
+                        )
                     elif union_type := cls._scalar_union_config_type(
                         element_type, nullable=element_is_nullable
                     ):

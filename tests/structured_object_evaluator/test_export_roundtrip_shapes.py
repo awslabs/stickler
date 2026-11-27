@@ -17,8 +17,9 @@ The legacy warning reads the field, its list levels and the arms of a union, not
 other containers, so `Union[List[Card], str]` takes the unmapped-type warning
 instead and still exports as `"string"`.
 
-A tuple exports to a Stickler config as `Tuple[...]` for primitive elements and
-`tuple` otherwise, which `model_from_json()` reads back. Any other field type
+A tuple exports to a Stickler config as `Tuple[...]` when every element, nested
+tuples and `...` included, has a config name, and as `tuple` otherwise, which
+`model_from_json()` reads back. Any other field type
 with no export mapping is still written as a string, with a warning naming the
 model, field and type when the re-imported string field rejects some of its
 values (#636).
@@ -485,8 +486,7 @@ class Boxed(StructuredModel):
 def test_a_tuple_round_trips_through_stickler_config():
     config = Boxed.to_stickler_config()
     assert config["fields"]["box"]["type"] == "Tuple[float, float, float, float]"
-    # No config spelling for `...`, so it stays a tuple (#637).
-    assert config["fields"]["ids"]["type"] == "tuple"
+    assert config["fields"]["ids"]["type"] == "Tuple[int, ...]"
     Reimported = StructuredModel.model_from_json(config)
     gt = {"box": (0.0, 0.0, 10.0, 10.0), "ids": (1, 2)}
     pred = {"box": (0.0, 0.0, 10.0, 5.0), "ids": (1, 2)}
@@ -648,7 +648,6 @@ def test_a_list_element_warns_by_the_same_rule(
     "annotation, comparator, default",
     [
         (Tuple[int, int], ExactComparator(), (1, 2)),
-        # Written as `tuple`, which has no element type to coerce to.
         (Tuple[int, ...], ExactComparator(), (1, 2, 3)),
         (
             Tuple[float, float, float, float],

@@ -18,8 +18,8 @@ from stickler import BBoxIoUComparator, ComparableField, StructuredModel
         ),
         (tuple[str, int], "Tuple[str, int]", ("a", 1)),
         (Tuple[Any, bool], "Tuple[Any, bool]", ([1], True)),
+        (Tuple[float, ...], "Tuple[float, ...]", (1.0, 2.0)),
         # No config spelling for these argument lists: stays a tuple.
-        (Tuple[float, ...], "tuple", (1.0, 2.0)),
         (Tuple[Optional[int], int], "tuple", (None, 1)),
         (tuple, "tuple", (1, "a")),
     ],

@@ -5,7 +5,7 @@ enabling configuration-based type specification in model_from_json().
 """
 
 import re
-from typing import Any, Dict, List, Type, Union, get_args, get_origin
+from typing import Any, Dict, List, Tuple, Type, Union, get_args, get_origin
 
 from .optional_annotation import is_union, union_args
 
@@ -72,6 +72,7 @@ class TypeResolver:
         - Generic types: "List[str]", "Dict[str, int]", "Optional[str]"
         - Union types: "Union[str, int]"
         - Nested generics: "List[Dict[str, int]]"
+        - Variable-length tuples: "Tuple[int, ...]"
 
         Args:
             type_string: String representation of the type
@@ -138,13 +139,29 @@ class TypeResolver:
         # Parse the type arguments
         type_args = self._parse_type_arguments(args_string)
 
+        # `...` is read only as the second of two Tuple arguments, as in
+        # `Tuple[int, ...]`.
+        is_variable_length_tuple = "..." in type_args
+        if is_variable_length_tuple and not (
+            base_type in (Tuple, tuple)
+            and len(type_args) == 2
+            and type_args[0] != "..."
+            and type_args[1] == "..."
+        ):
+            raise ValueError(
+                f"Invalid type '{type_string}': '...' is read only as the "
+                f"second of two Tuple arguments, as in 'Tuple[int, ...]'"
+            )
+
         # Resolve each argument
         resolved_args = []
-        for arg in type_args:
+        for arg in type_args[:1] if is_variable_length_tuple else type_args:
             resolved_args.append(self.resolve_type_string(arg))
 
         # Create the generic type
         try:
+            if is_variable_length_tuple:
+                return base_type[resolved_args[0], ...]
             if len(resolved_args) == 1:
                 return base_type[resolved_args[0]]
             else:
