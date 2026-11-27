@@ -241,6 +241,62 @@ Two consequences are worth noting:
   implicit. The round trip is idempotent — re-importing the exported schema and
   exporting again yields the same document, and accepts the same values.
 
+### A string a numeric field cannot read
+
+A prediction often writes `"N/A"`, `""` or `"see attached"` where a number belongs. On a
+`number` or `integer` property, such a string is kept as written instead of failing model
+construction, and the field scores it like any other value: `NumericComparator` scores
+`"N/A"` against `1234.5` as `0.0`, and reads `"١٢٥٠"` as 1250. The same holds for a `float` or
+`int` field built by [`model_from_json()`](#method-2-custom-stickler-configuration), and for
+numeric fields of nested objects and of objects in an array.
+
+```python
+Invoice = StructuredModel.from_json_schema({
+    "type": "object",
+    "properties": {"amount": {"type": "number"}},
+    "required": ["amount"],
+})
+
+prediction = Invoice(amount="N/A")        # builds; amount == "N/A"
+Invoice(amount=1234.5).compare_with(prediction)["field_scores"]["amount"]   # 0.0
+```
+
+A value the numeric type accepts is stored exactly as before, so `"1234.50"` still becomes
+`1234.5`. `model_dump()`, `model_dump(mode="json")` and `model_dump_json()` return a kept
+string as the string, and validating the dump the way the string was kept builds the same
+instance. That means lax validation, or strict validation for a numeric string such as
+`"1234.5"` that only strict validation keeps; lax validation reads that one as a number. The field's `FieldInfo.annotation` stays `float` or `int`, so
+`to_json_schema()`, `model_json_schema()` and the comparator are unchanged; its
+`FieldInfo.metadata` holds the serializer that dumps a kept string as a string.
+
+What a field accepts as a number depends on its type. An `integer` field keeps `"1e3"`,
+`"1.50"` and `"inf"` as strings, because none of them is an integer, and `NumericComparator`
+does not read an exponent, so `"1e3"` scores 0.0 against `1000` there. A `number` field reads
+`"1e3"` as `1000.0` before the comparator runs. An `integer` field still raises on a number that
+is not an integer, such as `12.5`, while the string `"12.5"` is kept.
+
+Strict validation, including `model_validate_json(..., strict=True)`, rejects a numeric
+string, so there `"1234.5"` is kept as the string `"1234.5"` rather than raising.
+
+The same applies to a ground truth. One holding `"N/A"` used to fail when it was built; it is now
+kept. A ground truth the comparator cannot read, such as `"N/A"`, scores 0.0 against every
+prediction, `"N/A"` included. One it can read still matches: `"$1,250"` or `"١٢٥٠"` against
+`1250` scores 1.0. An empty string is read as absent on either side, as in any field, so `""`
+against `""` or `None` matches.
+
+Only strings are kept, and only in a field whose type is a number or an optional number. A list
+or a dict there still raises `ValidationError`. So does `"N/A"` as an element of a numeric array
+(`{"type": "array", "items": {"type": "number"}}`), or in a union of a number with another
+non-string type: two numeric types (`{"type": ["number", "integer"]}`), a numeric enum mixing
+integers and decimals (`{"type": "number", "enum": [1, 2.5]}`), or a number and a boolean
+(`{"oneOf": [{"type": "integer"}, {"type": "boolean"}]}`).
+
+A class you write yourself, a class built by `ModelFactory.create_model_from_fields()` without
+`scoreable_numbers=True`, and a class built by `from_pydantic()` keep pydantic's validation. So
+does `stickler.evaluate()` on instances of your own pydantic class, since that class validates
+the value before Stickler sees it. A subclass that redeclares a numeric field (`amount: float`)
+inherits the validator but not the serializer, so it keeps `"N/A"` but `model_dump()` warns.
+
 ---
 
 ## Method 2: Custom Stickler Configuration

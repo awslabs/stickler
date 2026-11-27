@@ -178,6 +178,30 @@ Each release links to full notes on the
   `scores_as_one_value()`
   ([#635](https://github.com/awslabs/stickler/issues/635)).
 
+- **A non-numeric string in a numeric field is scored instead of aborting the
+  run.** A prediction holding `"N/A"`, `""` or `"see attached"` in a `number` or
+  `integer` property of `from_json_schema()`, or a `float` or `int` field of
+  `model_from_json()`, raised `ValidationError` when the model was built, so a
+  bulk run stopped at that document. Such a string is now kept as written and
+  scored by the field's comparator: `NumericComparator` scores `"N/A"` as 0.0
+  and reads `"١٢٥٠"` as 1250. A value the numeric type accepts is stored as
+  before (`"1234.50"` still becomes `1234.5`); `FieldInfo.annotation`,
+  `to_json_schema()`, `to_stickler_config()` and `model_json_schema()` in both
+  modes are unchanged; and `model_dump()` returns the kept string. The field's
+  `FieldInfo.metadata` now holds the serializer that does that. A ground truth
+  holding such a string now builds too; one the comparator cannot read, such as
+  `"N/A"`, scores 0.0 against every prediction (`""` is absent, so `""` against
+  `""` or `None` scores 1.0). Only strings in a numeric or optional numeric
+  field are kept; a list or a dict there, an element of a numeric array, a
+  union of two numeric types or a mixed numeric enum, and a class written by
+  hand or built by `from_pydantic()` still raise. Under
+  strict validation, including `model_validate_json(..., strict=True)`, a
+  numeric string such as `"1234.5"` is now kept as a string rather than
+  raising.
+  `ModelFactory.create_model_from_fields()` gains a keyword-only
+  `scoreable_numbers` flag, off by default, which the schema importer sets
+  ([#310](https://github.com/awslabs/stickler/issues/310)).
+
 - **A comparator key on a nested model now warns instead of being dropped in
   silence or refused.** A nested model is scored field by field, so its
   comparator is never called, as on the Python path. `comparator` on a
