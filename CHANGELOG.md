@@ -187,6 +187,11 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **`to_stickler_config()` exports a tuple field as a tuple.** It was written
+  as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
+  value. Tuples of primitives keep their element types (`Tuple[float, float]`);
+  others are written as `tuple`. `to_json_schema()` is unchanged.
+
 - **`BBoxIoUComparator` on a list field scores the box, not its coordinates.**
   A field holding one box as a list (`List[float]`, `Optional[List[float]]`,
   `Sequence[float]`, bare `list`, or a JSON Schema `array` or config `list`
