@@ -4,20 +4,11 @@ This module provides utilities for formatting comparison results for evaluator
 compatibility and calculating list item metrics.
 """
 
-from contextvars import ContextVar
 from typing import Any, Dict, List, Optional
 
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
-
-#: True while ``calculate_list_item_metrics`` scores list items through
-#: ``compare_with(evaluator_format=True)``. Those calls never request records, so
-#: without this a caller who passed ``document_non_matches=True`` would get the
-#: uncollected-placeholder warning for a call it did not make.
-in_list_item_metrics: ContextVar[bool] = ContextVar(
-    "stickler_in_list_item_metrics", default=False
-)
 
 
 class EvaluatorFormatHelper:
@@ -143,12 +134,11 @@ class EvaluatorFormatHelper:
             "fields": field_metrics,
             "confusion_matrix": flattened_confusion_matrix,
         }
-        # Records when they were collected; otherwise `[]`, as 1.0.0 always
-        # wrote. That `[]` cannot tell "not collected" from "none found", so the
-        # printers read it as "No non-matches found" (#413). 1.0.1 keeps it for
-        # 1.0.0 callers and warns (`StructuredModel.compare_with`); 1.1.0 omits
-        # the key instead, as the default compare_with() dict does.
-        formatted["non_matches"] = result.get("non_matches", [])
+        # Only when collected, as in the default compare_with() dict. A `[]`
+        # placeholder cannot tell "not collected" from "none found", so the
+        # printers read it as "No non-matches found" (#413, #608).
+        if "non_matches" in result:
+            formatted["non_matches"] = result["non_matches"]
         return formatted
 
     @staticmethod
@@ -276,23 +266,18 @@ class EvaluatorFormatHelper:
             assignments = hungarian_info["assignments"]
 
             # Create metrics for each matched pair. Through `compare_with`, so
-            # an item class's own override still runs; the flag keeps these
-            # internal calls from warning about records nobody asked for.
-            token = in_list_item_metrics.set(True)
-            try:
-                for gt_idx, pred_idx in assignments:
-                    if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                        gt_item = gt_list[gt_idx]
-                        pred_item = pred_list[pred_idx]
+            # an item class's own override still runs.
+            for gt_idx, pred_idx in assignments:
+                if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                    gt_item = gt_list[gt_idx]
+                    pred_item = pred_list[pred_idx]
 
-                        # Compare the items with evaluator format
-                        item_comparison = gt_item.compare_with(
-                            pred_item,
-                            evaluator_format=True,
-                            recall_with_fd=recall_with_fd,
-                        )
-                        items_metrics.append(item_comparison)
-            finally:
-                in_list_item_metrics.reset(token)
+                    # Compare the items with evaluator format
+                    item_comparison = gt_item.compare_with(
+                        pred_item,
+                        evaluator_format=True,
+                        recall_with_fd=recall_with_fd,
+                    )
+                    items_metrics.append(item_comparison)
 
         return items_metrics

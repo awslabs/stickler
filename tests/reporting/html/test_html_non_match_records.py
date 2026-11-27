@@ -107,21 +107,21 @@ def test_a_bulk_result_with_records_lists_them():
     assert "document_non_matches=True" not in _section(results)
 
 
-def test_an_evaluator_format_dict_without_records_reads_as_1_0_0_did():
-    """Known limit until 1.1.0: its `[]` cannot say "not collected" (#413).
+def test_an_evaluator_format_dict_without_records_says_so():
+    """Its `non_matches` key is absent, so the report says "not collected" (#608).
 
-    1.0.1 keeps 1.0.0's plain `"non_matches": []` so 1.0.0 callers keep
-    working, and the report reads it as 1.0.0 did. 1.1.0 omits the key, and
-    the report then says the records were not collected.
+    Through 1.0.x it carried a `[]` placeholder that read as "No non-matches
+    found" over a document with a wrong field (#413).
     """
     gt, pred = _wrong_pair()
     results = gt.compare_with(pred, evaluator_format=True)
 
-    assert type(results["non_matches"]) is list
-    assert results["non_matches"] == []
-    assert DataExtractor.extract_non_matches(results) == []
+    assert "non_matches" not in results
+    assert DataExtractor.extract_non_matches(results) is None
 
-    assert "<p>No non-matches found.</p>" in _section(results)
+    section = _section(results)
+    assert "No non-matches found" not in section
+    assert "document_non_matches=True" in section
 
 
 def test_an_evaluator_format_dict_with_empty_records_is_a_success():

@@ -1,16 +1,13 @@
-"""`evaluator_format=True` without `document_non_matches=True` collects no records.
+"""`evaluator_format=True` writes `non_matches` only with `document_non_matches=True`.
 
-It always wrote `"non_matches": []`, so "not collected" read as "no
-non-matches": `print_non_matches` printed a success message over a document
-with a wrong field (#413). 1.0.1 keeps 1.0.0's plain `[]`, so 1.0.0 callers
-(`result["non_matches"]`, `type(...) is list`, `yaml.safe_dump`) keep working,
-and warns once per process that 1.1.0 omits the key. Until then the printers
-read that `[]` as 1.0.0 did. The HTML side of this lives in
+Through 1.0.x it wrote `"non_matches": []` without records, so "not collected"
+read as "no non-matches": `print_non_matches` printed a success message over a
+document with a wrong field (#413). It now omits the key, as the default
+`compare_with()` dict does, and the printers say the records were not
+collected (#608). The HTML side of this lives in
 `tests/reporting/html/test_html_non_match_records.py`.
 """
 
-import copy
-import json
 import warnings
 from typing import Optional
 
@@ -33,82 +30,31 @@ GT = Doc(a="x", b="y")
 WRONG = Doc(a="x", b="z")
 
 
-WARNING_TEXT = (
-    "compare_with(evaluator_format=True) without document_non_matches=True "
-    "returns 'non_matches' as []: the records were not collected, so it does "
-    "not mean every field matched. Pass document_non_matches=True to collect "
-    "them. From 1.1.0 the 'non_matches' key is omitted unless "
-    "document_non_matches=True."
-)
+@pytest.mark.parametrize("pred", [WRONG, GT], ids=["wrong", "same"])
+def test_unrequested_key_is_absent(pred):
+    """Without records there is no key, as in the default dict."""
+    result = GT.compare_with(pred, evaluator_format=True)
 
-
-def uncollected_warnings(caught):
-    return [w for w in caught if "returns 'non_matches' as []" in str(w.message)]
-
-
-def compare(*args, **kwargs):
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        result = GT.compare_with(*args, **kwargs)
-    return result, uncollected_warnings(caught)
-
-
-def test_unrequested_key_is_the_1_0_0_plain_empty_list():
-    """`result["non_matches"]` works as on 1.0.0: a plain `[]`, not a KeyError."""
-    result, _ = compare(WRONG, evaluator_format=True)
-
-    assert type(result["non_matches"]) is list
-    assert result["non_matches"] == []
-    # The default dict is unchanged: no key without records.
-    assert "non_matches" not in GT.compare_with(WRONG)
-
-
-def test_unrequested_result_serialises_as_on_1_0_0():
-    yaml = pytest.importorskip("yaml")
-    result, _ = compare(WRONG, evaluator_format=True)
-
-    assert yaml.safe_load(yaml.safe_dump(result))["non_matches"] == []
-    assert json.loads(json.dumps(result))["non_matches"] == []
-    assert type(copy.deepcopy(result)["non_matches"]) is list
-
-
-def test_unrequested_records_warn_once_per_process():
-    _, first = compare(WRONG, evaluator_format=True)
-    _, second = compare(GT, evaluator_format=True)
-
-    assert [str(w.message) for w in first] == [WARNING_TEXT]
-    assert first[0].category is DeprecationWarning
-    assert first[0].filename == __file__
-    assert second == []
-
-
-def test_every_call_raises_when_the_warning_is_an_error():
-    """`warn_once` records the key only once the warning was emitted.
-
-    Recorded first, the first call raised and every later one passed silently,
-    so a suite running with `filterwarnings = error` depended on test order.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        for _ in range(2):
-            with pytest.raises(DeprecationWarning, match="returns 'non_matches'"):
-                GT.compare_with(WRONG, evaluator_format=True)
-    with pytest.warns(DeprecationWarning, match="returns 'non_matches'"):
-        GT.compare_with(WRONG, evaluator_format=True)
+    assert "non_matches" not in result
+    assert set(result) == {"overall", "fields", "confusion_matrix"}
+    assert "non_matches" not in GT.compare_with(pred)
 
 
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {},
-        {"document_non_matches": True},
+        {"evaluator_format": True},
         {"evaluator_format": True, "document_non_matches": True},
+        {"evaluator_format": True, "include_confusion_matrix": True},
     ],
 )
-def test_no_warning_when_records_were_requested_or_format_not_used(kwargs):
-    _, caught = compare(WRONG, **kwargs)
+def test_evaluator_format_emits_no_non_matches_warning(kwargs):
+    """The 1.0.x DeprecationWarning about the `[]` placeholder is gone."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        GT.compare_with(WRONG, **kwargs)
 
-    assert caught == []
+    assert [str(w.message) for w in caught if "non_matches" in str(w.message)] == []
 
 
 class Item(StructuredModel):
@@ -119,18 +65,16 @@ class Parent(StructuredModel):
     items: list[Item]
 
 
-def test_list_items_scored_internally_do_not_warn_for_the_caller():
-    """Per-item metrics call `compare_with(evaluator_format=True)` themselves."""
+def test_list_item_metrics_carry_no_non_matches_key():
+    """Per-item metrics call `compare_with(evaluator_format=True)` without records."""
     gt = Parent(items=[Item(code="a"), Item(code="b")])
     pred = Parent(items=[Item(code="a"), Item(code="c")])
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        result = gt.compare_with(pred, evaluator_format=True, document_non_matches=True)
+    result = gt.compare_with(pred, evaluator_format=True, document_non_matches=True)
 
-    assert uncollected_warnings(caught) == []
     assert [nm["field_path"] for nm in result["non_matches"]] == ["items[1]"]
-    # Each item carries a plain `[]`, as on 1.0.0.
-    assert [i["non_matches"] for i in result["fields"]["items"]["items"]] == [[], []]
+    items = result["fields"]["items"]["items"]
+    assert len(items) == 2
+    assert all("non_matches" not in item for item in items)
 
 
 def test_records_present_when_requested():
@@ -146,12 +90,17 @@ def test_requested_and_none_found_is_an_empty_list():
     assert result["non_matches"] == []
 
 
-def test_printer_reads_unrequested_records_as_1_0_0_did(capsys):
-    """Known limit until 1.1.0: the `[]` cannot say "not collected"."""
-    result, _ = compare(WRONG, evaluator_format=True)
-    print_non_matches(result, use_color=False)
+def test_printer_says_unrequested_evaluator_records_were_not_collected(capsys):
+    """The #298/#411 rule now holds for evaluator-format output too (#413)."""
+    result = GT.compare_with(
+        WRONG, evaluator_format=True, include_confusion_matrix=True
+    )
+    for printer in (print_non_matches, print_evaluation_results):
+        printer(result, use_color=False)
+        out = capsys.readouterr().out
 
-    assert "No non-matches found." in capsys.readouterr().out
+        assert "No non-matches found" not in out
+        assert "No non-match records in these results." in out
 
 
 def test_printer_says_a_default_dict_without_records_was_not_collected(capsys):
