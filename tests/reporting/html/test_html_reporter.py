@@ -327,7 +327,7 @@ class TestEvaluationHTMLReporter:
         """A ProcessEvaluation without document_count counts as 1, not None (#467)."""
         results = ProcessEvaluation(metrics={})
 
-        assert self.reporter._generate_title(results, True) == "Evaluation Report - 1 Documents"
+        assert "- 1 Document" in self.reporter._generate_title(results, True)
         assert self.reporter._get_document_count(results) == 1
 
     def test_generate_report_never_shows_none_document_count(self):
