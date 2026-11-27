@@ -4,7 +4,7 @@ Centralizes data access patterns that were previously duplicated across multiple
 """
 import logging
 import types
-from typing import Any, Dict, List, Optional, Union, get_args, get_origin
+from typing import Any, Dict, List, Mapping, Optional, Union, get_args, get_origin
 
 from stickler.utils.process_evaluation import ProcessEvaluation
 
@@ -281,3 +281,70 @@ class DataExtractor:
             # For individual results, check if doc_id is present
             doc_id = results.get('doc_id', 'Unknown')
             return [doc_id]
+
+    @staticmethod
+    def extract_decision_metrics(results: Any) -> Optional[Dict[str, Any]]:
+        """Return ``results.decision_metrics`` if it holds decision fields, else None.
+
+        Only a ``ProcessEvaluation`` carries decision metrics. Anything else,
+        including an empty or malformed value, gives None so the report renders
+        exactly as it does without them.
+        """
+        if not isinstance(results, ProcessEvaluation):
+            return None
+        dm = getattr(results, "decision_metrics", None)
+        if not isinstance(dm, Mapping):
+            return None
+        fields = dm.get("fields")
+        if not isinstance(fields, Mapping) or not fields:
+            return None
+        return dm
+
+    @staticmethod
+    def extract_risk_coverage(
+        decision_metrics: Mapping[str, Any], max_points: int = 400
+    ) -> Dict[str, Dict[str, Any]]:
+        """Per-field risk-coverage curve over every distinct confidence threshold.
+
+        A threshold accepts the decisions whose confidence is at least it.
+        Coverage is accepted / asked, so missing answers (always escalated)
+        keep the curve from reaching 1.0. Risk is 1 - accuracy of the accepted.
+        AURC comes from ``accept_or_escalate`` so the report and the library
+        agree. Curves longer than ``max_points`` are thinned evenly, keeping
+        both ends.
+
+        Returns:
+            ``{field: {"points": [(coverage, risk, tau, accepted), ...],
+            "aurc": float | None, "n_total": int, "n_missing": int}}``
+        """
+        import numpy as np
+
+        from stickler.decisions.escalate import (
+            accept_or_escalate,
+            arrays_from_result,
+            risk_coverage,
+        )
+
+        arrays = arrays_from_result(decision_metrics)
+        report = accept_or_escalate(decision_metrics, taus=())
+        out: Dict[str, Dict[str, Any]] = {}
+        for name, a in arrays.items():
+            answered = a.answered
+            n_total = a.n_total
+            taus, accepted, accuracy = risk_coverage(a.conf[answered], a.correct[answered])
+            points = []
+            if n_total:
+                points = [
+                    (float(end) / n_total, 1.0 - float(acc), float(tau), int(end))
+                    for tau, end, acc in zip(taus, accepted, accuracy)
+                ]
+                if len(points) > max_points:
+                    idx = np.unique(np.linspace(0, len(points) - 1, max_points).round().astype(int))
+                    points = [points[i] for i in idx]
+            out[name] = {
+                "points": points,
+                "aurc": report.fields[name]["aurc"],
+                "n_total": int(n_total),
+                "n_missing": int(a.n_total - a.n_ok),  # missing or rejected: never accepted
+            }
+        return out

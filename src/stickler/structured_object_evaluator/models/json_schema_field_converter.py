@@ -266,6 +266,14 @@ class JsonSchemaFieldConverter:
         )
         property_schema.update(extensions)
 
+        # A Choice, Score or Noul field records its question, so the import
+        # rebuilds a decision field rather than a plain exact-match one.
+        from stickler.decisions.primitives import SCHEMA_KEY, field_decision_spec
+
+        spec = field_decision_spec(field_info)
+        if spec is not None:
+            property_schema[SCHEMA_KEY] = spec.to_schema()
+
         # Add Pydantic field params
         if field_info.description:
             property_schema["description"] = field_info.description

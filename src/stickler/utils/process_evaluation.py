@@ -18,6 +18,9 @@ class ProcessEvaluation(BaseModel):
     total_time: Optional[float] = None
     non_matches: Optional[List[Dict[str, Any]]] = None
     confidence_metrics: Optional[Dict[str, Any]] = None
+    # Choice, Score and Noul metrics, per field. Set when the target schema
+    # declares decision fields; an alias for accumulator_metrics["decision_metrics"].
+    decision_metrics: Optional[Dict[str, Any]] = None
     # Full dict keyed by accumulator name. ``confidence_metrics`` above is a
     # convenience alias for ``accumulator_metrics["confidence_metrics"]`` and
     # stays populated for backwards compatibility. Future accumulators (e.g.

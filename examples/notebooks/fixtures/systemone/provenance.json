@@ -1,0 +1,13 @@
+{
+  "model_id": "StrandsAgents/strands-decider-2B-qwen3.5-v1-2610",
+  "response_model": "synthetic-placeholder",
+  "hand_authored": true,
+  "synthetic": true,
+  "recorded": null,
+  "strands_decider_version": null,
+  "generator": {
+    "script": "make_synthetic_responses.py",
+    "seed": 469
+  },
+  "note": "NOT a recording. responses.jsonl is synthetic, drawn by make_synthetic_responses.py from the gold labels with a seeded generator, so the notebook and tests run offline. No model produced these answers. model_id names the model whose output they stand in for. Do not cite any score computed from them as a measurement. Replace them with record_systemone.py."
+}

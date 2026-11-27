@@ -21,6 +21,9 @@ Options 1 and 4 are independent paths that infer differently, not two steps of o
 !!! tip "Evaluating confidence scores?"
     If your model produces confidence scores alongside predictions, see the [Confidence Evaluation](confidence-evaluation.md) guide for AUROC, Brier Score, ECE, and Error Capture at Review Budget metrics.
 
+!!! tip "Evaluating a decision model?"
+    If your model answers Choice, Score or Noul questions with probabilities (Strands Decider, OpenJev, Jev), see the [Evaluating Decision Models](decision-models.md) guide.
+
 !!! tip "Evaluating bounding boxes?"
     If your model returns bounding boxes (via the `_bbox` rich-value key), see the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) page for COCO-style mean Average Precision over a configurable IoU-threshold range.
 

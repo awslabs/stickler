@@ -14,7 +14,7 @@ import logging
 import math
 import time
 from collections import Counter, defaultdict
-from typing import IO, Any, Dict, List, Optional, Tuple, Type, Union
+from typing import IO, Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from stickler.structured_object_evaluator.models.confidence import (
     ConfidenceMetric,
@@ -92,7 +92,7 @@ def _replace_non_finite(value: Any) -> Any:
     return result
 
 
-def _jsonl_line(record: Dict[str, Any]) -> str:
+def _jsonl_line(record: Dict[str, Any], default: Callable[[Any], Any] = str) -> str:
     """Serialize ``record`` as one strict-JSON line; see ``_replace_non_finite``.
 
     ``json.dumps`` writes NaN and infinities as bare ``NaN``/``Infinity``, which
@@ -100,16 +100,17 @@ def _jsonl_line(record: Dict[str, Any]) -> str:
     blank pandas cell is NaN. Finite records take the single dump.
     ``allow_nan=False`` raises ``ValueError`` only for a non-finite float or a
     cycle, and a cycle raises again from the second dump, so no message check
-    is needed. ``default=str`` keeps numpy scalars and similar values from
-    crashing the writer, for parity with ``save_metrics()``.
+    is needed. ``default`` (``str`` unless the caller passes its own) keeps
+    numpy scalars and similar values from crashing the writer, for parity with
+    ``save_metrics()``.
     """
     try:
-        return json.dumps(record, default=str, allow_nan=False)
+        return json.dumps(record, default=default, allow_nan=False)
     except ValueError:
         # After the copy, a non-finite float can only be a dict key, which
         # json.dumps writes as a quoted string, so the default allow_nan is
         # still strict JSON.
-        return json.dumps(_replace_non_finite(record), default=str)
+        return json.dumps(_replace_non_finite(record), default=default)
 
 
 def _join_path(prefix: str, name: str) -> str:
@@ -216,9 +217,26 @@ class BulkStructuredModelEvaluator:
 
         # Build accumulators list
         if accumulators is not None:
-            self._accumulators = accumulators
+            self._accumulators = list(accumulators)
         else:
             self._accumulators = [ConfidenceAccumulator(metrics=confidence_metrics)]
+
+        # A schema with Choice, Score or Noul fields gets the decision metrics
+        # without being asked, unless the caller already supplied them.
+        # Recognised by type, not name, so a user accumulator that happens to
+        # be called "decision_metrics" is never read as these.
+        from stickler.decisions.accumulator import DecisionAccumulator
+        from stickler.decisions.primitives import has_decision_fields
+
+        self._has_decisions = has_decision_fields(target_schema)
+        if self._has_decisions and not any(
+            isinstance(acc, DecisionAccumulator) for acc in self._accumulators
+        ):
+            self._accumulators.append(DecisionAccumulator(target_schema))
+        self._decision_accumulator = next(
+            (acc for acc in self._accumulators if isinstance(acc, DecisionAccumulator)),
+            None,
+        )
 
         # Names key accumulator_metrics; duplicates would silently overwrite.
         name_counts = Counter(acc.name for acc in self._accumulators)
@@ -237,6 +255,20 @@ class BulkStructuredModelEvaluator:
                 print(
                     f"Individual results will be appended to: {self.individual_results_jsonl}"
                 )
+
+    def _jsonl_default(self, value: Any) -> Any:
+        """Serialise non-JSON values in a JSONL record.
+
+        ``str`` everywhere, for parity with ``save_metrics()``, except that a
+        schema with decision fields writes model instances as dicts: the
+        decision metrics read gold values out of whole-object rows when the
+        JSONL is replayed through ``update_from_comparison_result()``.
+        """
+        if self._has_decisions:
+            dump = getattr(value, "model_dump", None)
+            if callable(dump):
+                return dump()
+        return str(value)
 
     def reset(self) -> None:
         """
@@ -300,6 +332,7 @@ class BulkStructuredModelEvaluator:
             pred_model: Predicted StructuredModel instance
             doc_id: Optional document identifier for error tracking
         """
+        given_doc_id = doc_id
         if doc_id is None:
             doc_id = f"doc_{self._processed_count}"
 
@@ -314,7 +347,7 @@ class BulkStructuredModelEvaluator:
             # Delegate to update_from_comparison_result which handles both
             # confusion matrix accumulation and confidence extraction
             # (via prediction_raw in the comparison result).
-            self.update_from_comparison_result(comparison_result, doc_id)
+            self.update_from_comparison_result(comparison_result, given_doc_id)
 
             # JSONL append of raw comparison result after accumulation
             # succeeds, so the file reflects "successfully accumulated"
@@ -333,7 +366,7 @@ class BulkStructuredModelEvaluator:
                     else doc_id
                 )
                 record = {"doc_id": jsonl_id, "comparison_result": comparison_result}
-                self._jsonl_handle.write(_jsonl_line(record) + "\n")
+                self._jsonl_handle.write(_jsonl_line(record, default=self._jsonl_default) + "\n")
                 # Flush per line preserves crash-resilience: a process
                 # killed mid-run still leaves a complete-line JSONL.
                 self._jsonl_handle.flush()
@@ -357,8 +390,11 @@ class BulkStructuredModelEvaluator:
             comparison_result: Dict from ``compare_with(include_confusion_matrix=True)``.
                 Must contain ``confusion_matrix``; ``prediction_raw`` and
                 ``field_comparisons`` are optional (used for confidence).
-            doc_id: Optional document identifier for error tracking.
+            doc_id: Optional document identifier for error tracking. An id
+                given here is also the document's identity for accumulators
+                that group by document; a generated one is not.
         """
+        given_doc_id = doc_id
         if doc_id is None:
             doc_id = f"doc_{self._processed_count}"
 
@@ -385,6 +421,11 @@ class BulkStructuredModelEvaluator:
             prediction_raw = comparison_result.get("prediction_raw")
             for acc in self._accumulators:
                 try:
+                    # getattr: an accumulator written against the interface
+                    # without subclassing it may not define the hook.
+                    start = getattr(acc, "start_document", None)
+                    if start is not None:
+                        start(given_doc_id)
                     acc.accumulate(comparison_result, prediction_raw)
                 except Exception as acc_err:
                     self._accumulator_errors[acc.name] += 1
@@ -718,6 +759,11 @@ class BulkStructuredModelEvaluator:
             total_time=total_time,
             non_matches=list(self._non_matches) if self.document_non_matches else None,
             confidence_metrics=confidence_metrics,
+            decision_metrics=(
+                accumulator_metrics.get(self._decision_accumulator.name)
+                if self._decision_accumulator is not None
+                else None
+            ),
             accumulator_metrics=accumulator_metrics or None,
             accumulator_errors=accumulator_errors,
         )

@@ -1,0 +1,59 @@
+{
+  "queue": {
+    "type": "choice",
+    "instructions": "Which support team should handle this ticket?",
+    "criteria": {
+      "billing": "Charges, invoices, payment methods, refunds of money already paid, plan prices",
+      "technical": "The product misbehaving: errors, crashes, outages, integrations, data not syncing",
+      "account": "Logging in, passwords, two-factor, user seats, account ownership, closing an account",
+      "shipping": "Physical deliveries: tracking, delays, lost or damaged parcels, addresses, returns in transit",
+      "sales": "Buying more: new plans, upgrades, quotes, volume pricing, trials, demos"
+    }
+  },
+  "priority": {
+    "type": "choice",
+    "instructions": "What priority should this ticket get in the support queue?",
+    "criteria": {
+      "low": "No harm in waiting a few days: general questions, suggestions, feedback",
+      "normal": "Should be handled within a business day; the customer is affected but not blocked",
+      "high": "The customer is blocked, losing money, or their business is down"
+    }
+  },
+  "ticket_type": {
+    "type": "choice",
+    "instructions": "What kind of ticket is this?",
+    "criteria": {
+      "question": "Asks how something works or for information",
+      "bug": "Reports that the product does not work as it should",
+      "refund_request": "Asks for money back",
+      "complaint": "Expresses dissatisfaction with the service, a policy or an experience, without asking mainly for money back",
+      "feature_request": "Asks for something the product does not do yet"
+    }
+  },
+  "frustration": {
+    "type": "score",
+    "instructions": "How frustrated is the customer who wrote this?",
+    "criteria": [
+      "Calm: neutral or friendly, no sign of annoyance",
+      "Annoyed: some impatience or disappointment, still polite",
+      "Frustrated: clearly upset, repeated problems or blunt language",
+      "Furious: angry or hostile, threatens to leave, escalate or go public"
+    ]
+  },
+  "needs_refund": {
+    "type": "noul",
+    "instructions": "Does the customer want money back?",
+    "criteria": {
+      "true": "Asks for a refund, a credit, a chargeback reversal or a reimbursement",
+      "false": "Does not ask for any money back, even if unhappy"
+    }
+  },
+  "urgent": {
+    "type": "noul",
+    "instructions": "Does this ticket need a response today?",
+    "criteria": {
+      "true": "A deadline today, an outage, money being lost, or a customer who cannot work",
+      "false": "Can wait until the next business day without harm"
+    }
+  }
+}
