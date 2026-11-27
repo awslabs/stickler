@@ -161,10 +161,9 @@ Object-level keys also raise at three positions where no class reads them. Besid
 `allOf` arm (inline or `$ref`) is merged into one class that nothing configures, and a root
 `$ref` builds the root class, which reads the keys beside that `$ref`; these two raise only
 if no other position builds the same object (a `$ref` under `not`, `additionalProperties`
-or `if` builds nothing). On an object-typed property at these positions, such as
-`{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold": 0.93}` or a
-property that only a root `"$ref": "#/$defs/Wrap/properties/inner"` reaches, they are
-ignored with a `UserWarning` instead; it becomes a `ValueError` in 1.1.0. The same
+or `if` builds nothing). This includes an object-typed property at these positions, such
+as `{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold": 0.93}` or a
+property that only a root `"$ref": "#/$defs/Wrap/properties/inner"` reaches. The same
 holds inside any `$ref` target that a position building a class references, wherever it
 sits, for example under `#/components/schemas/...`, or under `not`, `then`,
 `additionalProperties` or an `x-*` key in a `$defs` entry.

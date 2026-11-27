@@ -457,30 +457,6 @@ def _map_holders(pointer: Tuple[str, ...]) -> List[Optional[str]]:
     return holders
 
 
-def _is_property_pointer(pointer: Optional[Tuple[str, ...]]) -> bool:
-    """Whether a JSON pointer ends at a property: a schema under some node's
-    `properties`. Read from the root, so a property NAMED `properties` is a
-    name, not the keyword.
-
-    It decides whether model keys there warn or raise, so it errs toward a
-    property. A property in the walk's reading (`_map_holders`) is one. So is
-    a node that ends at a property where a key no schema has, such as
-    `components` or an `x-*` payload, holds a map whose members are schemas
-    named like keywords (`#/components/schemas/properties/properties/inner`,
-    a property of the schema named `properties`)."""
-    if not pointer:
-        return False
-    if _map_holders(pointer)[-2] == "properties":
-        return True
-    # What the next segment can be in each reading: a key of a schema
-    # ("schema"), a member of a map this reader does not know ("member"), an
-    # index ("index"), or a name under the keyword held.
-    readings = {"schema"}
-    for part in pointer[:-1]:
-        readings = _next_readings(readings, part)
-    return "properties" in readings
-
-
 def _walk_position(pointer: Tuple[str, ...]) -> Tuple[str, Optional[str], bool]:
     """Where the walk would meet the node at `pointer` if it entered every
     key: the path it would name, "property" or "items" when the node is one,
@@ -555,26 +531,6 @@ def _pointer_position(pointer: Tuple[str, ...]) -> str:
     for part in pointer:
         position = _position_after(position, part)
     return position
-
-
-def _next_readings(readings: set, part: str) -> set:
-    """What the segment after `part` can be, in each reading of `part`."""
-    following = set()
-    for expect in readings:
-        if expect == "member" or (
-            expect == "schema"
-            and part not in _NAMED_SCHEMA_KEYWORDS
-            and part not in _LISTED_SCHEMA_KEYWORDS
-            and part not in _SINGLE_SCHEMA_KEYWORDS
-        ):
-            following.update(("schema", "member"))
-        elif expect == "schema" and part in _NAMED_SCHEMA_KEYWORDS:
-            following.add(part)
-        elif expect == "schema" and part in _LISTED_SCHEMA_KEYWORDS:
-            following.add("index")
-        else:
-            following.add("schema")
-    return following
 
 
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})
@@ -684,7 +640,7 @@ class JsonSchemaImporter:
         except Exception as exc:
             raise ValueError(f"Invalid JSON Schema: {exc}") from exc
 
-        unread_warnings = self._validate_supported_shapes(schema)
+        self._validate_supported_shapes(schema)
         if (
             not properties
             and "properties" in self.schema
@@ -723,19 +679,11 @@ class JsonSchemaImporter:
                 )
             return {}
 
-        fields = self._convert_model_fields(
+        return self._convert_model_fields(
             source_model,
             field_path=self.field_path,
             building=set(),
         )
-        # Issued only once the import builds: one that fails anyway, such as a
-        # root `$ref` to a property typed `["object", "null"]`, would otherwise
-        # warn that a key "is ignored" with advice that cannot be followed. No
-        # fields fails the import at the caller.
-        if fields:
-            for message in unread_warnings:
-                warnings.warn(message, UserWarning)
-        return fields
 
     def _convert_model_fields(
         self,
@@ -1493,7 +1441,7 @@ class JsonSchemaImporter:
         return prepare(schema)
 
     @classmethod
-    def _validate_supported_shapes(cls, schema: Dict[str, Any]) -> List[str]:
+    def _validate_supported_shapes(cls, schema: Dict[str, Any]) -> None:
         """Reject shapes the comparison model cannot represent faithfully.
 
         Also where extension keys are checked, because this walk sees every node
@@ -1531,11 +1479,9 @@ class JsonSchemaImporter:
         reads it: another property that `$ref`s the node does not. The rest of
         the entry around a target builds nothing, as an unused entry does.
 
-        Model keys no class reads raise, except on an object-typed property,
-        a position the docs call valid for them: beside its `$ref`, or reached
-        only through the root `$ref` or an `allOf` arm. There they are dropped,
-        as before, with a warning until 1.1.0. The warnings are returned, for
-        the caller to issue once the import builds.
+        Model keys no class reads raise, wherever they sit: on `items`, a
+        combiner arm, or an object-typed property, beside its `$ref` or
+        reached only through the root `$ref` or an `allOf` arm (#609).
         """
         # Nodes whose model keys some class reads, by identity: every position
         # except an `allOf` arm and the root's own `$ref` target. Over-counting
@@ -1558,10 +1504,6 @@ class JsonSchemaImporter:
         unbuilt: Dict[int, Tuple[Any, ...]] = {}
         inner: set = set()
         passed: List[int] = []
-        # Warnings for model keys no class reads, by node and key. Returned, and
-        # issued only once the import builds, so an import that raises here or
-        # later gives none.
-        deferred: Dict[Tuple[int, str], str] = {}
         # Definition entries a `$ref` reached, and later every body walked as
         # building nothing, by identity; and every set of definitions passed,
         # so the rest can be walked last.
@@ -1579,30 +1521,17 @@ class JsonSchemaImporter:
             return _ref_chain(schema, node, where, pointer)
 
         def unread(
-            node: Any,
             declared: List[str],
             subject: str,
             reason: str,
             advice: str,
-            warn: bool,
         ) -> None:
-            """Raise for model keys no class reads. On an object-typed
-            property, where the docs call them valid, record a warning instead,
-            until 1.1.0, and let the import go on: it builds what it builds
-            without the keys, and warns, or it still fails and does not warn."""
-            if not warn:
-                raise ValueError(
-                    f"Stickler extension '{declared[0]}' {subject} is not "
-                    f"read{reason}. {advice} Left in place it would be dropped "
-                    "silently."
-                )
-            for key in declared:
-                deferred.setdefault(
-                    (id(node), key),
-                    f"Stickler extension '{key}' {subject} is not read{reason}. "
-                    f"{advice} It is ignored, and this becomes a ValueError in "
-                    "1.1.0.",
-                )
+            """Raise for model keys no class reads."""
+            raise ValueError(
+                f"Stickler extension '{declared[0]}' {subject} is not "
+                f"read{reason}. {advice} Left in place it would be dropped "
+                "silently."
+            )
 
         def walk(
             node: Any,
@@ -1660,17 +1589,12 @@ class JsonSchemaImporter:
                     hops = list(chain(node, ""))
                     # Through an alias, the class is the end of the chain.
                     source = hops[-1][1] if len(hops) > 1 else f"'{ref}'"
-                    # `items` and a combiner arm are positions no doc names
-                    # for these keys, so they raise. An object-typed property
-                    # is one the docs call valid for them, so it warns.
                     found = (
-                        node,
                         declared,
                         f"beside the '$ref' at '{path}'",
                         f": the class is built from {source}, which reads only "
                         "its own keys",
                         "Put it there.",
-                        scope == "field_or_model",
                     )
                     if built:
                         unread(*found)
@@ -1881,9 +1805,7 @@ class JsonSchemaImporter:
         # An object's model keys are read only where its class is built. An
         # `allOf` arm is merged into `AllOfModel`, and a root `$ref` builds the
         # root class from the root's own keys, so keys there are dropped unless
-        # another position builds the same object. See #340. An object-typed
-        # property is a position the docs call valid for these keys, so there
-        # it warns until 1.1.0.
+        # another position builds the same object. See #340 and #609.
         def check(
             node: Any,
             where: str,
@@ -1891,16 +1813,14 @@ class JsonSchemaImporter:
             reached: str,
             advice: str,
         ) -> None:
-            for hop, hop_where, hop_pointer in chain(node, where, pointer):
+            for hop, hop_where, _ in chain(node, where, pointer):
                 declared = sorted(key for key in hop if key in _KNOWN_MODEL_EXTENSIONS)
                 if declared and id(hop) not in read:
                     unread(
-                        hop,
                         declared,
                         f"on {hop_where}",
                         f" when it is reached through {reached}",
                         advice,
-                        _is_property_pointer(hop_pointer) and _is_object_schema(hop),
                     )
 
         for arm, arm_path, at in merged:
@@ -1923,8 +1843,6 @@ class JsonSchemaImporter:
                 "The root class reads the root's own keys: put it on the root, "
                 "beside the '$ref'.",
             )
-
-        return list(deferred.values())
 
     @staticmethod
     def _translate_import_error(message: str, schema: Dict[str, Any]) -> str:

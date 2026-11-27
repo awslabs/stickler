@@ -258,8 +258,7 @@ of them, they go on the array property, which reads only the weight for an
 array of objects.
 Object-level keys beside a non-root `$ref` are not read (they go on the target),
 nor on an `allOf` arm or an object reached only through `allOf` or a root
-`$ref`, so they raise there. On an object-typed property at these positions
-they are ignored with a warning instead, which becomes a `ValueError` in 1.1.0.
+`$ref`, so they raise there, on an object-typed property too.
 The same holds inside any `$ref` target that a position building a class
 references, wherever it sits (for example `#/components/...`, or under `not`,
 `then`, `additionalProperties` or an `x-*` key in a `$defs` entry). On a `$ref`
