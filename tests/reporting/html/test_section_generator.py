@@ -120,12 +120,16 @@ class TestSectionGenerator:
 
     def test_executive_summary_card_does_not_score_a_bool_metric(self):
         """A True card is not a coloured 1.000: bool is an int subclass (#467)."""
+        from stickler.reporting.html.utils import ColorUtils
+
         generator = SectionGenerator({'overall': {'cm_f1': True}}, self.mock_viz_engine)
+        config = ReportConfig()
 
-        result = generator.generate_executive_summary(ReportConfig())
+        result = generator.generate_executive_summary(config)
 
-        assert 'style="color: #010101;">True' in result
-        assert '1.000' not in result
+        excellent = ColorUtils.get_performance_color(1, config.color_thresholds)
+        assert '>True</div>' in result
+        assert f'color: {excellent};">True' not in result
 
     def test_executive_summary_escapes_the_document_count(self):
         """A document_count assigned after construction is not validated, so it is escaped."""
