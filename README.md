@@ -289,6 +289,7 @@ Omitting it is safe but blunt. The fallback reads structure and never field name
 | `"BERTComparator"` | Deep semantic understanding | BERT model for contextual similarity. Needs the `[bert]` extra |
 | `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning. Needs the `[llm]` extra |
 | `"BBoxIoUComparator"` | Bounding boxes, spatial localization | Intersection over Union (IoU) between two boxes; accepts `[[x1,y1],[x2,y2]]` or `[x1,y1,x2,y2]`. See [Bounding Box mAP Metrics](docs/docs/Advanced/bbox-map-metrics.md) for end-to-end mAP scoring |
+| `"PointDistanceComparator"` | 2D or 3D positions, keypoints | Euclidean distance; score = 1 - (distance / max_distance), floored at 0. Needs `max_distance` in the comparator config |
 | `"NormalizedComparator"` | Formatting-insensitive equality | Compares after an explicit set of normalizations — by default case, whitespace, and punctuation |
 | `"ANLSStarComparator"` | Dicts and nesting with keys unknown up front | Scores structured values by ANLS*. Where the keys *are* known, a nested model is the better tool |
 | `"DateComparator"` | Dates in mixed formats, partial dates, ranges | Parses both sides as dates and scores on a tier system |

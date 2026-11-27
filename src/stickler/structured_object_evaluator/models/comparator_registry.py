@@ -38,6 +38,7 @@ class ComparatorRegistry:
         "StructuredModelComparator": ("stickler.comparators.structured", None, None),
         "ANLSStarComparator": ("stickler.comparators.anls", None, None),
         "BBoxIoUComparator": ("stickler.comparators.bbox", None, None),
+        "PointDistanceComparator": ("stickler.comparators.point_distance", None, None),
         "SemanticComparator": ("stickler.comparators.semantic", None, None),
         "BERTComparator": ("stickler.comparators.bert", "evaluate", "bert"),
         "LLMComparator": ("stickler.comparators.llm", "strands", "llm"),
