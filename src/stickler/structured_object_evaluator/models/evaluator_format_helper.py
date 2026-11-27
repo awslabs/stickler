@@ -36,10 +36,9 @@ class EvaluatorFormatHelper:
                 missed value from a spurious one.
 
         Returns:
-            Dictionary in evaluator format with overall, fields,
-            confusion_matrix and non_matches. ``non_matches`` holds the records
-            when ``result`` carries them (``document_non_matches=True``), and
-            ``[]`` otherwise, as in 1.0.0
+            Dictionary in evaluator format with overall, fields and
+            confusion_matrix. ``non_matches`` is present only when ``result``
+            carries it (``document_non_matches=True``).
         """
         field_scores = result["field_scores"]
         overall_score = result["overall_score"]
