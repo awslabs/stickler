@@ -18,16 +18,19 @@ def _cosine_distance(x, y) -> float:
     """Cosine distance between two embedding vectors, in numpy.
 
     Mirrors ``scipy.spatial.distance.cosine`` operation for operation, so
-    results are identical, without making scipy (about 97 MB installed) a
-    dependency of the ``semantic`` extra (#605). Like scipy, a zero vector
+    results are identical, without making scipy a dependency of the
+    ``semantic`` extra (#605). Like scipy, a zero vector
     gives NaN with a numpy ``RuntimeWarning``, and the result is clipped to
     [0, 2] to absorb rounding error.
 
     Raises:
         ValueError: If either input is not 1-D, or the lengths differ.
+        TypeError: If either input is complex, as scipy does.
     """
     u = np.asarray(x)
     v = np.asarray(y)
+    if np.iscomplexobj(u) or np.iscomplexobj(v):
+        raise TypeError("u and v must be real")
     if u.ndim != 1 or v.ndim != 1:
         raise ValueError("Input vector should be 1-D.")
     uv = np.dot(u, v)

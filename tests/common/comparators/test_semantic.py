@@ -231,11 +231,19 @@ def test_similarity_is_one_minus_distance():
     ],
 )
 def test_bad_shapes_raise_like_scipy(x, y):
+    with pytest.raises(ValueError):
+        _cosine_distance(x, y)
     cosine = _scipy_cosine()
     with pytest.raises(ValueError):
         cosine(x, y)
-    with pytest.raises(ValueError):
-        _cosine_distance(x, y)
+
+
+def test_complex_input_raises_like_scipy():
+    with pytest.raises(TypeError):
+        _cosine_distance([1 + 1j, 2.0], [1.0, 2.0])
+    cosine = _scipy_cosine()
+    with pytest.raises(TypeError):
+        cosine([1 + 1j, 2.0], [1.0, 2.0])
 
 
 def test_semantic_comparator_scores_without_scipy():
