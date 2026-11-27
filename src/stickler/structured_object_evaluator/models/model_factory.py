@@ -94,16 +94,23 @@ class ModelFactory:
                    Field configuration format:
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
-                       "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
+                       "comparator": "LevenshteinComparator|ExactComparator|auto|etc.",
+                           # Required for a primitive field, unless
+                           # infer_unspecified_fields is true or the value is "auto"
                        "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be a number from 0.0 to 1.0, else ValueError
                        "threshold": 0.8,  # Optional; default: a threshold named on the comparator (comparator_config or a custom constructor), else 0.5
                        "weight": 2.0,     # Optional, default 1.0
+                       "clip_under_threshold": true,  # Optional, default true
                        "required": true,  # Optional, default false
                        "default": "value", # Optional
                        "description": "Field description",  # Optional
                        "alias": "field_alias",  # Optional
                        "examples": ["example1", "example2"]  # Optional
                    }
+                   A field whose comparator is inferred ("auto", or
+                   infer_unspecified_fields) takes any threshold, weight and
+                   clip_under_threshold it does not state from inference, not
+                   from the defaults above.
             base_class: The base class to extend (typically StructuredModel).
                        If None, will be imported to avoid circular dependency.
             path_prefix: Dotted path of the field this model hangs off, ``""``

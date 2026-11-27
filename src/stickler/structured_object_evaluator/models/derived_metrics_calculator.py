@@ -24,7 +24,8 @@ class DerivedMetricsCalculator:
     - Calculates precision, recall, F1, and accuracy via MetricsHelper
     - Supports both traditional and FD-inclusive recall formulas
     - Handles both 'overall' and 'aggregate' metrics
-    - Preserves all existing result structure and metadata
+    - Keeps existing keys, except that a flat leaf field is rewrapped (see
+      ``add_derived_metrics_to_result``)
     
     Formulas (implemented in MetricsHelper):
     -----------------------------------------
@@ -42,7 +43,7 @@ class DerivedMetricsCalculator:
     ...     "fields": {}
     ... }
     >>> result_with_derived = calculator.add_derived_metrics_to_result(result)
-    >>> print(result_with_derived["derived"])
+    >>> print(result_with_derived["overall"]["derived"])
     {'cm_precision': 0.8, 'cm_recall': 0.888..., 'cm_f1': 0.842..., 'cm_accuracy': 0.727...}
     """
     
@@ -71,8 +72,9 @@ class DerivedMetricsCalculator:
         1. Recursively process all child fields first (depth-first traversal)
         2. Calculate derived metrics for 'overall' if present
         3. Calculate derived metrics for 'aggregate' if present
-        4. Add 'derived' and 'aggregate_derived' fields at each level
-        5. Preserve all existing keys and structure
+        4. Add a 'derived' field to each 'overall' and 'aggregate' dict
+        5. Keep existing keys, rewrapping a flat leaf field as
+           ``{"overall": {...}}`` (see Notes)
         
         Args:
             result: Result from compare_recursive with confusion matrix metrics.
@@ -91,8 +93,9 @@ class DerivedMetricsCalculator:
                            If False, use traditional recall (TP/(TP+FN))
         
         Returns:
-            Modified result with 'derived' and 'aggregate_derived' fields added.
-            The derived field contains:
+            Shallow copy of the result (see Notes) with a 'derived' field added to
+            each 'overall' and 'aggregate' dict, for example
+            ``result["overall"]["derived"]``. The derived field contains:
             {
                 "cm_precision": float,  # TP / (TP + FP)
                 "cm_recall": float,     # TP / (TP + FN) or TP / (TP + FN + FD)
@@ -102,9 +105,13 @@ class DerivedMetricsCalculator:
         
         Notes:
         ------
-        - The method does not modify the original result dictionary
+        - The top-level dictionary is shallow-copied, but the nested 'overall'
+          and 'aggregate' dictionaries are written in place, so the caller's own
+          result gains 'derived' fields too
         - Handles arbitrary nesting depth through recursion
-        - Preserves all existing keys and structure
+        - Existing keys are kept, except that a flat leaf field (a bare
+          counts dict) is rewrapped as ``{"overall": {...}}`` in the copy; the
+          caller's original is left unchanged
         - Works with both new hierarchical and legacy flat result formats
         - Gracefully handles missing metrics (returns 0.0 for derived metrics)
         
@@ -121,9 +128,9 @@ class DerivedMetricsCalculator:
         ...     }
         ... }
         >>> result_with_derived = calculator.add_derived_metrics_to_result(result)
-        >>> assert "derived" in result_with_derived
-        >>> assert "aggregate_derived" in result_with_derived
-        >>> assert "cm_precision" in result_with_derived["derived"]
+        >>> assert "derived" in result_with_derived["overall"]
+        >>> assert "derived" in result_with_derived["aggregate"]
+        >>> assert "cm_precision" in result_with_derived["overall"]["derived"]
         """
         from .metrics_helper import MetricsHelper
         
