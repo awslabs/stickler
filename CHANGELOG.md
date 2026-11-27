@@ -665,8 +665,10 @@ Each release links to full notes on the
   `1` showed uncoloured, and now shows as `1.000` in a threshold colour. The
   Documents card ignored a results dict's `document_count` key and could render
   `None`. The count is now read in one place,
-  `DataExtractor.get_document_count`, so the bulk title and
-  `ReportResult.metadata["document_count"]` change the same way
+  `DataExtractor.get_document_count`. The bulk title and
+  `ReportResult.metadata["document_count"]` now show `1` instead of `None` for a
+  `ProcessEvaluation` without a count, and the metadata reports a results dict's
+  own `document_count` instead of `1`
   ([#467](https://github.com/awslabs/stickler/issues/467))
 
 - **The HTML report is fast to write again with `individual_results_jsonl_path`.**
