@@ -169,8 +169,8 @@ def _bbox_list_score(gt_boxes, pred_boxes, threshold, item_type) -> float:
     """Score a list-of-bboxes field.
 
     A bounding box *is* a list, so there is no scalar spelling of a bbox field
-    to compare against -- ``v: List[int]`` is a list field over coordinates,
-    not one box. These cases therefore assert against
+    to compare against; one box held in a list field is scored whole (#635,
+    ``test_bbox_list_field.py``). These cases therefore assert against
     ``BBoxIoUComparator().compare(...)`` called directly on whole boxes.
     """
 

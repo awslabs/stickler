@@ -186,6 +186,21 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **`BBoxIoUComparator` on a list field scores the box, not its coordinates.**
+  A field holding one box as a list (`List[float]`, `Optional[List[float]]`,
+  `Sequence[float]`, bare `list`, or a JSON Schema `array` or config `list`
+  field) paired the coordinates one by one and scored `0.0` even against an
+  identical box, with one count per coordinate. It now scores the IoU and
+  counts one decision, as a tuple-typed box does: one TP or FD, one FN or FA
+  against `None`, `[]` or a list of only `None` or NaN, and one FD for a
+  malformed or string-element value against a box. The annotation decides
+  when it names the element type, also through a union, `NewType` or type
+  alias, so a `List[List[float]]` field stays a list of boxes whatever the
+  prediction's shape; a bare `list` is decided by the ground truth. Only fields that use
+  `BBoxIoUComparator` change score. A custom comparator opts in by overriding
+  `scores_as_one_value()`
+  ([#635](https://github.com/awslabs/stickler/issues/635)).
+
 - **A comparator key on a nested model now warns instead of being dropped in
   silence or refused.** A nested model is scored field by field, so its
   comparator is never called, as on the Python path. `comparator` on a
