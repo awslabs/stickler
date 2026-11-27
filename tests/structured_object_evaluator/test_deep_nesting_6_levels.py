@@ -20,6 +20,7 @@ Level 1: Company
 
 from typing import List, Optional
 
+from stickler.comparators.base import BaseComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import (
@@ -514,10 +515,9 @@ class TestDeepNesting6Levels:
         )
         print(f"   Found hierarchical structure with nesting depth: {nested_levels}")
 
-    def test_performance_with_deep_nesting(self):
-        """Test performance and memory usage with deep nesting."""
+    def test_performance_with_deep_nesting(self, monkeypatch):
+        """Bound comparison work and memory usage with deep nesting."""
         import os
-        import time
 
         import psutil
 
@@ -530,29 +530,40 @@ class TestDeepNesting6Levels:
         for i in range(10):  # Create 10 companies for stress testing
             companies.append(self.create_test_company("base"))
 
-        # Measure evaluation time
-        start_time = time.time()
+        # Bound the work for each fixture with reporting enabled. Accept fewer
+        # calls so comparison optimizations can still pass.
+        comparison_budgets = (("level6_diff", 13_920), ("level3_diff", 15_665))
+        original_compare = BaseComparator.compare
+        comparison_calls = 0
+
+        def count_compare(self, str1, str2):
+            nonlocal comparison_calls
+            comparison_calls += 1
+            return original_compare(self, str1, str2)
+
+        monkeypatch.setattr(BaseComparator, "compare", count_compare)
 
         results = []
         for i, company in enumerate(companies):
-            # Compare with slightly modified version
-            modified = self.create_test_company(
-                "level6_diff" if i % 2 == 0 else "level3_diff"
+            variation, max_comparisons = comparison_budgets[i % len(comparison_budgets)]
+            modified = self.create_test_company(variation)
+            comparison_calls = 0
+            result = company.compare_with(
+                modified,
+                include_confusion_matrix=True,
+                document_non_matches=True,
+                evaluator_format=True,
             )
-            result = company.compare_with(modified, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
+            assert 0 < comparison_calls <= max_comparisons, (
+                f"{variation}: expected 1 to {max_comparisons} comparator calls, "
+                f"got {comparison_calls}"
+            )
             results.append(result)
-
-        end_time = time.time()
-        evaluation_time = end_time - start_time
 
         # Measure final memory
         final_memory = process.memory_info().rss / (1024 * 1024)  # MB
         memory_increase = final_memory - initial_memory
 
-        # Performance assertions
-        assert evaluation_time < 35.0, (
-            f"Evaluation took too long: {evaluation_time:.2f} seconds"
-        )
         assert memory_increase < 100.0, (
             f"Memory usage increased too much: {memory_increase:.2f} MB"
         )
@@ -560,11 +571,6 @@ class TestDeepNesting6Levels:
         # Verify all evaluations completed successfully
         assert len(results) == 10, "Not all evaluations completed"
         assert all("overall" in result for result in results), "Some evaluations failed"
-
-        print("✅ Performance test passed")
-        print(f"   Evaluation time: {evaluation_time:.2f} seconds for 10 companies")
-        print(f"   Memory increase: {memory_increase:.2f} MB")
-        print(f"   Average time per evaluation: {evaluation_time / 10:.3f} seconds")
 
     def test_lists_of_nested_objects_6_levels(self):
         """Test lists containing deeply nested objects."""
