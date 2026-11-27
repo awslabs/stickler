@@ -163,6 +163,21 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **A field rebuilt from an `x-comparison` dict now gets the comparator that
+  dict names.** For a field with no `ComparableField` runtime data, such as
+  `Field(json_schema_extra={"x-comparison": ...})`, the comparator was rebuilt
+  from a private list of six names, and every other one, including ANLS*,
+  Date, Fuzzy, BBoxIoU and Semantic, became `LevenshteinComparator` with no
+  warning. It is now resolved through the comparator registry with its
+  `comparator_config`, so **scores move for affected rebuilt models**: two
+  disjoint dicts in a `List[Dict]` go from 0.80 to 0.0, and the same date in
+  two formats from 0.0 to 1.0, as on the original. A name the registry does
+  not know, or one it cannot build from config alone (`LLMComparator`), still
+  scores with Levenshtein but emits a `UserWarning` naming the field.
+  `x-comparison` now records `comparator_explicit`, so an inferred comparator
+  no longer comes back marked as declared
+  ([#432](https://github.com/awslabs/stickler/issues/432)).
+
 - **`BBoxIoUComparator` on a list field scores the box, not its coordinates.**
   A field holding one box as a list (`List[float]`, `Optional[List[float]]`,
   `Sequence[float]`, bare `list`, or a JSON Schema `array` or config `list`
