@@ -8,7 +8,10 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
-from .comparison_helper import scalar_pair_reaches_comparator
+from .comparison_helper import (
+    list_pair_is_one_value,
+    scalar_pair_reaches_comparator,
+)
 from .configuration_helper import ConfigurationHelper
 from .null_helper import NullHelper
 from .reporting_context import ReportingContext
@@ -136,6 +139,20 @@ class ComparisonDispatcher:
         pred_needs_hierarchy = self.model._should_use_hierarchical_structure(
             pred_val, field_name
         )
+
+        # A list the comparator reads as one value, such as a box, is one
+        # decision: one TP or FD, and one FN or FA against an absent side,
+        # as a tuple-typed box already is (#635).
+        if list_pair_is_one_value(
+            self.model.__class__, field_name, info.comparator, gt_val, pred_val
+        ):
+            if NullHelper.is_effectively_null_for_lists(gt_val):
+                return ResultHelper.create_false_alarm_result(weight)
+            if NullHelper.is_effectively_null_for_lists(pred_val):
+                return ResultHelper.create_false_negative_result(weight)
+            return self.field_comparator.compare_primitive_with_scores(
+                gt_val, pred_val, field_name
+            )
 
         # ============================================================================
         # STEP 3: Handle list field null cases (early exit)
