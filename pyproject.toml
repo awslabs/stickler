@@ -58,7 +58,8 @@ dev = [
     # tests. Not imported anywhere in src/.
     "psutil>=5.9.6,<7.0.0",
     # The suite exercises every optional module; scipy and scikit-learn also
-    # serve as development metric oracles for tests/test_statistics.py.
+    # serve as development metric oracles for tests/test_statistics.py and
+    # tests/common/comparators/test_semantic.py.
     "jinja2>=3.1.6,<3.2.0",
     "pandas>=2.1.1,<3.0.0",
     "scipy>=1.12.0,<2.0.0",
@@ -94,9 +95,9 @@ bert = [
     "bert-score>=0.3.0",
 ]
 semantic = [
+    # Titan embeddings via Bedrock. The cosine itself is numpy, a core
+    # dependency (#605).
     "boto3>=1.28.0",
-    # SemanticComparator's cosine similarity uses scipy.spatial.
-    "scipy>=1.12.0,<2.0.0",
 ]
 # Confidence calibration is part of the core dependency set, so this extra is
 # empty. Kept as a no-op so `pip install "stickler-eval[confidence]"` keeps
@@ -158,7 +159,8 @@ test = [
     # Used by examples/notebooks/Review_Efficiency_Exploration.ipynb.
     "matplotlib>=3.8.0",
     # The suite exercises every optional module; scipy and scikit-learn also
-    # serve as development metric oracles for tests/test_statistics.py.
+    # serve as development metric oracles for tests/test_statistics.py and
+    # tests/common/comparators/test_semantic.py.
     "jinja2>=3.1.6,<3.2.0",
     "pandas>=2.1.1,<3.0.0",
     "scipy>=1.12.0,<2.0.0",

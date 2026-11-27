@@ -1,9 +1,12 @@
 """Semantic comparator for embedding-based similarity."""
 
 import logging
+import math
 import sys
 from functools import partial
 from typing import Callable, Optional
+
+import numpy as np
 
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.utils import generate_bedrock_embedding
@@ -12,25 +15,29 @@ logger = logging.getLogger(__name__)
 
 
 def _cosine_distance(x, y) -> float:
-    """Cosine distance between two embedding vectors.
+    """Cosine distance between two embedding vectors, in numpy.
 
-    scipy is imported here rather than at module scope: ``SemanticComparator``
-    is a top-level export, so a module-level import would put scipy on the
-    ``import stickler`` path for every user, including those who never compute
-    an embedding.
+    Mirrors ``scipy.spatial.distance.cosine`` operation for operation, so
+    results are identical, without making scipy a dependency of the
+    ``semantic`` extra (#605). Like scipy, a zero vector
+    gives NaN with a numpy ``RuntimeWarning``, and the result is clipped to
+    [0, 2] to absorb rounding error.
 
     Raises:
-        ImportError: If scipy is not installed.
+        ValueError: If either input is not 1-D, or the lengths differ.
+        TypeError: If either input is complex, as scipy 1.17+ does.
     """
-    try:
-        from scipy import spatial
-    except ImportError as exc:  # pragma: no cover - exercised by the extras gate
-        raise ImportError(
-            "SemanticComparator's cosine similarity requires scipy. Install it "
-            'with: pip install "stickler-eval[semantic]"'
-        ) from exc
-
-    return spatial.distance.cosine(x, y)
+    u = np.asarray(x)
+    v = np.asarray(y)
+    if np.iscomplexobj(u) or np.iscomplexobj(v):
+        raise TypeError("u and v must be real")
+    if u.ndim != 1 or v.ndim != 1:
+        raise ValueError("Input vector should be 1-D.")
+    uv = np.dot(u, v)
+    uu = np.dot(u, u)
+    vv = np.dot(v, v)
+    dist = 1.0 - uv / math.sqrt(uu * vv)
+    return float(np.clip(dist, 0.0, 2.0))
 
 
 def _embedding_function_name(embedding_function: Callable) -> str:

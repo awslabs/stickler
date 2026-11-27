@@ -31,7 +31,7 @@ export AWS_DEFAULT_REGION=us-east-1
 ```
 
 !!! warning "A failed embedding falls back to exact match"
-    If an embedding call fails, or scipy is missing, the comparator logs the error and scores the pair by exact string equality, so a paraphrase scores 0.0. Before trusting the scores, check the log for `Semantic embedding comparison failed` and score one known paraphrase pair.
+    If an embedding call fails, or boto3 is missing, the comparator logs the error and scores the pair by exact string equality, so a paraphrase scores 0.0. Before trusting the scores, check the log for `Semantic embedding comparison failed` and score one known paraphrase pair.
 
 ### Configuration
 

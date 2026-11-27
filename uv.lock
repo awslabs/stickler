@@ -4133,8 +4133,6 @@ all = [
     { name = "boto3" },
     { name = "jinja2" },
     { name = "pandas" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "strands-agents" },
 ]
 bert = [
@@ -4174,8 +4172,6 @@ reporting = [
 ]
 semantic = [
     { name = "boto3" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
 [package.dev-dependencies]
@@ -4256,7 +4252,6 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.10" },
     { name = "scikit-learn", marker = "extra == 'dev'", specifier = ">=1.7.2,<2.0.0" },
     { name = "scipy", marker = "extra == 'dev'", specifier = ">=1.12.0,<2.0.0" },
-    { name = "scipy", marker = "extra == 'semantic'", specifier = ">=1.12.0,<2.0.0" },
     { name = "stickler-eval", extras = ["llm", "semantic", "confidence", "docsplit", "reporting"], marker = "extra == 'all'" },
     { name = "strands-agents", marker = "extra == 'llm'", specifier = ">=1.14.0,<2.0.0" },
     { name = "torch", marker = "extra == 'bert'", specifier = ">=2.2.0" },

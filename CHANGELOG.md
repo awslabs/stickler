@@ -173,6 +173,15 @@ Each release links to full notes on the
   importer already refused the same misplacement
   ([#607](https://github.com/awslabs/stickler/issues/607)).
 
+- **The `semantic` extra no longer installs scipy.** `SemanticComparator`
+  computes its cosine similarity in numpy, a core dependency, so the extra is
+  boto3 alone and drops about 97 MB from container and Lambda images. Scores
+  are unchanged: the numpy code repeats `scipy.spatial.distance.cosine`'s
+  arithmetic, including NaN for a zero vector and clipping to [0, 2]. An
+  install without scipy now gets real semantic scores instead of falling back
+  to exact string equality. Add scipy yourself if you import it directly
+  ([#605](https://github.com/awslabs/stickler/issues/605)).
+
 ### Removed
 
 - The deprecated `stickler.structured_object_evaluator.models.confusion_matrix_calculator`
