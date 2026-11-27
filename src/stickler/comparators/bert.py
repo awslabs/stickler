@@ -41,7 +41,9 @@ class BERTComparator(BaseComparator):
         super().__init__(threshold=threshold)
         if model is None:
             raise ImportError(
-                "BERTScore model could not be loaded. Please install 'evaluate' package."
+                "BERTScore model could not be loaded. It needs the bert extra "
+                '(bert-score and torch): pip install "stickler-eval[bert]". '
+                "If that is installed, check the model can be downloaded."
             )
 
     def _compare(self, str1: Any, str2: Any) -> float:

@@ -39,11 +39,6 @@ class ComparisonHelperBase(ABC):
             )
         }
 
-    @abstractmethod
-    def create_entry(self, *args, **kwargs) -> Dict[str, Any]:
-        """Create an entry for the specific helper type. Must be implemented by subclasses."""
-        pass
-
     def get_match_threshold(self, obj_list: List[Any]) -> float:
         """Get the match threshold from the model class or return default.
         
@@ -197,6 +192,49 @@ class ComparisonHelperBase(ABC):
                 
         return entries
 
+    def _unmatched_entries(
+        self,
+        field_name: str,
+        items: List[Any],
+        side: str,
+        matched: set,
+    ) -> List[Dict[str, Any]]:
+        """Entries for the items of one side that no assignment matched.
+
+        Args:
+            field_name: Name of the list field
+            items: The ground truth list (side "gt") or prediction list (side "pred")
+            side: "gt" for False Negatives, "pred" for False Alarms
+            matched: Indices of ``items`` that an assignment already used
+
+        Returns:
+            List of entries, one set per present, unmatched item
+        """
+        is_gt = side == "gt"
+        reason = (
+            "false negative (unmatched ground truth)"
+            if is_gt
+            else "false alarm (unmatched prediction)"
+        )
+        entries = []
+        for idx, item in enumerate(items):
+            # A None element is absent, so it is never an FN or FA (#386).
+            if idx in matched or NullHelper.is_absent_element(item):
+                continue
+            entries.extend(
+                self._extract_entries_from_objects(
+                    field_name=field_name,
+                    gt_object=item if is_gt else None,
+                    pred_object=None if is_gt else item,
+                    gt_index=idx if is_gt else None,
+                    pred_index=None if is_gt else idx,
+                    is_match=False,
+                    similarity_score=0.0,
+                    reason=reason,
+                )
+            )
+        return entries
+
     def process_unmatched_gt_items(
         self, 
         field_name: str, 
@@ -213,27 +251,8 @@ class ComparisonHelperBase(ABC):
         Returns:
             List of entries for unmatched GT items
         """
-        entries = []
         matched_gt_indices = set(idx for idx, _ in assignments)
-        
-        for gt_idx, gt_item in enumerate(gt_list):
-            # A None element is absent, so it is never an FN (#386).
-            if gt_idx not in matched_gt_indices and not NullHelper.is_absent_element(
-                gt_item
-            ):
-                extracted_entries = self._extract_entries_from_objects(
-                    field_name=field_name,
-                    gt_object=gt_item,
-                    pred_object=None,
-                    gt_index=gt_idx,
-                    pred_index=None,
-                    is_match=False,
-                    similarity_score=0.0, 
-                    reason="false negative (unmatched ground truth)",
-                )
-                entries.extend(extracted_entries)
-                
-        return entries
+        return self._unmatched_entries(field_name, gt_list, "gt", matched_gt_indices)
 
     def process_unmatched_pred_items(
         self, 
@@ -251,27 +270,10 @@ class ComparisonHelperBase(ABC):
         Returns:
             List of entries for unmatched prediction items
         """
-        entries = []
         matched_pred_indices = set(idx for _, idx in assignments)
-        
-        for pred_idx, pred_item in enumerate(pred_list):
-            # A None element is absent, so it is never an FA (#386).
-            if pred_idx not in matched_pred_indices and not (
-                NullHelper.is_absent_element(pred_item)
-            ):
-                extracted_entries = self._extract_entries_from_objects(
-                    field_name=field_name,
-                    gt_object=None,
-                    pred_object=pred_item,
-                    gt_index=None,
-                    pred_index=pred_idx,
-                    is_match=False,  
-                    similarity_score=0.0,   
-                    reason="false alarm (unmatched prediction)",
-                )
-                entries.extend(extracted_entries)
-                
-        return entries
+        return self._unmatched_entries(
+            field_name, pred_list, "pred", matched_pred_indices
+        )
 
     def process_null_cases(
         self, 
@@ -289,52 +291,19 @@ class ComparisonHelperBase(ABC):
         Returns:
             List of entries for null cases
         """
-        entries = []
-
         # A list of only None elements is empty (#386). Enumerating the
         # original lists keeps each present element's original index.
         gt_present = NullHelper.present(gt_list)
         pred_present = NullHelper.present(pred_list)
 
-        # Check if both lists are empty
-        if not gt_present and not pred_present:
-            return entries
-
-        # Handle gt null case (FA items when GT is empty)
+        # The null case is the unmatched case with no assignments.
         if not gt_present and pred_present:
-            for pred_idx, pred_item in enumerate(pred_list):
-                if NullHelper.is_absent_element(pred_item):
-                    continue
-                extracted_entries = self._extract_entries_from_objects(
-                    field_name=field_name,
-                    gt_object=None,
-                    pred_object=pred_item,
-                    gt_index=None,
-                    pred_index=pred_idx,
-                    is_match=False,  
-                    similarity_score=0.0,    
-                    reason="false alarm (unmatched prediction)",
-                )
-                entries.extend(extracted_entries)
-
-        # Handle pred null case (FN items when prediction is empty)
-        elif gt_present and not pred_present:
-            for gt_idx, gt_item in enumerate(gt_list):
-                if NullHelper.is_absent_element(gt_item):
-                    continue
-                extracted_entries = self._extract_entries_from_objects(
-                    field_name=field_name,
-                    gt_object=gt_item,
-                    pred_object=None,
-                    gt_index=gt_idx,
-                    pred_index=None,
-                    is_match=False,  
-                    similarity_score=0.0, 
-                    reason="false negative (unmatched ground truth)",
-                )
-                entries.extend(extracted_entries)
-
-        return entries
+            # GT is empty: every present prediction item is a False Alarm.
+            return self._unmatched_entries(field_name, pred_list, "pred", set())
+        if gt_present and not pred_present:
+            # Prediction is empty: every present GT item is a False Negative.
+            return self._unmatched_entries(field_name, gt_list, "gt", set())
+        return []
 
     @abstractmethod
     def _extract_entries_from_objects(

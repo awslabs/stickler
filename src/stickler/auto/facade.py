@@ -27,7 +27,7 @@ from ..structured_object_evaluator.models.structured_model import (
     _annotation_is_list,
 )
 from ..structured_object_evaluator.models.threshold_helper import ThresholdHelper
-from .builder import specs_for, structured_model_for
+from .builder import _runtime_match_threshold, specs_for, structured_model_for
 
 #: Object-level match threshold applied when neither the caller nor the model
 #: declares one. ``None`` is the "caller said nothing" sentinel on the public
@@ -260,10 +260,6 @@ class EvalSpec:
             }
         return out
 
-    def _explain_structured(self) -> Dict[str, Dict[str, Any]]:
-        """Explain a passthrough StructuredModel from its explicit config."""
-        return self.explain()
-
 
 def eval_for(
     cls: Type[BaseModel],
@@ -283,15 +279,21 @@ def eval_for(
             weights stay uniform and precision/recall are not skewed by guessed
             business-criticality). Ignored for ``StructuredModel`` classes.
         match_threshold: The similarity score at or above which an OBJECT
-            counts as a match. It drives ``EvalResult.matched`` and, for
-            ``List[Model]`` fields, the Hungarian TP/FN/FA classification of
-            each element (at every nesting level). It does NOT change
-            per-field similarity scores or ``overall_score``.
+            counts as a match. It drives ``EvalResult.matched``. For a plain
+            pydantic class it also decides TP vs FD for each ``List[Model]``
+            and ``List[dict]`` element at every nesting level, and sets the
+            field threshold of nested plain-model and ``dict`` fields; a
+            primitive list keeps its inferred threshold.
+            ``EvalSpec.explain()`` shows the resolved values. On a
+            ``StructuredModel`` class this value drives only ``matched``:
+            list pairing and field thresholds keep their class values. It
+            does NOT change per-field similarity scores or ``overall_score``.
 
             Left unset, a ``StructuredModel`` subclass's own declared
             ``match_threshold`` wins, so the AS CONFIGURED promise above holds
             for this knob too; any other class gets
-            ``DEFAULT_MATCH_THRESHOLD``. Passing a value overrides both.
+            ``DEFAULT_MATCH_THRESHOLD``. Passing a value overrides both for
+            ``matched``.
     """
     if isinstance(cls, type) and issubclass(cls, StructuredModel):
         # Explicit configuration wins: never re-infer over a model the user
@@ -308,8 +310,14 @@ def eval_for(
         weight_hints=weight_hints,
         match_threshold=resolved,
     )
+    # Checked by the builder above, so this only converts: `matched` and
+    # `explain()` then read the float the model was built with, not the
+    # `Decimal` or numpy number the caller passed.
     return EvalSpec(
-        cls, eval_model, weight_hints=weight_hints, match_threshold=resolved
+        cls,
+        eval_model,
+        weight_hints=weight_hints,
+        match_threshold=_runtime_match_threshold(resolved),
     )
 
 
@@ -331,10 +339,13 @@ def evaluate(
         prediction: The instance to score (e.g. a Strands ``response_model``).
         weight_hints: Enable name-token weight heuristics (default off).
         match_threshold: The similarity score at or above which an object
-            counts as a match (drives ``EvalResult.matched`` and list-element
-            TP/FN classification; does not change similarity scores). Left
-            unset, a ``StructuredModel``'s own declaration wins; see
-            :func:`eval_for`.
+            counts as a match (drives ``EvalResult.matched`` and, for a plain
+            pydantic class, ``List[Model]`` and ``List[dict]`` element TP/FD
+            classification and the field threshold of nested plain-model and
+            ``dict`` fields; on a
+            ``StructuredModel`` class it drives only ``matched``; does not
+            change similarity scores). Left unset, a ``StructuredModel``'s own
+            declaration wins; see :func:`eval_for`.
 
     Returns:
         An :class:`EvalResult` with ``overall_score``, ``precision``,

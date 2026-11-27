@@ -39,6 +39,7 @@ comparator = NumericComparator()
 - Specialized for comparing numeric values
 - Configurable absolute and relative tolerance for floating-point comparisons
 - Handles type conversion from strings
+- Reads decimal digits in other scripts in string values (`١٢٥٠` equals `1250`)
 - Ideal for financial data or measurement comparisons
 
 #### Date Comparator
@@ -111,7 +112,7 @@ comparator = LLMComparator(
 - Uses LLM to determine semantic equivalence
 - Customizable prompt templates
 - Configurable temperature
-- Binary output (1.0 or 0.0)
+- Binary output: 1.0 only when the normalized reply is exactly `true`; any other reply scores 0.0 (with a `UserWarning` unless it is exactly `false`)
 - Note: Implementation in progress
 
 ### 4. Structured Data Comparators
@@ -138,6 +139,21 @@ comparator = BBoxIoUComparator(threshold=0.5)
 - For end-to-end mean Average Precision (mAP) scoring over fields, see the
   Bounding Box mAP Metrics documentation rather than using this comparator directly
 
+#### Point Distance Comparator
+```python
+comparator = PointDistanceComparator(max_distance=10.0, threshold=0.5)
+```
+- Scores two 2D `[x, y]` or 3D `[x, y, z]` points as
+  `max(0.0, 1.0 - distance / max_distance)` by Euclidean distance
+- `max_distance` is required and must be a finite number greater than 0
+- Accepts lists, tuples and 1D NumPy arrays of `numbers.Real` coordinates
+- Wrong length, mismatched dimensions, and non-numeric (including `Decimal`)
+  or non-finite coordinates score 0.0
+- Annotate a single point field as a `Tuple`: a `List[float]` point field
+  always scores 0.0, even against an identical point
+- A `Tuple` field exports as a string type, so a single point field does not
+  round-trip through `to_json_schema()` or `to_stickler_config()`
+
 ## Best Practices
 
 1. **Choosing the Right Comparator**
@@ -148,6 +164,7 @@ comparator = BBoxIoUComparator(threshold=0.5)
    - Use LevenshteinComparator for simple edit distance-based matching
    - Use NumericComparator for number comparisons
    - Use BBoxIoUComparator for bounding-box / spatial localization comparisons
+   - Use PointDistanceComparator for 2D or 3D positions
 
 2. **Threshold Selection**
    - Higher thresholds (>0.9) for strict matching

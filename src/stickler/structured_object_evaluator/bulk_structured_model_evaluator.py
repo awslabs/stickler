@@ -25,14 +25,104 @@ from stickler.structured_object_evaluator.models.confidence.accumulator import (
 from stickler.structured_object_evaluator.models.post_comparison_accumulator import (
     PostComparisonAccumulator,
 )
+from stickler.structured_object_evaluator.models.rich_value_helper import (
+    RichValueHelper,
+)
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
 
 logger = logging.getLogger(__name__)
 
 
+# Keys under which replacing a non-finite float with null would change replay
+# semantics. Confidence strings still fail validation, and bbox strings still
+# count as present but fail parsing, matching the direct update() path.
+_STRINGIFIED_NON_FINITE_KEYS = frozenset(
+    {
+        RichValueHelper.CONFIDENCE_KEY,
+        "prediction_confidences",
+        "ground_truth_bboxes",
+        "prediction_bboxes",
+    }
+)
+
+
+def _replace_non_finite(value: Any) -> Any:
+    """Copy ``value`` with every NaN or infinite float *value* replaced.
+
+    A non-finite float becomes ``None``, except a value under a
+    ``_STRINGIFIED_NON_FINITE_KEYS`` key, which becomes its string: ``"nan"``,
+    ``"inf"`` or ``"-inf"``. For confidence and bbox maps, null would mean
+    "absent" on replay while a string preserves the direct path's invalid-but-
+    present value.
+
+    Walks with an explicit stack, so depth is not limited by the recursion
+    limit. Keys are left alone: ``json.dumps`` already writes a float key as a
+    quoted string, so renaming keys could only merge them. A memo by ``id``
+    copies a shared container once and keeps a cycle a cycle, so ``json.dumps``
+    still reports it.
+    """
+    memo: Dict[int, Any] = {}
+    pending: List[Tuple[Any, Any, bool]] = []
+
+    def copy(item: Any, stringify_non_finite: bool) -> Any:
+        if isinstance(item, float):
+            if math.isfinite(item):
+                return item
+            return str(item) if stringify_non_finite else None
+        if not isinstance(item, (dict, list, tuple)):
+            return item
+        if id(item) not in memo:
+            memo[id(item)] = {} if isinstance(item, dict) else []
+            pending.append((item, memo[id(item)], stringify_non_finite))
+        return memo[id(item)]
+
+    result = copy(value, False)
+    while pending:
+        source, target, stringify_non_finite = pending.pop()
+        if isinstance(source, dict):
+            for key, item in source.items():
+                target[key] = copy(
+                    item,
+                    stringify_non_finite
+                    or key in _STRINGIFIED_NON_FINITE_KEYS,
+                )
+        else:
+            target.extend([copy(item, stringify_non_finite) for item in source])
+    return result
+
+
+def _jsonl_line(record: Dict[str, Any]) -> str:
+    """Serialize ``record`` as one strict-JSON line; see ``_replace_non_finite``.
+
+    ``json.dumps`` writes NaN and infinities as bare ``NaN``/``Infinity``, which
+    JS ``JSON.parse`` and other strict parsers reject (#450); a
+    blank pandas cell is NaN. Finite records take the single dump.
+    ``allow_nan=False`` raises ``ValueError`` only for a non-finite float or a
+    cycle, and a cycle raises again from the second dump, so no message check
+    is needed. ``default=str`` keeps numpy scalars and similar values from
+    crashing the writer, for parity with ``save_metrics()``.
+    """
+    try:
+        return json.dumps(record, default=str, allow_nan=False)
+    except ValueError:
+        # After the copy, a non-finite float can only be a dict key, which
+        # json.dumps writes as a quoted string, so the default allow_nan is
+        # still strict JSON.
+        return json.dumps(_replace_non_finite(record), default=str)
+
+
 def _join_path(prefix: str, name: str) -> str:
     return f"{prefix}.{name}" if prefix else name
+
+
+def _error_record(doc_id: str, exc: Exception, **extra: Any) -> Dict[str, Any]:
+    return {
+        "doc_id": doc_id,
+        "error": str(exc),
+        "error_type": type(exc).__name__,
+        **extra,
+    }
 
 
 def _migrate_legacy_acc_states(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -234,28 +324,22 @@ class BulkStructuredModelEvaluator:
                     self._jsonl_handle = open(
                         self.individual_results_jsonl, "a", encoding="utf-8"
                     )
-                record = {"doc_id": doc_id, "comparison_result": comparison_result}
-                # default=str for parity with save_metrics() — keeps
-                # numpy scalars and similar non-JSON-native values
-                # from crashing the writer.
-                self._jsonl_handle.write(json.dumps(record, default=str) + "\n")
+                # A missing value in a float id column is NaN. Written as null,
+                # the report could not select it; as "nan" it matches the id
+                # the report's tables show.
+                jsonl_id = (
+                    str(doc_id)
+                    if isinstance(doc_id, float) and not math.isfinite(doc_id)
+                    else doc_id
+                )
+                record = {"doc_id": jsonl_id, "comparison_result": comparison_result}
+                self._jsonl_handle.write(_jsonl_line(record) + "\n")
                 # Flush per line preserves crash-resilience: a process
                 # killed mid-run still leaves a complete-line JSONL.
                 self._jsonl_handle.flush()
 
         except Exception as e:
-            error_record = {
-                "doc_id": doc_id,
-                "error": str(e),
-                "error_type": type(e).__name__,
-            }
-
-            if not self.elide_errors:
-                self._errors.append(error_record)
-                self._confusion_matrix["overall"]["fn"] += 1
-
-            if self.verbose:
-                print(f"Error processing document {doc_id}: {str(e)}")
+            self._record_document_failure(doc_id, e)
 
     def update_from_comparison_result(
         self,
@@ -304,12 +388,9 @@ class BulkStructuredModelEvaluator:
                     acc.accumulate(comparison_result, prediction_raw)
                 except Exception as acc_err:
                     self._accumulator_errors[acc.name] += 1
-                    acc_error_record = {
-                        "doc_id": doc_id,
-                        "error": str(acc_err),
-                        "error_type": type(acc_err).__name__,
-                        "accumulator": acc.name,
-                    }
+                    acc_error_record = _error_record(
+                        doc_id, acc_err, accumulator=acc.name
+                    )
                     if not self.elide_errors:
                         self._errors.append(acc_error_record)
                     if self.verbose:
@@ -325,18 +406,16 @@ class BulkStructuredModelEvaluator:
                 print(f"Processed {self._processed_count} documents ({elapsed:.2f}s)")
 
         except Exception as e:
-            error_record = {
-                "doc_id": doc_id,
-                "error": str(e),
-                "error_type": type(e).__name__,
-            }
+            self._record_document_failure(doc_id, e)
 
-            if not self.elide_errors:
-                self._errors.append(error_record)
-                self._confusion_matrix["overall"]["fn"] += 1
+    def _record_document_failure(self, doc_id: str, exc: Exception) -> None:
+        error_record = _error_record(doc_id, exc)
+        if not self.elide_errors:
+            self._errors.append(error_record)
+            self._confusion_matrix["overall"]["fn"] += 1
 
-            if self.verbose:
-                print(f"Error processing document {doc_id}: {str(e)}")
+        if self.verbose:
+            print(f"Error processing document {doc_id}: {str(exc)}")
 
     def update_batch(
         self, batch_data: List[Tuple[StructuredModel, StructuredModel, Optional[str]]]

@@ -22,6 +22,7 @@ ALWAYS_AVAILABLE_EXPORTS = {
     "NormalizedComparator": "stickler.comparators.normalized",
     "NumericComparator": "stickler.comparators.numeric",
     "PhoneComparator": "stickler.comparators.phone",
+    "PointDistanceComparator": "stickler.comparators.point_distance",
     "SemanticComparator": "stickler.comparators.semantic",
     "StructuredModelComparator": "stickler.comparators.structured",
 }

@@ -10,11 +10,24 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 from stickler.structured_object_evaluator.models.bbox import MAPCalculator
 from stickler.utils.deprecation import warn_once
 
+from .aggregate_metrics_calculator import AggregateMetricsCalculator
+from .derived_metrics_calculator import DerivedMetricsCalculator
 from .reporting_context import ReportingContext
 
 if TYPE_CHECKING:
     from .confidence import ConfidenceMetric
     from .structured_model import StructuredModel
+
+#: Frames between ``warnings.warn`` and the user's ``compare_with`` call.
+#: Counted outward from ``warnings.warn``: ComparisonEngine.compare_with (1),
+#: StructuredModel.compare_with (2), caller (3).
+_COMPARE_WITH_WARN_STACKLEVEL = 3
+
+#: Frames between ``warnings.warn`` and the user's ``compare_with`` call, for
+#: ``warn_once``. Counted outward from ``warnings.warn``: warn_once (1),
+#: ComparisonEngine.compare_with (2), StructuredModel.compare_with (3),
+#: caller (4).
+_COMPARE_WITH_WARN_ONCE_STACKLEVEL = 4
 
 
 class ComparisonEngine:
@@ -24,7 +37,6 @@ class ComparisonEngine:
     It coordinates between:
     - ComparisonDispatcher: Routes field comparisons to appropriate handlers
     - NonMatchCollector: Collects and documents non-matching fields
-    - ConfusionMatrixBuilder: Adds aggregate and derived confusion matrix metrics
     
     The engine implements a single-traversal optimization where all comparison
     data (scores, metrics, non-matches) is collected in one pass through the
@@ -34,7 +46,6 @@ class ComparisonEngine:
         model: The ground truth StructuredModel instance used for comparison
         dispatcher: ComparisonDispatcher for routing field comparisons
         non_match_collector: NonMatchCollector for documenting non-matches
-        confusion_matrix_builder: ConfusionMatrixBuilder for orchestrating metrics
     """
 
     def __init__(self, model: "StructuredModel"):
@@ -49,7 +60,6 @@ class ComparisonEngine:
         self._dispatcher = None
         self._non_match_collector = None
         self._field_comparison_collector = None
-        self._confusion_matrix_builder = None
 
     @property
     def dispatcher(self):
@@ -74,14 +84,6 @@ class ComparisonEngine:
             from .field_comparison_collector import FieldComparisonCollector
             self._field_comparison_collector = FieldComparisonCollector(self.model)
         return self._field_comparison_collector
-
-    @property
-    def confusion_matrix_builder(self):
-        """Lazy initialization of ConfusionMatrixBuilder."""
-        if self._confusion_matrix_builder is None:
-            from .confusion_matrix_builder import ConfusionMatrixBuilder
-            self._confusion_matrix_builder = ConfusionMatrixBuilder(self.model)
-        return self._confusion_matrix_builder
 
     def compare_recursive(
         self, other: "StructuredModel", *, _report_context: Optional[ReportingContext] = None
@@ -295,12 +297,14 @@ class ComparisonEngine:
 
         # Add optional features using already-computed recursive result
         if include_confusion_matrix:
-            # Use ConfusionMatrixBuilder to orchestrate metrics calculation
-            confusion_matrix = self.confusion_matrix_builder.build_confusion_matrix(
-                recursive_result,
-                add_derived_metrics=add_derived_metrics,
-                recall_with_fd=recall_with_fd
+            confusion_matrix = AggregateMetricsCalculator().calculate_aggregate_metrics(
+                recursive_result
             )
+            if add_derived_metrics:
+                derived_calculator = DerivedMetricsCalculator()
+                confusion_matrix = derived_calculator.add_derived_metrics_to_result(
+                    confusion_matrix, recall_with_fd
+                )
 
             result["confusion_matrix"] = confusion_matrix
 
@@ -349,7 +353,7 @@ class ComparisonEngine:
                 "confidence_metrics=[...]. Per-document metrics with few fields are "
                 "noisy and may return None (single-class) frequently.",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=_COMPARE_WITH_WARN_STACKLEVEL,
             )
             calculator = ConfidenceCalculator(metrics=confidence_metrics)
             extraction = calculator.extract(result, other)
@@ -379,6 +383,7 @@ class ComparisonEngine:
                 "use "
                 "result['confidence_metrics']['overall']['auroc']['value'] "
                 "instead. The legacy key will be removed in 0.5.0.",
+                stacklevel=_COMPARE_WITH_WARN_ONCE_STACKLEVEL,
             )
 
         # If add_bbox_metrics is requested, add bounding-box mAP metrics.
@@ -402,7 +407,7 @@ class ComparisonEngine:
                 "BulkStructuredModelEvaluator with "
                 "accumulators=[BBoxMAPAccumulator(...)].",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=_COMPARE_WITH_WARN_STACKLEVEL,
             )
             if evaluator_format:
                 _warnings.warn(
@@ -410,7 +415,7 @@ class ComparisonEngine:
                     "the evaluator format rebuilds the result from a fixed key "
                     "set and drops 'bbox_metrics'.",
                     UserWarning,
-                    stacklevel=2,
+                    stacklevel=_COMPARE_WITH_WARN_STACKLEVEL,
                 )
             calculator = (
                 MAPCalculator(iou_thresholds=bbox_iou_thresholds)

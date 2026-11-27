@@ -233,20 +233,22 @@ class TestModelMatchThreshold:
         assert _user_warnings(recorded) == []
 
     @pytest.mark.parametrize("wrong_type", [False, True])
-    def test_bool_is_not_reported_as_a_zero_threshold(self, wrong_type):
+    def test_bool_threshold_is_refused_not_reported_as_zero(self, wrong_type):
         """`bool` is an `int` and `False == 0.0`, so an unguarded check lies.
 
         Reporting "sets match_threshold=0.0" for `match_threshold = False`
         names a value the user never wrote. A wrong type is a different
-        problem from a zero threshold.
+        problem from a zero threshold: it raises, and says so.
         """
         with warnings.catch_warnings(record=True) as recorded:
             warnings.simplefilter("always")
 
-            class Line(StructuredModel):
-                match_threshold = wrong_type
+            with pytest.raises(ValueError, match="is a boolean, not a number"):
 
-                sku: str = ComparableField(comparator=ExactComparator())
+                class Line(StructuredModel):
+                    match_threshold = wrong_type
+
+                    sku: str = ComparableField(comparator=ExactComparator())
 
         assert _user_warnings(recorded) == []
 

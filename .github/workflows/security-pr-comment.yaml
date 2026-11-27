@@ -10,7 +10,10 @@ permissions:
 
 jobs:
   comment:
-    if: github.event.workflow_run.event == 'pull_request'
+    # A cancelled scan uploads no artifact, so there is nothing to post.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -43,6 +46,20 @@ jobs:
               return;
             }
 
+            // The artifact comes from the scanned PR's own run, so a PR that
+            // edits security.yaml controls pr-number.txt. Only comment on the
+            // PR whose head is the commit that was scanned.
+            const run = context.payload.workflow_run;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            if (pr.head.sha !== run.head_sha || pr.head.repo?.full_name !== run.head_repository?.full_name) {
+              core.warning(`pr-number.txt names #${prNumber}, whose head is not the scanned commit ${run.head_sha}; not commenting.`);
+              return;
+            }
+
             if (!fs.existsSync(reportPath)) {
               core.info('ASH summary report not found; skipping comment.');
               return;
@@ -51,7 +68,7 @@ jobs:
             const marker = '<!-- ash-security-scan-report -->';
             const body = `${marker}\n## Security Scan Results\n\n${reportContent}`;
 
-            const { data: comments } = await github.rest.issues.listComments({
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,

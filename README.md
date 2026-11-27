@@ -25,7 +25,7 @@ That installs the comparison engine and confidence calibration, which is everyth
 | `[llm]` | strands-agents, jinja2 | `LLMComparator` (LLM-as-judge comparison) |
 | `[bert]` | evaluate, torch, bert-score | `BERTComparator` (BERTScore similarity) |
 | `[docsplit]` | pandas | Document packet splitting metrics |
-| `[reporting]` | pandas | Confusion-matrix tables in HTML reports |
+| `[reporting]` | pandas | Passing a DataFrame as `ProcessEvaluation.matrix` (HTML reports need no extra) |
 | `[all]` | all of the above except the ML stack | Convenience |
 
 Importing a feature without its extra raises an error naming the extra to install.
@@ -77,7 +77,7 @@ ground_truth_json = {
 
 prediction_json = {
     "shipment_id": "SHP-2024-001",  # Perfect match
-    "amount": 1247.48,  # Within tolerance
+    "amount": 1247.495,  # Within tolerance
     "line_items": [
         {"product": "USB Cord", "quantity": 5, "price": 12.99},  # Name variation
         {"product": "Wireless Mouse", "quantity": 2, "price": 29.99}  # Reordered
@@ -89,13 +89,13 @@ ground_truth = Invoice(**ground_truth_json)
 prediction = Invoice(**prediction_json)
 result = ground_truth.compare_with(prediction)
 
-print(f"Overall Score: {result['overall_score']:.3f}")  # 0.693
+print(f"Overall Score: {result['overall_score']:.3f}")  # 0.979
 print(f"Shipment ID: {result['field_scores']['shipment_id']:.3f}")  # 1.000 - exact match
 print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hungarian optimal matching
 ```
 
 ### Requirements
-- Python 3.12+
+- Python 3.10 or later
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended)
 
 ### Quick Install
@@ -128,7 +128,7 @@ pytest tests/
 ### Static Model Definition
 
 ```python
-from stickler import StructuredModel, ComparableField, LevenshteinComparator
+from stickler import StructuredModel, ComparableField, LevenshteinComparator, NumericComparator
 
 # Define your data structure
 class Invoice(StructuredModel):
@@ -136,7 +136,7 @@ class Invoice(StructuredModel):
         comparator=LevenshteinComparator(),
         threshold=0.9
     )
-    total: float = ComparableField(threshold=0.95)
+    total: float = ComparableField(comparator=NumericComparator(absolute_tolerance=0.01))
 
 # Compare objects
 result = ground_truth.compare_with(
@@ -289,6 +289,7 @@ Omitting it is safe but blunt. The fallback reads structure and never field name
 | `"BERTComparator"` | Deep semantic understanding | BERT model for contextual similarity. Needs the `[bert]` extra |
 | `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning. Needs the `[llm]` extra |
 | `"BBoxIoUComparator"` | Bounding boxes, spatial localization | Intersection over Union (IoU) between two boxes; accepts `[[x1,y1],[x2,y2]]` or `[x1,y1,x2,y2]`. See [Bounding Box mAP Metrics](docs/docs/Advanced/bbox-map-metrics.md) for end-to-end mAP scoring |
+| `"PointDistanceComparator"` | 2D or 3D positions, keypoints | Euclidean distance; score = 1 - (distance / max_distance), floored at 0. Needs `max_distance` in the comparator config |
 | `"NormalizedComparator"` | Formatting-insensitive equality | Compares after an explicit set of normalizations — by default case, whitespace, and punctuation |
 | `"ANLSStarComparator"` | Dicts and nesting with keys unknown up front | Scores structured values by ANLS*. Where the keys *are* known, a nested model is the better tool |
 | `"DateComparator"` | Dates in mixed formats, partial dates, ranges | Parses both sides as dates and scores on a tier system |
@@ -307,8 +308,8 @@ even though the field on the built class ends up a plain `str` — read the choi
 | JSON Schema | Default Comparator | Default Threshold | Rationale |
 |------------------|-------------------|-------------------|-----------|
 | `"string"` | `LevenshteinComparator` | `0.5` | Handles typos and minor variations |
-| `"number"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
-| `"integer"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
+| `"number"` | `NumericComparator` | `0.5` | Exact match unless a tolerance is set in `x-aws-stickler-comparator-config` |
+| `"integer"` | `NumericComparator` | `0.5` | Exact match unless a tolerance is set in `x-aws-stickler-comparator-config` |
 | `"boolean"` | `ExactComparator` | `0.5` | Must be exactly true or false (Exact scores only 0.0 or 1.0, so the threshold is immaterial) |
 | `"format": "date"` or `"date-time"` | `DateComparator` | `1.0` | Parses as `date`/`datetime`, so dates compare as dates |
 | `"enum"`, `"const"`, `"format": "uri"`/`"uuid"`/`"time"` | `ExactComparator` | `1.0` | A closed set or an opaque identifier has no partial credit |
@@ -346,7 +347,8 @@ even though the field on the built class ends up a plain `str` — read the choi
 
 **Type:** `number` (0.0 to 1.0, inclusive)  
 **Required:** No  
-**Default:** position-dependent, not one number. `0.5` for a plain scalar, an array of plain
+**Default:** a threshold named on the comparator, in `x-aws-stickler-comparator-config` or by a
+custom comparator's constructor, unless the property is an array of models. Otherwise position-dependent, not one number. `0.5` for a plain scalar, an array of plain
 scalars, and an array of models; `0.7` for an object with `properties`; `1.0` for a free-form
 `{"type": "object"}` (or an array of them) and for any property or array `items` with `enum`,
 `const`, or a string `format` of `date`/`date-time`/`uri`/`uuid`/`time`, whether or not a
@@ -354,6 +356,14 @@ comparator is declared. See the table in
 [Evaluation](https://awslabs.github.io/stickler/Guides/Evaluation/#extension-reference).
 
 Minimum similarity score required for binary match classification.
+
+The threshold a property uses, this key or a `threshold` in `x-aws-stickler-comparator-config`,
+must be a number from 0.0 to 1.0. Anything else, such as `85`, `"0.9"` or `true`, raises
+`ValueError` on import:
+
+```text
+ValueError: Invalid threshold for field 'total_amount' of model 'Invoice': the field sets no "x-aws-stickler-threshold", so it adopts its comparator's: "x-aws-stickler-comparator-config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write "x-aws-stickler-comparator-config": {"threshold": 0.85}, or "x-aws-stickler-threshold": 0.85 on the property, which wins over the comparator's.
+```
 
 **How Threshold Works:**
 - Similarity score **≥ threshold** → Classified as **MATCH** (True Positive or True Negative)
@@ -364,10 +374,12 @@ Minimum similarity score required for binary match classification.
 | Threshold Range | Use Case | Example Fields |
 |-----------------|----------|----------------|
 | **1.0** | Must be perfect | IDs, codes, critical identifiers |
-| **0.9 - 0.95** | Very important, minimal tolerance | Amounts, dates, status codes |
+| **0.9 - 0.95** | Very important, minimal tolerance | Dates, status codes |
 | **0.8 - 0.85** | Important, some tolerance | Names, addresses, product codes |
 | **0.7 - 0.75** | Moderate tolerance | Descriptions, categories |
 | **0.5 - 0.6** | Flexible, variations OK | Notes, comments, metadata |
+
+Amounts are not in this table: `NumericComparator` scores 1.0 or 0.0, so set `absolute_tolerance` or `relative_tolerance` in `x-aws-stickler-comparator-config` (as in the example below) instead of a threshold.
 
 **Example:**
 
@@ -385,7 +397,7 @@ Minimum similarity score required for binary match classification.
       "type": "number",
       "description": "Very important: affects billing",
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01}
     },
     "customer_name": {
       "type": "string",
@@ -443,7 +455,7 @@ Relative importance of this field in aggregate scoring and weighted averages.
       "type": "number",
       "description": "Very important: affects billing",
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95,
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
       "x-aws-stickler-weight": 2.5
     },
     "customer_name": {
@@ -468,9 +480,9 @@ Relative importance of this field in aggregate scoring and weighted averages.
 
 **Type:** `boolean`  
 **Required:** No  
-**Default:** `true`
+**Default:** `true`, except `false` for a free-form `{"type": "object"}` or an array of them
 
-Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity.
+Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** for a scalar unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity. A free-form object keeps the partial credit its comparator gives, such as `ANLSStarComparator`'s, unless you set `true`. The default `ExactComparator` scores it `0.0` or `1.0`, so clipping does not change it.
 
 **How Clipping Works:**
 - `true`: Scores below threshold are **set to 0.0** (hard cutoff)
@@ -580,7 +592,7 @@ Here's a production-ready invoice schema with all extensions:
       "description": "Total invoice amount in USD - critical for billing",
       "examples": [1234.56, 99.99],
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95,
+      "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
       "x-aws-stickler-weight": 2.5,
       "x-aws-stickler-clip-under-threshold": false
     },
@@ -608,7 +620,7 @@ Here's a production-ready invoice schema with all extensions:
             "type": "number",
             "description": "Price per unit",
             "x-aws-stickler-comparator": "NumericComparator",
-            "x-aws-stickler-threshold": 0.95,
+            "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.01},
             "x-aws-stickler-weight": 1.5
           }
         },

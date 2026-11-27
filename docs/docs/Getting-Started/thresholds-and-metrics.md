@@ -22,7 +22,9 @@ comparator = LevenshteinComparator(threshold=0.8)
 
 **When it applies:** Whenever the field itself is silent. A threshold is only meaningful beside the metric that produced the score (0.85 means one thing on edit distance and another on a semantic embedding), so a threshold you put on the comparator is read as a statement about the field.
 
-A threshold on the field always wins. And only a threshold you *named* is adopted: a comparator's own default is not, because those defaults were never chosen as classification cutoffs. `LevenshteinComparator(threshold=0.8)` gives the field 0.8; a bare `LevenshteinComparator()` leaves it at the field default of 0.5, not the comparator's 0.7.
+A threshold on the field always wins. And only a threshold you *named* is adopted: a comparator's own default is not, because those defaults were never chosen as classification cutoffs. `LevenshteinComparator(threshold=0.8)` gives the field 0.8; a bare `LevenshteinComparator()` leaves it at a `ComparableField` field's default of 0.5, not the comparator's 0.7. A JSON Schema property that names a comparator keeps its type's default threshold instead; see [Dynamic Model Creation](../Advanced/dynamic-models.md).
+
+An adopted comparator threshold must be a [valid threshold](#valid-threshold-values), as the field's own must.
 
 ### 2. Field Threshold
 
@@ -39,9 +41,11 @@ class Invoice(StructuredModel):
 **What it gates:**
 
 - **TP vs FD classification:** If `similarity >= threshold` (see [Meeting a Threshold](#meeting-a-threshold)), the field is a True Positive. Otherwise, it's a False Discovery.
-- **Score clipping:** When `clip_under_threshold=True` (the default), scores below the threshold are zeroed out in the weighted average.
+- **Score clipping:** When `clip_under_threshold=True` (the default, except on dict and plain-model fields), scores below the threshold are zeroed out in the weighted average. A list field follows the [Score](../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 **Default:** `0.5`
+
+**Valid values:** a number from 0.0 to 1.0. See [Valid Threshold Values](#valid-threshold-values).
 
 ### 3. Model Match Threshold
 
@@ -59,23 +63,28 @@ class LineItem(StructuredModel):
 
 - **Hungarian matching classification:** When comparing `List[StructuredModel]`, the Hungarian algorithm pairs ground-truth and prediction objects. Each pair's overall similarity is compared against `match_threshold` to classify as TP or FD.
 - **Recursive evaluation:** Only pairs meeting the threshold get field-by-field breakdown. Below-threshold pairs are treated as atomic FD.
+- **Bare-annotated fields:** A field declared without `ComparableField` (`name: str`) takes `match_threshold` as its field threshold, unless it holds a `StructuredModel` ([precedence](#precedence-in-one-line)).
 
 **Default:** `0.7`
 
+**Valid values:** a number from 0.0 to 1.0, checked when the class is defined. `None` is not checked and does not read as unset: the class keeps it, and a comparison that reads it, such as of a list of the class, a bare-annotated field or `evaluate()`, raises `TypeError`. Leave `match_threshold` out instead. See [Valid Threshold Values](#valid-threshold-values).
+
 ### 4. Runtime Match Threshold
 
-**What it is:** The `match_threshold` parameter passed to `evaluate()` or `EvalSpec`.
+**What it is:** The `match_threshold` parameter passed to `evaluate()` or `eval_for()`.
 
 ```python
 result = stickler.evaluate(gt, pred, match_threshold=0.8)
 
-# Or via EvalSpec
+# Or compile a reusable EvalSpec
 spec = stickler.eval_for(Invoice, match_threshold=0.8)
 ```
 
-**What it gates:** Same as Model Match Threshold, but applied at runtime. Overrides the class-level `match_threshold` for this evaluation.
+**What it gates:** The document-level `EvalResult.matched` verdict (`overall_score >= match_threshold`). On a `StructuredModel` class that is all it does: field thresholds, list element pairing and every score keep their class values. On a plain pydantic class (the zero-config path) it also decides TP vs FD for `List[Model]` and `List[dict]` elements at every nesting level, and sets the field threshold of nested plain-model and `dict` fields. A `List[StructuredModel]` field keeps the element class's `match_threshold`, and a primitive list keeps the threshold inferred from its element type and field name (`0.7` for `tags: List[str]`, `0.6` for `notes: List[str]`). It never changes a similarity score or `overall_score`.
 
-**Default:** `0.7`
+**Default:** the class's `match_threshold` on a `StructuredModel`, else `0.7`
+
+**Valid values:** a number from 0.0 to 1.0. This value is outside the rule in [Valid Threshold Values](#valid-threshold-values). For a `StructuredModel` it is not checked, so pass one in range. For a plain pydantic model, a number in range of any real type, including a `Decimal`, a `Fraction` or a numpy number, is converted with `float()`, and `True` and `False` count as 1.0 and 0.0. A string, a numpy boolean, NaN, infinity or a number outside 0.0 to 1.0 raises `ValueError: match_threshold must be a number between 0.0 and 1.0`.
 
 ## Threshold Precedence
 
@@ -85,21 +94,27 @@ When multiple thresholds could apply, here's which one wins:
 |-----------|------------------------|
 | **Primitive field comparison** (str, int, float, and date, datetime, time, timedelta, Decimal, UUID, Enum) | Field threshold (`ComparableField(threshold=...)`), else a threshold named on the comparator |
 | **Nested object comparison** | Recurses into fields; each field uses its own field threshold |
-| **List element pairing** (`List[StructuredModel]`) | Runtime match threshold if provided, else Model match threshold |
-| **Score clipping** | Field threshold (when `clip_under_threshold=True`) |
+| **List element pairing** (`List[StructuredModel]`) | The element class's `match_threshold`; a runtime value does not override it |
+| **List element pairing** (zero-config `List[BaseModel]` and `List[dict]`) | Runtime match threshold if provided, else `0.7` |
+| **List element pairing** (primitive, dict, plain-model lists on a `StructuredModel`) | Field threshold, else a threshold named on the comparator, else `0.5` with `ComparableField()` or the class `match_threshold` without it ([Bar](../Advanced/classification-logic.md#list-contract)) |
+| **Score clipping** | Field threshold (when `clip_under_threshold=True`); lists follow the [Score](../Advanced/classification-logic.md#list-contract) rule |
 | **Binary classification (TP/FD)** for primitives | Field threshold |
-| **Binary classification (TP/FD)** for list pairs | Match threshold (runtime or model) |
+| **Binary classification (TP/FD)** for list pairs | The list element pairing bar above |
+| **Document `matched` verdict** | Runtime match threshold if provided, else the class's `match_threshold` on a `StructuredModel`, else `0.7` |
 
 ### Key Rules
 
 1. **Field threshold** controls primitive-level TP/FD classification and score clipping.
-2. **Match threshold** controls object-level TP/FD classification for list matching.
-3. **Runtime match threshold** overrides model-level match threshold.
+2. **Match threshold** on the element class controls object-level TP/FD classification for `List[StructuredModel]` matching. Other lists use the pairing bars in the table above.
+3. **Runtime match threshold** sets the `matched` verdict. On a `StructuredModel` it reaches nothing else. On the zero-config path it also sets the `List[Model]` and `List[dict]` pairing bar and the threshold of nested plain-model and `dict` fields, but a `List[StructuredModel]` field still pairs at the element class's own `match_threshold`.
 4. **Comparator threshold** fills in for the field threshold when the field does not set one. A threshold on the field always wins, and a comparator's own default is never adopted.
 
 ### Example: All Four in Action
 
 ```python
+from typing import List
+
+import stickler
 from stickler import StructuredModel, ComparableField, LevenshteinComparator
 
 class Product(StructuredModel):
@@ -113,21 +128,58 @@ class Product(StructuredModel):
 class Order(StructuredModel):
     products: List[Product] = ComparableField(weight=2.0)
 
-# (4) Runtime match threshold - overrides Product.match_threshold
+gt_order = Order(products=[Product(name="Wireless Mouse")])
+pred_order = Order(products=[Product(name="Wireless Mice")])  # similarity 0.786
+
+# (4) Runtime match threshold - gates result.matched only
 result = stickler.evaluate(gt_order, pred_order, match_threshold=0.8)
 ```
 
 In this example:
 
-- `name` similarity is compared against **0.8** (field threshold) for TP/FD
-- Product pairs are compared against **0.8** (runtime threshold) for list matching
+- `name` (0.786) is compared against **0.8** (field threshold): FD
+- The Product pair (0.786) is compared against **0.75** (`Product.match_threshold`): TP. The runtime 0.8 does not replace it.
+- `result.matched` is `overall_score >= 0.8` (runtime threshold). `overall_score` is `0.0`, because `name` is clipped below its 0.8, so `matched` is `False`.
 - The comparator's **0.5** is overridden by the field's **0.8**. Drop `threshold=0.8` from the field and the comparator's 0.5 governs instead.
 
 ### Precedence, in one line
 
-Field threshold → threshold named on the comparator → `0.5`.
+Field threshold, then a threshold named on the comparator, then a default that depends on how the field is declared:
+
+| Declaration on a `StructuredModel` | Default threshold |
+|---|---|
+| `name: str = ComparableField()` | 0.5 |
+| `name: str` (bare annotation, including `int`, `List[str]`, `dict` and a plain pydantic `BaseModel`) | the class `match_threshold` (0.7 unless set) |
+| `addr: Address` (bare `StructuredModel`) | 0.9 |
+| `addrs: List[Address]` (bare list of `StructuredModel`) | none: each element pair is classified against `Address.match_threshold` (0.7 unless set), as in [list element pairing](#threshold-precedence) |
+
+Bare `dict`, list-of-dict, plain `BaseModel` and list-of-plain-model fields are scored by ANLS* and do not zero low scores (`clip_under_threshold=False`): at a raw 0.6 they score 0.6 but still count as a false discovery against the 0.7 threshold. A bare `addr: Address` does clip: at 0.875 it scores 0.0 and is a false discovery, while the same pair in `addrs: List[Address]` is a TP scoring 0.875.
+
+A bare `int` or `float` field is compared as text by `LevenshteinComparator`, not as a number. For a `float`, `inf` against `-inf` scores 0.75 and `1000` against `-1000` scores 0.857, and both clear the 0.7 default threshold; a bare `int` pair of `1000` and `-1000` scores 0.8. Declare `ComparableField(comparator=NumericComparator())` to compare numbers as numbers.
+
+On the zero-config path, `stickler.evaluate` infers a threshold per field; `result.explain()` shows each one. For JSON Schema and Stickler config defaults, see [Dynamic Model Creation](../Advanced/dynamic-models.md).
 
 A comparator's *default* threshold is not part of that chain. `LevenshteinComparator()` does not contribute its 0.7, because those defaults were chosen for `binary_compare()` and were never audited as classification cutoffs. `DateComparator` is the clearest case: it defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting its default would clip its own feature to zero.
+
+## Valid Threshold Values
+
+A threshold is a number from 0.0 to 1.0, inclusive: the minimum similarity score for a match. An `int` or `float` is used as given, and a `Decimal`, `Fraction`, numpy number or 0-d numpy array is converted with `float()`. Booleans (numpy's too), strings, NaN and infinity are not valid. The rule applies to the threshold the field ends up with, whether you set it on the field or the field adopts it from the comparator, and to `match_threshold`, on the class, the Stickler config and the JSON Schema:
+
+| Path | Field threshold | Adopted comparator threshold | Match threshold |
+|---|---|---|---|
+| Python | `ComparableField(threshold=...)`, also inside `Annotated[...]` | `LevenshteinComparator(threshold=...)` | `match_threshold = ...` |
+| Stickler config | `"threshold"` | `"comparator_config": {"threshold": ...}` | `"match_threshold"` |
+| JSON Schema | `"x-aws-stickler-threshold"` | `"x-aws-stickler-comparator-config": {"threshold": ...}` | `"x-aws-stickler-match-threshold"` |
+
+Anything else, such as `85`, `1.5`, `-1`, `"0.9"`, `true`, NaN or infinity, raises `ValueError` when the class is defined or the config or schema is loaded. On the Python path `None` is not checked: `ComparableField(threshold=None)` reads as unset, and a class `match_threshold = None` loads, then raises `TypeError` where it is read (see [Model Match Threshold](#3-model-match-threshold)). Each path gives the same message, quoting the value as you wrote it. It names the model, the field, why the value fails, and the fix, and on the Python path where it was set (for a class `match_threshold` under a base class that overrides `__init_subclass__`, the line of that override):
+
+```text
+ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField sets no threshold, so the field adopts its comparator's: LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or ComparableField(threshold=0.85), which wins over the comparator's. (Set at invoice_models.py:6.)
+```
+
+A comparator threshold the field does not adopt is not checked: when the field sets its own, the comparator's is not read, and on a `List[StructuredModel]` field (an array of objects in a schema) it is never used, since its items are matched up using `match_threshold`, so it warns instead. On the Python path the warning needs an annotation that is already a list when the class is defined, written out (`items: List[Item] = ComparableField(...)`) or through an assigned alias (`ItemList = List[Item]`): inside `Annotated[...]`, through a `type` alias, or as a string, which includes every annotation under `from __future__ import annotations`, the field loads with no warning. A field threshold on a list of models that breaks the rule raises, and the message says to remove it and use `match_threshold`. A comparator's constructor never checks its threshold, since a custom comparator may use `threshold` for something else, and the comparator keeps the value you passed. The runtime `match_threshold` of `evaluate()` and `eval_for()` is outside this rule; see [Runtime Match Threshold](#4-runtime-match-threshold).
+
+A field whose type is defined further down the module is checked when the class is defined, before that type exists, so stickler reads the field as adopting its comparator's threshold. Only a list of models does not, so there, and on a bare name for a list of models (`items: "ItemList"`, with `ItemList = List[Item]` below), an invalid comparator threshold raises, though the field would ignore it once resolved. When the annotation is visibly a list (`List["Item"]`), the message says to remove the comparator if the element is a model. An invalid field threshold on such a field, or on a bare name, gets a fix for each case: a list of models, and anything else. An `Annotated` field that names something defined further down, its type or a value in its `ComparableField(...)`, is not yet checked at class definition when its annotation is a string, as every annotation is under `from __future__ import annotations`: pydantic builds its `ComparableField` only on `model_rebuild()`, so an invalid threshold there loads.
 
 ## Meeting a Threshold
 
@@ -255,14 +307,14 @@ subject to any threshold, so:
   precision `0.667`
 - 2 against 1 still yields an FN, giving recall `0.5`
 
-**`match_threshold = 0.0` warns unconditionally**, because the value is used two
-ways: as the object-matching threshold for a `List[StructuredModel]` element,
-*and* as the default field threshold for any field with no explicit config. A
-plainly annotated `name: str` inherits it, so a standalone model with no list
-anywhere still reports `1.0` across the board. Declaring the field with
-`ComparableField()` instead takes an earlier branch that supplies a hardcoded
-`0.5`, which is why the value can look inert when probed that way (see
-[#237](https://github.com/awslabs/stickler/issues/237)).
+**`match_threshold = 0.0` warns on every model, list or not.** Besides pairing
+list elements, it becomes the threshold of every bare-annotated field that does
+not hold a `StructuredModel` ([precedence](#precedence-in-one-line)), so on a
+model with no list every such field passes. That is why the `Doc` above reports precision, recall and F1 of
+`1.0`, although `name` scores only `0.125`. A `ComparableField()` field keeps
+its own `0.5` default, which `match_threshold` never reaches: declared that way,
+the same pair is a false discovery with precision `0.0`. That is why the value
+can look inert when probed with `ComparableField()` fields.
 
 **Fix:** use a small positive value.
 
@@ -384,19 +436,20 @@ Hungarian algorithm pairs:
 | GT Item | Pred Item | Overall Similarity | vs `match_threshold=0.7` | Result |
 |---------|-----------|-------------------|--------------------------|--------|
 | SKU-A, "Widget Alpha" | SKU-A, "Widget Alpha" | 1.0 | ≥ 0.7 | **TP** → recurse |
-| SKU-B, "Widget Beta" | SKU-B, "Widget Bet" | ~0.95 | ≥ 0.7 | **TP** → recurse |
+| SKU-B, "Widget Beta" | SKU-B, "Widget Bet" | ~0.97 | ≥ 0.7 | **TP** → recurse |
 | SKU-C, "Widget Gamma" | SKU-X, "New Item" | 0.083 | < 0.7 | **FD** → atomic |
 
 Both lists hold three items, so the Hungarian algorithm pairs every one of them and
-no item is left over. **FN and FA are impossible for an equal-length list** --
+no item is left over. **FN and FA are impossible for an equal-length list** with
+no `None` elements, which are removed before pairing --
 `SKU-C` does not go missing, it gets paired with the only prediction left, scores
 `0.083`, and lands below `match_threshold` as a false discovery. Unmatched items
-appear only when the two lists differ in length.
+appear only when the two lists differ in length once `None` elements are removed.
 
 Within each matched pair that *meets* the threshold, the fields (sku, description)
 are evaluated and contribute to the aggregate counts. A below-threshold pair is
-treated as atomic and contributes one FD at the object level, with no field-level
-breakdown -- see
+treated as atomic, with no field-level breakdown: it is one FD in `overall` and
+adds no fields to `aggregate` -- see
 [Threshold-Gated Evaluation](../Advanced/threshold-gated-evaluation.md).
 
 ### Aggregate Confusion Matrix
@@ -420,6 +473,8 @@ Accuracy  = (TP + TN) / Total   = 5 / 7           = 0.714
 Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
 ```
 
+These counts are `confusion_matrix["aggregate"]`, the leaves. `result.f1` and bulk `cm_f1` read `confusion_matrix["overall"]`, which counts this example's top-level fields and list pairs: TP 3, FD 2, FN 1, F1 0.667. See [`overall` vs `aggregate`](../Guides/Evaluation/understanding-results.md#overall-vs-aggregate).
+
 ---
 
 ## Quick Reference
@@ -430,8 +485,8 @@ Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
 |-----------|-----------|------------------|---------|
 | Comparator | `Comparator(threshold=...)` | TP/FD and clipping when the field sets no threshold; `binary_compare()` | varies, and a default is not adopted |
 | Field | `ComparableField(threshold=...)` | TP/FD for primitives, clipping | 0.5 |
-| Model | `match_threshold = ...` on class | Hungarian pairing | 0.7 |
-| Runtime | `evaluate(..., match_threshold=...)` | Overrides model threshold | 0.7 |
+| Model | `match_threshold = ...` on class | Hungarian pairing of its instances, bare-field default, `matched` verdict | 0.7 |
+| Runtime | `evaluate(..., match_threshold=...)` | `matched` verdict only on a `StructuredModel`; on the zero-config path also `List[Model]` and `List[dict]` pairing and nested plain-model and `dict` field thresholds | class `match_threshold`, else 0.7 |
 
 ### Metric Formulas
 

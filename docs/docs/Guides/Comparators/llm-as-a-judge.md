@@ -17,9 +17,11 @@ The `SemanticComparator` generates vector embeddings for both values using AWS B
 
 ### Setup
 
-Requires AWS credentials with Bedrock access. The default embedding model is `amazon.titan-embed-text-v2:0`.
+Requires the `semantic` extra and AWS credentials with Bedrock access. The default embedding model is `amazon.titan-embed-text-v2:0`.
 
 ```bash
+pip install "stickler-eval[semantic]"
+
 # Ensure AWS credentials are configured
 aws configure
 # Or set environment variables
@@ -27,6 +29,9 @@ export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
 export AWS_DEFAULT_REGION=us-east-1
 ```
+
+!!! warning "A failed embedding falls back to exact match"
+    If an embedding call fails, or scipy is missing, the comparator logs the error and scores the pair by exact string equality, so a paraphrase scores 0.0. Before trusting the scores, check the log for `Semantic embedding comparison failed` and score one known paraphrase pair.
 
 ### Configuration
 
@@ -94,10 +99,10 @@ The `BERTComparator` uses BERTScore to evaluate contextual similarity between te
 
 ### Setup
 
-BERTComparator runs entirely locally. It requires the `evaluate`, `torch`, and `bert-score` packages.
+BERTComparator runs entirely locally and needs the `bert` extra:
 
 ```bash
-pip install evaluate torch bert-score
+pip install "stickler-eval[bert]"
 ```
 
 No AWS credentials or API keys are needed.
@@ -145,15 +150,16 @@ The `LLMComparator` sends both values to a Large Language Model and asks it to d
 
 1. A prompt is constructed with both values and optional evaluation guidelines using a Jinja2 template.
 2. The prompt is sent to an LLM via the `strands-agents` library and AWS Bedrock.
-3. The LLM responds with `"true"` or `"false"`.
-4. The response is mapped to 1.0 (equivalent) or 0.0 (not equivalent).
+3. The LLM is asked to reply with one word, `true` or `false`.
+4. The reply is normalized: surrounding whitespace, quotes, backticks and markdown emphasis (`*`, `_`) and any trailing `.` `,` `;` `:` `!` `?` are stripped, and case is ignored. Exactly `true` scores 1.0 and exactly `false` scores 0.0, so `**True**.` and `"false"` are read as verdicts.
+5. Any other reply, such as `untrue`, `Not true` or `True, they are equivalent.`, scores 0.0 and emits a `UserWarning` showing the start of the reply. It does not raise, so one verbose reply does not stop a bulk run.
 
 ### Setup
 
 Requires AWS credentials with Bedrock access and the `strands-agents` package.
 
 ```bash
-pip install stickler-eval[llm]
+pip install "stickler-eval[llm]"
 ```
 
 ```bash
@@ -181,6 +187,8 @@ comparator = LLMComparator(
     )
 )
 ```
+
+Guidelines should only shape the judgment, not the reply format: the model must still answer with one word, and a reply that adds reasoning scores 0.0 with a warning (see step 5 above).
 
 ### Example
 
@@ -231,7 +239,8 @@ comparator = LLMComparator(
 
 details = comparator.get_comparison_details("St. John's Street", "Saint John's St")
 print(details["prompt"])              # The formatted prompt sent to the LLM
-print(details["llm_response"])        # Raw LLM response ("true" or "false")
+print(details["llm_response"])        # Raw reply from one LLM call, not normalized
+                                      # (the score below comes from a separate call)
 print(details["comparison_result"])   # Final score (1.0 or 0.0)
 ```
 
@@ -254,7 +263,7 @@ print(details["comparison_result"])   # Final score (1.0 or 0.0)
 | **AWS required?** | Yes (Bedrock) | No | Yes (Bedrock) |
 | **Custom logic** | No | No | Yes (eval_guidelines) |
 | **Best for** | General semantic similarity | Contextual similarity without cloud | Domain-specific rules, abbreviations, reasoning |
-| **Install** | `pip install boto3 scipy` | `pip install evaluate torch bert-score` | `pip install stickler-eval[llm]` |
+| **Install** | `pip install "stickler-eval[semantic]"` | `pip install "stickler-eval[bert]"` | `pip install "stickler-eval[llm]"` |
 
 ---
 

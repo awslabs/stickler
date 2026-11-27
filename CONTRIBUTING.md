@@ -10,7 +10,7 @@ information to effectively respond to your bug report or contribution.
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.10 or later
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended) or pip
 - Git
 
@@ -171,7 +171,14 @@ GitHub provides additional document on [forking a repository](https://help.githu
 
 
 ## Finding contributions to work on
-Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
+
+How to pick up an issue depends on whether it has a milestone.
+
+- **No milestone, labelled `help wanted` or `good first issue`:** go ahead. Comment on the issue to claim it, then open a PR. You don't need to wait for a reply from a maintainer. These are small changes that don't change behaviour, such as docs fixes, broken examples, missing tests and removing unused code, and each one says what "done" looks like.
+- **Has a milestone** (for example `1.1.0`): ask on the issue before you start. Milestone work is planned for a release and may already be in progress or waiting on a design decision, so a quick check saves you from writing a PR we can't take.
+- **No milestone and no label:** ask on the issue first too. It may need a decision before anyone writes code.
+
+If someone has already claimed an issue or opened a PR for it, pick another one, or offer to help on that PR. If a claimed issue has had no activity for two weeks, comment to ask whether it's still in progress before taking it over.
 
 
 ## Maintainers

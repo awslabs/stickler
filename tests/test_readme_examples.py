@@ -53,7 +53,8 @@ def _run_readme_example(heading: str):
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        exec(code, namespace)
+        # Runs this repo's own README code blocks; no external input.
+        exec(code, namespace)  # nosec B102
     prints = [line for line in code.splitlines() if line.startswith("print(")]
     outputs = out.getvalue().splitlines()
     assert len(prints) == len(outputs)
@@ -158,8 +159,15 @@ def test_extension_reference_defaults_match_an_undeclared_schema():
     default = {name.strip("`"): cells[1] for name, cells in table.items()}
 
     infos = [UNDECLARED._get_comparison_info(f) for f in UNDECLARED_PROPERTIES]
-    assert default["x-aws-stickler-clip-under-threshold"] == "`true`"
-    assert all(info.clip_under_threshold is True for info in infos)
+    assert (
+        default["x-aws-stickler-clip-under-threshold"]
+        == "`true`, `false` on a free-form object or an array of them"
+    )
+    free_form = {"mapping", "mappings"}
+    assert all(
+        info.clip_under_threshold is (name not in free_form)
+        for name, info in zip(UNDECLARED_PROPERTIES, infos)
+    )
     assert default["x-aws-stickler-weight"] == "1.0"
     assert all(info.weight == 1.0 for info in infos)
     assert default["x-aws-stickler-model-name"] == '`"DynamicModel"`'

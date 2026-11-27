@@ -8,39 +8,23 @@ from .reporting_context import ReportingContext
 from .threshold_helper import ThresholdHelper
 
 
+def _missing_side_reason(gt_val: Any, pred_val: Any) -> Optional[str]:
+    """Reason text when exactly one side is missing, otherwise None.
+
+    A float NaN counts as missing, as it does in scoring; the displayed values
+    are not changed.
+    """
+    gt_missing = gt_val is None or NullHelper.is_nan(gt_val)
+    pred_missing = pred_val is None or NullHelper.is_nan(pred_val)
+    if pred_missing and not gt_missing:
+        return "false negative (unmatched ground truth)"
+    if gt_missing and not pred_missing:
+        return "false alarm (unmatched prediction)"
+    return None
+
+
 class FieldComparisonHelper(ComparisonHelperBase):
     """Helper class for collecting and formatting field comparisons in StructuredModel comparisons."""
-
-    def create_entry(
-        self,
-        expected_key: str,
-        expected_value: Any,
-        actual_key: str,
-        actual_value: Any,
-        match: bool,
-        score: float,
-        weighted_score: float,
-        reason: str,
-    ) -> Dict[str, Any]:
-        """Create a field comparison entry for detailed analysis.
-
-        Args:
-            expected_key: Ground truth field key/path
-            expected_value: Ground truth field value
-            actual_key: Predicted field key/path (can be None for FN)
-            actual_value: Predicted field value (can be None for FN)
-            match: Whether this comparison is considered a match
-            score: Raw similarity score
-            weighted_score: Score multiplied by field weight
-            reason: Descriptive reason for the match/no-match result
-
-        Returns:
-            Dictionary with field comparison information
-        """
-        return self.create_field_comparison_entry(
-            expected_key, expected_value, actual_key, actual_value,
-            match, score, weighted_score, reason
-        )
 
     def create_field_comparison_entry(
         self,
@@ -186,14 +170,9 @@ class FieldComparisonHelper(ComparisonHelperBase):
                         )
                 
                 # Keep the scored NaN-as-missing decision when formatting child fields.
-                gt_missing = gt_nested_val is None or NullHelper.is_nan(gt_nested_val)
-                pred_missing = pred_nested_val is None or NullHelper.is_nan(pred_nested_val)
-                if pred_missing and not gt_missing:
-                    field_reason = "false negative (unmatched ground truth)"
-                    field_is_match = False
-                    field_score = 0.0
-                elif gt_missing and not pred_missing:
-                    field_reason = "false alarm (unmatched prediction)"
+                missing_reason = _missing_side_reason(gt_nested_val, pred_nested_val)
+                if missing_reason is not None:
+                    field_reason = missing_reason
                     field_is_match = False
                     field_score = 0.0
                 

@@ -12,8 +12,15 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `from_json()` (rich-value unwrapping) and `compare_with()` (delegates to the engine).
 - `comparable_field.py`, `field.py`, `comparison_info.py` — field declaration
   (`ComparableField`), per-field comparator/threshold/weight metadata.
-- `model_factory.py`, `field_converter.py`, `type_resolver.py`,
-  `configuration_helper.py` — building models from Stickler's compact JSON config.
+- `threshold_rule.py`: the rule a threshold or `match_threshold` must meet
+  (a number from 0.0 to 1.0; `as_threshold` converts a `Decimal`, `Fraction`,
+  numpy number or 0-d array with `float()`) and the one `ValueError` message
+  all three paths raise for it, spelled per path (`PYTHON`, `CONFIG`,
+  `SCHEMA`), with where it was set (`location`). The config importer's
+  wrappers re-raise it unprefixed (`is_threshold_error`).
+- `model_factory.py`, `field_converter.py`, `type_resolver.py` — building models
+  from Stickler's compact JSON config.
+- `configuration_helper.py` — configuration helpers for comparison and ingestion.
 - `json_schema_importer.py`, `json_schema_field_converter.py` — two-stage JSON
   Schema import. The maintained `json-schema-to-pydantic` library resolves
   standard schema types, references, combiners, and constraints;
@@ -64,8 +71,7 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   1.1.0 omits the key.
 
 **Metrics**
-- `confusion_matrix_builder.py`, `confusion_matrix_calculator.py`,
-  `derived_metrics_calculator.py`, `aggregate_metrics_calculator.py`,
+- `derived_metrics_calculator.py`, `aggregate_metrics_calculator.py`,
   `metrics_helper.py`, `threshold_helper.py` — confusion-matrix and derived/
   aggregate metric rollups.
 - `rich_value_helper.py` — unwraps the Rich Value Pattern
@@ -73,6 +79,9 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   returning `(data, confidences, extras)`.
 - `post_comparison_accumulator.py` — `PostComparisonAccumulator`, the interface
   for bulk metric accumulators consumed by `BulkStructuredModelEvaluator`.
+- `_keyed_pairs_accumulator.py` — `_KeyedPairsAccumulator`, the shared state
+  handling (reset, serialization, load, merge) for accumulators keyed by field
+  path. Private: the two metric sub-packages below both subclass it.
 
 ## Metric sub-packages
 

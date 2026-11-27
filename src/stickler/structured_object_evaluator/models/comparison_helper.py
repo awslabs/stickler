@@ -4,11 +4,13 @@ This module provides utilities for comparing fields, lists, and nested structure
 within StructuredModel instances.
 """
 
+import collections.abc
 import datetime
 import decimal
 import enum
+import typing
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -16,6 +18,12 @@ from stickler.comparators.base import BaseComparator
 
 from .hungarian_helper import HungarianHelper
 from .null_helper import NullHelper
+from .optional_annotation import (
+    is_union,
+    union_args,
+    unwrap_annotated,
+    unwrap_optional,
+)
 from .threshold_helper import ThresholdHelper
 
 
@@ -232,6 +240,91 @@ _STRUCTURED = (list, dict, BaseModel)
 # Not decided here yet: tuples and sets keep their pre-#383 behaviour in each
 # reader until collection comparison has its own contract (#391).
 _COLLECTIONS = (tuple, set, frozenset)
+
+# PEP 695 `type X = ...` aliases exist from Python 3.12.
+_TypeAliasType = getattr(typing, "TypeAliasType", None)
+
+
+def list_pair_is_one_value(
+    model_cls: Any, field_name: str, comparator: Any, gt_val: Any, pred_val: Any
+) -> bool:
+    """Whether a list field's pair is one value for its comparator, not a collection.
+
+    ``[x1, y1, x2, y2]`` under ``BBoxIoUComparator`` is one box, not four
+    numbers (#635). The comparator declares that per value through
+    ``scores_as_one_value``; a comparator without the method never does.
+
+    The prediction's shape must not decide it, or a prediction shaped like
+    ``[[x1, y1], [x2, y2]]`` would collapse a list of boxes into one decision
+    and drop the other ground-truth boxes from recall. So the annotation
+    decides when it names the element type: scalar elements (``List[float]``,
+    ``Sequence[int]``) make the field one value, whichever side parses, so a
+    malformed side is one FD; sequence elements (``List[List[float]]``) keep it
+    a collection. Only an annotation that does not say (bare ``list``,
+    ``List[Any]``) is decided by the ground truth, or by the prediction when
+    the ground truth is absent. A side may be ``None`` or a list with no present
+    element (``[]``, ``[None]``, #386), so one box against nothing is one FN or FA.
+
+    Read by both score readers and both list collectors, so ``compare()``,
+    ``compare_with()``, ``non_matches`` and ``field_comparisons`` agree (#233).
+    """
+    if not all(v is None or isinstance(v, list) for v in (gt_val, pred_val)):
+        return False
+    scores_as_one_value = getattr(comparator, "scores_as_one_value", None)
+    if not callable(scores_as_one_value):
+        return False
+    present = [
+        v for v in (gt_val, pred_val) if not NullHelper.is_effectively_null_for_lists(v)
+    ]
+    reads_whole = [scores_as_one_value(v) for v in present]
+    if not any(reads_whole):
+        return False
+    field_info = model_cls.model_fields.get(field_name)
+    elements_are_scalar = (
+        _list_elements_are_scalar(field_info.annotation) if field_info else None
+    )
+    if elements_are_scalar is None:
+        return reads_whole[0]
+    return elements_are_scalar
+
+
+def _list_elements_are_scalar(annotation: Any) -> Optional[bool]:
+    """True for scalar elements, False for sequence elements, None if unnamed."""
+    annotation, _ = unwrap_optional(unwrap_annotated(annotation))
+    annotation = unwrap_annotated(annotation)
+    args = get_args(annotation)
+    if get_origin(annotation) not in (list, collections.abc.Sequence) or not args:
+        return None
+    return _element_is_scalar(args[0])
+
+
+def _element_is_scalar(element: Any) -> Optional[bool]:
+    """True for a scalar type, False for a sequence type, None if it does not say.
+
+    Any union arm that is a sequence makes the element a sequence, so
+    ``List[Union[List[float], str]]`` stays a list of boxes. An element that is
+    not a type, such as a ``TypeVar``, does not say, so the value decides.
+    """
+    element = unwrap_annotated(element)
+    if element is Any:
+        return None
+    if is_union(element):
+        answers = {_element_is_scalar(arm) for arm in union_args(element)}
+        if False in answers:
+            return False
+        return None if None in answers else True
+    # NewType and PEP 695 aliases name the type they stand for.
+    if hasattr(element, "__supertype__"):
+        return _element_is_scalar(element.__supertype__)
+    if _TypeAliasType is not None and isinstance(element, _TypeAliasType):
+        return _element_is_scalar(element.__value__)
+    origin = get_origin(element) or element
+    if not isinstance(origin, type):
+        return None
+    return not (
+        issubclass(origin, collections.abc.Sequence)
+        and not issubclass(origin, (str, bytes))
+    )
 
 
 def scalar_pair_reaches_comparator(
@@ -629,6 +722,15 @@ class ComparisonHelper:
             other_is_null = is_absent(other_value)
             if self_is_null or other_is_null:
                 return 1.0 if self_is_null and other_is_null else 0.0
+
+        if list_pair_is_one_value(
+            structured_model_instance.__class__,
+            field_name,
+            comparator,
+            self_value,
+            other_value,
+        ):
+            return comparator.compare(self_value, other_value)
 
         # Handle lists with special processing
         if isinstance(self_value, list) and isinstance(other_value, list):

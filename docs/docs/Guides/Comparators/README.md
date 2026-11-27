@@ -25,6 +25,14 @@ Precedence is field, then comparator, then `0.5`:
 
 The third row is the one to know: a comparator's *default* threshold is never adopted. Those defaults were chosen for `binary_compare()`, not as classification cutoffs, and at least one is actively wrong for the job. `DateComparator` defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting it would clip that feature to zero. If you want a comparator's default to act as the cutoff, name it.
 
+Whichever threshold the field uses must be a number from 0.0 to 1.0, or defining the class raises `ValueError`, also for a field declared as `Annotated[str, ComparableField(...)]` or one whose type is defined further down the module. An `Annotated` field that names something defined further down, its type or a value in its `ComparableField(...)`, is not yet checked at class definition when its annotation is a string, as every annotation is under `from __future__ import annotations`. The message reads:
+
+```text
+ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField sets no threshold, so the field adopts its comparator's: LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or ComparableField(threshold=0.85), which wins over the comparator's. (Set at invoice_models.py:6.)
+```
+
+A comparator threshold the field overrides is not checked. See [Valid Threshold Values](../../Getting-Started/thresholds-and-metrics.md#valid-threshold-values).
+
 See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) for how this interacts with model and runtime match thresholds.
 
 ---
@@ -40,6 +48,7 @@ See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) fo
 | [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
 | [**BBoxIoUComparator**](#bboxioucomparator) | Bounding boxes, spatial localization | Instant | No | Continuous (0.0--1.0) |
+| [**PointDistanceComparator**](#pointdistancecomparator) | 2D or 3D positions, keypoints | Instant | No | Continuous (0.0--1.0) |
 | [**ANLSStarComparator**](#anlsstarcomparator) | Dicts and nested structures whose keys you do not declare | Moderate | No | Continuous (0.0--1.0) |
 | [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
 | [**BERTComparator**](#bertcomparator) | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
@@ -134,6 +143,8 @@ class Contact(StructuredModel):
 
 Extracts numeric values from strings or numbers and compares them with configurable tolerance. Handles currency symbols, commas, and accounting notation (e.g., `(123)` for negative values). Returns 1.0 if the numbers match within tolerance, 0.0 otherwise.
 
+String values may use decimal digits in other scripts: `"١٬٢٥٠٫٥٠"` reads 1250.50, as `"1,250.50"` does. A value whose digits are all outside ASCII reads as no number unless it holds one unambiguous number. A value that also has ASCII digits reads its ASCII number and ignores its other-script digits (`"1,250.00 (١٬٢٥٠٫٠٠)"` reads 1250.00), but a number whose digits switch script, such as `"١٢٥٠.50"`, reads as no number unless it is the same amount written twice. A minus sign such as U+2212 marks a negative when it opens the value or follows a currency symbol (`"−1250"`, `"$−1250"`), as do accounting parentheses that are fullwidth or have spaces around them (`"（1250）"`, `" (1250) "`); `"(-1250)"` reads -1250. A compact form such as `"١٫٣ ألف"` reads the number shown (1.3), as `"1.3K"` does; one with a CJK numeral (`"１２万円"`) reads as no number. Declare the field `str`: a `float`, `int` or `Decimal` field rejects `"١٬٢٥٠٫٥٠"` before the comparator runs.
+
 **When to use:** Prices, quantities, measurements, or any numeric field where small differences are acceptable.
 
 ```python
@@ -216,13 +227,10 @@ class Product(StructuredModel):
 
 **Matching methods explained:**
 
-- `ratio` -- Standard Levenshtein distance ratio (similar to `LevenshteinComparator` but using rapidfuzz's optimized implementation).
+- `ratio` -- Indel similarity normalized by combined length, via RapidFuzz's `fuzz.ratio`. It differs from `LevenshteinComparator`, which also counts substitutions and normalizes by the longer string ("kitten" vs "sitting": 0.62 vs 0.57).
 - `partial_ratio` -- Finds the best partial match within the longer string. Good when one value is a substring of the other.
 - `token_sort_ratio` -- Splits strings into tokens, sorts them, then compares. Handles reordered words (e.g., "John Smith" vs "Smith John").
 - `token_set_ratio` -- Splits into token sets, comparing the intersection and remainder. Handles extra or missing words.
-
-!!! note "Dependency"
-    FuzzyComparator requires the `rapidfuzz` package. Install it with: `pip install rapidfuzz`
 
 ---
 
@@ -355,7 +363,7 @@ incidental character overlap.
 
     | key | ground truth | prediction | score |
     |---|---|---|---|
-    | `account` | `DE89370400440532013000` | `DE8937040044053201300`**`1`** | 0.9545 |
+    | `account` | `DE00000000000000000000` | `DE0000000000000000000`**`1`** | 0.9545 |
     | `invoice_date` | `2024-01-15` | `2024-01-1`**`6`** | 0.9000 |
     | `amount` | `1000000` | **`2`**`000000` | 0.8571 |
     | `total` | `1234.56` | `1234.5`**`7`** | 0.8571 |
@@ -404,14 +412,18 @@ actually score.
 
 Compares two bounding boxes using Intersection over Union (IoU) as the similarity score. Accepts both two-point (`[[x1, y1], [x2, y2]]`) and flat (`[x1, y1, x2, y2]`) formats. Coordinates are automatically normalized so that x1 <= x2 and y1 <= y2.
 
+A list field holding one box, such as `List[float]`, is scored as that one box, not paired element by element: one TP or FD, one FN or FA against `None`, `[]` or a list of only `None`, and one FD against a malformed value. A list of boxes (`List[List[float]]`) is paired box by box. A bare `list` follows the ground-truth value.
+
 **When to use:** Evaluating spatial localization accuracy for document fields, signature detection, logo identification, or any use case where you need to measure how well a predicted bounding box overlaps with ground truth.
 
 ```python
+from typing import Tuple
+
 from stickler import StructuredModel, ComparableField
 from stickler.comparators import BBoxIoUComparator
 
 class DocumentField(StructuredModel):
-    bbox: list = ComparableField(
+    bbox: Tuple[float, float, float, float] = ComparableField(
         comparator=BBoxIoUComparator(threshold=0.5),
         weight=1.0
     )
@@ -425,6 +437,39 @@ class DocumentField(StructuredModel):
 
 !!! tip "Rich Value Pattern"
     For end-to-end mAP evaluation with per-field breakdown, use the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) feature instead of using BBoxIoUComparator directly.
+
+---
+
+### PointDistanceComparator
+
+Scores two 2D (`[x, y]`) or 3D (`[x, y, z]`) points by Euclidean distance: `max(0.0, 1.0 - distance / max_distance)`. A match is a point within a radius of `max_distance * (1 - threshold)`, where separate `x`, `y`, `z` fields under `NumericComparator` gate on a box and give no partial credit.
+
+**When to use:** Object positions, keypoints, or any location scored by how far the prediction is from ground truth.
+
+```python
+from typing import List, Tuple
+
+from stickler import ComparableField, PointDistanceComparator, StructuredModel
+
+class Scene(StructuredModel):
+    position: Tuple[float, float, float] = ComparableField(
+        comparator=PointDistanceComparator(max_distance=0.5)
+    )
+    keypoints: List[List[float]] = ComparableField(
+        comparator=PointDistanceComparator(max_distance=0.5)
+    )
+```
+
+Annotate a single point as a `Tuple`: a `list` or `List[float]` point field always scores 0.0, even against an identical point, because the comparator never sees the whole point. In a Stickler config a single point is `"type": "tuple"`; JSON Schema cannot declare one, and a `Tuple` field exports as `"type": "string"`, so it does not round-trip. A list of points imports and exports in both formats.
+
+Lists, tuples and 1D NumPy arrays of `numbers.Real` coordinates are accepted. A point of the wrong length, a 2D point against a 3D one, and non-numeric (including `Decimal`) or non-finite coordinates score 0.0.
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `max_distance` | required | Distance at which the score reaches 0.0, in coordinate units. Must be a finite number greater than 0 |
+| `threshold` | `0.5` | Score threshold for binary match classification, a match within half of `max_distance` |
 
 ---
 
@@ -454,6 +499,9 @@ class Review(StructuredModel):
 | `sim_function` | `"cosine_similarity"` | Similarity function to use |
 | `embedding_function` | `None` | Optional custom embedding function (bypasses Bedrock) |
 
+!!! note "Dependency"
+    SemanticComparator needs the `semantic` extra: `pip install "stickler-eval[semantic]"`
+
 ---
 
 ### BERTComparator
@@ -481,11 +529,14 @@ class Document(StructuredModel):
 
 The default model is `distilbert-base-uncased`, loaded globally via the `evaluate` library.
 
+!!! note "Dependency"
+    BERTComparator needs the `bert` extra: `pip install "stickler-eval[bert]"`
+
 ---
 
 ### LLMComparator
 
-Uses a Large Language Model (via AWS Bedrock and the `strands-agents` library) to perform intelligent semantic comparisons. The LLM receives both values and optional evaluation guidelines, then returns a binary equivalence judgment. This is the most flexible comparator but also the most expensive.
+Uses a Large Language Model (via AWS Bedrock and the `strands-agents` library) to perform intelligent semantic comparisons. The LLM receives both values and optional evaluation guidelines, then returns a binary equivalence judgment: 1.0 only when the normalized reply is exactly `true`, otherwise 0.0 (with a `UserWarning` when the reply is neither `true` nor `false`). See [LLM-as-a-Judge](llm-as-a-judge.md#llmcomparator) for the exact rule. This is the most flexible comparator but also the most expensive.
 
 **When to use:** Complex comparisons that require reasoning, domain-specific logic, or understanding of abbreviations and conventions. See [LLM-as-a-Judge Comparators](llm-as-a-judge.md) for a detailed guide.
 
@@ -511,7 +562,142 @@ class Address(StructuredModel):
 | `eval_guidelines` | `None` | Custom guidelines for the LLM to follow during comparison |
 
 !!! note "Dependency"
-    LLMComparator requires the `strands-agents` package. Install it with: `pip install stickler-eval[llm]`
+    LLMComparator needs the `llm` extra: `pip install "stickler-eval[llm]"`
+
+---
+
+## Language Support
+
+The text comparators score identical Arabic, Devanagari or Japanese text
+`1.0`, as they do Latin text. The comparators differ in what each one treats
+as the same value written another way. This section covers the text, numeric,
+date and phone comparators: what each reads in other scripts, and what it
+scores `0.0`. The model-based comparators (Semantic, BERT and LLM) score whatever
+their model returns, so they are not covered here.
+
+### Text comparators
+
+None of the text comparators folds letter variants, diacritics or character
+widths. `NormalizedComparator` applies NFC, casefolds, and ignores Unicode
+punctuation and whitespace, and the other four apply neither NFC nor NFKC.
+Scores below are for each pair with the comparator's defaults, to at most two
+decimal places:
+
+| The pair differs by | Example | Exact | Normalized | Levenshtein | Fuzzy | ANLS\* |
+|---|---|---|---|---|---|---|
+| Hamza on alef | `"أحمد"` / `"احمد"` | 0.0 | 0.0 | 0.75 | 0.75 | 0.75 |
+| Ta marbuta and ha | `"مدرسة"` / `"مدرسه"` | 0.0 | 0.0 | 0.80 | 0.80 | 0.80 |
+| Alef maqsura and ya | `"مصطفى"` / `"مصطفي"` | 0.0 | 0.0 | 0.80 | 0.80 | 0.80 |
+| Diacritics | `"مُحَمَّد"` / `"محمد"` | 0.0 | 0.0 | 0.50 | 0.67 | 0.50 |
+| Tatweel | `"محـــمد"` / `"محمد"` | 0.0 | 0.0 | 0.57 | 0.73 | 0.57 |
+| Persian and Arabic letter forms | `"یک کتاب"` / `"يك كتاب"` | 0.0 | 0.0 | 0.57 | 0.57 | 0.57 |
+| Arabic-Indic digits in an ID | `"INV-١٢٥٠"` / `"INV-1250"` | 0.0 | 0.0 | 0.50 | 0.50 | 0.50 |
+| Arabic punctuation | `"مرحبا، كيف حالك؟"` / `"مرحبا كيف حالك"` | 0.0 | 1.0 | 0.88 | 0.93 | 0.88 |
+| Composed and decomposed form | `"\u0623\u062d\u0645\u062f"` / `"\u0627\u0654\u062d\u0645\u062f"` | 0.0 | 1.0 | 0.60 | 0.67 | 0.60 |
+| A right-to-left mark (U+200F) | `"\u200fدبي"` / `"دبي"` | 0.0 | 0.0 | 0.75 | 0.86 | 0.75 |
+| A zero-width non-joiner (U+200C) | `"می\u200cخواهم"` / `"میخواهم"` | 0.0 | 0.0 | 0.88 | 0.93 | 0.88 |
+| Arabic presentation forms | `"\ufee3\ufea4\ufee4\ufeaa"` / `"محمد"` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Full-width forms | `"ＡＢＣ１２３"` / `"ABC123"` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Half-width forms | `"ｶﾅ"` / `"カナ"` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+
+Escaped examples in this section's tables and text are Python string literals,
+because the two sides render the same or the difference is invisible.
+Devanagari has two spellings of क़ too, `"\u0958"` and `"\u0915\u093c"`,
+which NFC makes equal: only Normalized matches them (`1.0`), and the other four
+score `0.0`.
+
+Presentation forms, full-width and half-width characters can appear in text
+extracted from PDFs and scans. No text comparator applies NFKC, which would map
+them to the ordinary characters they display, so they never match those
+characters. A single word written entirely in them scores `0.0`, as in the
+last three rows. In longer text only shared characters such as spaces can earn
+credit: `"\ufee3\ufea4\ufee4\ufeaa \ufecb\ufee0\ufef2"` / `"محمد علي"` scores
+`0.125` with Levenshtein and Fuzzy and `0.0` with ANLS\*. Text that mixes them
+with ordinary characters loses credit for each such character:
+`"\ufee3\ufea4\ufee4\ufeaa 2024"` / `"محمد 2024"` scores `0.56` with
+Levenshtein, Fuzzy and ANLS\*, and `"INV-１２３"` / `"INV-123"` scores `0.57`.
+
+ANLS\* scores like Levenshtein on plain strings, except that a score below its
+leaf threshold of `0.5` becomes `0.0`. One more diacritic is enough to cross
+it: with a tanween added, `"مُحَمَّدٌ"` / `"محمد"` scores `0.44` with
+Levenshtein and `0.0` with ANLS\*.
+
+### Numbers, dates and phone numbers
+
+| Comparator | Reads in other scripts | Scores `0.0` |
+|---|---|---|
+| [`NumericComparator`](#numericcomparator) | Decimal digits in other scripts: `"١٬٢٥٠٫٥٠"` against `"1,250.50"`, `"۱۲۵۰"`, `"१२५०"` or `"১২৫০"` against `"1250"`, and `"１，２５０．５０"` against `"1250.50"`, score `1.0`. Persian digits read with the Arabic separators `٬` and `٫` (`"۱٬۲۵۰٫۵"` against `"1250.5"`) | The cases listed below the table |
+| [`DateComparator`](date-comparator.md) | Decimal digits in other scripts: `"١٤/٠٥/٢٠٢٤"`, `"۱۴/۰۵/۲۰۲۴"`, `"१४/०५/२०२४"`, `"১৪/০৫/২০২৪"`, `"๑๔/๐๕/๒๐๒๔"` (with a Gregorian year) and `"２０２４-０５-１４"` all score `1.0` against `"2024-05-14"`. A year-first date such as `"٢٠٢٤-٠٣-٠٤"` is read as year, month, day | A month name that is not English: `"14 مايو 2024"` and `"14 मई 2024"` score `0.0` against `"2024-05-14"`, where `"14 May 2024"` scores `1.0`. CLDR's short date for ar-EG, ar-SA and ar-AE, which puts a right-to-left mark after the day and the month: `"١٤\u200f/٥\u200f/٢٠٢٤"`, or `"14\u200f/5\u200f/2024"` in ar-AE. Without the marks, both score `1.0`. A date in another calendar: `"۱۴۰۳/۲/۲۵"` (CLDR's Solar Hijri short date for 14 May 2024), `"٦\u200f/١١\u200f/١٤٤٥ هـ"` (the same day in ar-SA's Umm al-Qura calendar, also `0.0` without the marks) and the Thai Buddhist-era year in `"๑๔/๐๕/๒๕๖๗"`. A date with `年`, `月` and `日`, such as `"2024年5月14日"` |
+| `PhoneComparator` | Decimal digits in other scripts: `"+٩٧١ ٥٠ ١٢٣ ٤٥٦٧"`, `"+۹۷۱ ۵۰ ۱۲۳ ۴۵۶۷"`, `"+९७१ ५० १२३ ४५६७"`, `"+৯৭১ ৫০ ১২৩ ৪৫৬৭"` and `"＋９７１ ５０ １２３ ４５６７"` all score `1.0` against `"+971 50 123 4567"` | A different number, such as `"+٩٧١ ٥٠ ١٢٣ ٤٥٦٨"`. A direction mark inside the number, such as U+200F in `"+٩٧١\u200f ٥٠ ١٢٣ ٤٥٦٧"`; a mark at the start or end scores `1.0`. A plus sign that right-to-left extraction moved to the end, as in `"٩٧١ ٥٠ ١٢٣ ٤٥٦٧+"` |
+
+Dates and phone numbers read the same way in every other decimal-digit script
+tried, including Gujarati, Tamil, Khmer, Lao, Myanmar and Tibetan; scripts not
+listed here were not checked.
+
+`NumericComparator` scores these `0.0`:
+
+- A value whose digits switch script, such as `"١٢٥٠.50"` against `"1250.5"`.
+  Two kinds are read: Arabic-Indic and Persian digits mixed (`"۱٢٥٠"` reads
+  1250), and the same amount written twice in two scripts (`"1,250.50١٬٢٥٠٫٥٠"`
+  reads 1250.50).
+- Digits with a `.` or `,` (ASCII, full-width or small form) in a script whose
+  locales may write `,` as the decimal point, or that no locale writes
+  natively, such as Persian, Khmer, Lao, Mongolian, Javanese, Sundanese,
+  Balinese and Cham: `"۱,۲۵۰"` and `"១.២៥០"` read as no number.
+- A CJK numeral touching the number, such as `万` in `"１２万円"`, which reads as
+  no number. `"一式 １，２５０円"` reads 1250.
+
+It does not apply the multiplier in a compact form: `"١٫٣ ألف"` (1.3
+thousand) reads 1.3, so it scores `1.0` against `"1.3"` and `0.0` against
+`"1300"`.
+
+Declare a `NumericComparator` field `str` to get the readings in the table, as
+[NumericComparator](#numericcomparator) explains. A `float` or `int` field
+rejects digits outside ASCII before the comparator runs. A `Decimal` field
+rejects `,`, `٬` and `٫`, and reads the rest with Python's `Decimal`, which
+accepts digits that switch script: `"١٢٥٠.50"` becomes `1250.50` and matches
+`"1250.5"`.
+
+### Choosing a comparator for non-Latin text
+
+- **Names and free text:** `LevenshteinComparator` or `FuzzyComparator`. They
+  give partial credit for letter variants and diacritics, but no full credit,
+  so set the threshold from scores like those in the table above. Exact scores
+  any difference `0.0`, and Normalized matches two spellings only when they are
+  identical after NFC, casefolding and removing punctuation and whitespace, so
+  it scores the letter variants and diacritics in the table `0.0`.
+- **IDs and codes:** `ExactComparator` or `NormalizedComparator` when both sides
+  use the same digits. Neither matches `"١٢٥٠"` with `"1250"`, so if your
+  documents mix digit scripts in IDs, convert the digits before evaluation.
+- **Amounts, dates and phone numbers:** `NumericComparator`, `DateComparator`
+  and `PhoneComparator` read digits in other scripts. Dates need English month
+  names and the Gregorian calendar, and score `0.0` written with `年`, `月` and
+  `日`. Remove direction marks (U+200E, U+200F and U+061C) from dates and phone
+  numbers before evaluation. One such mark anywhere in a date makes it score
+  `0.0`, as CLDR's Arabic short date shows, and one inside a phone number does
+  the same; a mark at the start or end of a phone number does not.
+- **Text from PDFs and scans:** if it may contain presentation forms or full-width
+  or half-width characters, convert it with NFKC before evaluation. No text
+  comparator matches those characters with the ones they display.
+
+[`test_arabic_text.py`](https://github.com/awslabs/stickler/blob/main/tests/common/comparators/test_arabic_text.py)
+pins the Arabic and Persian rows of the text table, the identical-Arabic-text
+score, the Arabic and Persian dates and phone numbers, and the tanween example,
+and
+[`test_numeric.py`](https://github.com/awslabs/stickler/blob/main/tests/common/comparators/test_numeric.py)
+pins how each number example is read, some through a signed or longer form of
+the same value, so a change to any of those scores is deliberate. No test pins
+these yet: the `float`, `int` and `Decimal` field behaviour above; the
+full-width and small-form `.` and `,` with the scripts that refuse them; the
+Levenshtein, Fuzzy and ANLS\* scores of the Arabic punctuation row; the
+full-width, half-width and Devanagari क़ text examples, the two-word
+presentation-form example and the mixed strings; identical Devanagari and
+Japanese text; the Devanagari, Bengali, Thai and full-width dates,
+`"14 मई 2024"`, the Thai Buddhist-era date and the `年`, `月` and `日` date, and
+the Umm al-Qura date; the Devanagari, Bengali and full-width phone numbers, the
+other dates with a direction mark, and the phone numbers with a direction mark
+or a trailing plus sign; and the other scripts tried for dates and phone
+numbers.
 
 ---
 
@@ -527,14 +713,21 @@ ends up a plain `str`. Read the result back with `to_json_schema()`, not from `m
 | JSON Schema Type | Default Comparator | Default Threshold | Rationale |
 |---|---|---|---|
 | `string` | LevenshteinComparator | 0.5 | Handles typos and minor variations |
-| `number` | NumericComparator | 0.5 | Tolerates small numeric differences |
-| `integer` | NumericComparator | 0.5 | Tolerates small numeric differences |
+| `number` | NumericComparator | 0.5 | Exact match unless a tolerance is set |
+| `integer` | NumericComparator | 0.5 | Exact match unless a tolerance is set |
 | `boolean` | ExactComparator | 0.5 | Must be exactly true or false (Exact returns only 0.0 or 1.0, so the threshold is immaterial) |
 | `string` + `"format": "date"` or `"date-time"` | DateComparator | 1.0 | Parses as `date`/`datetime`, so the field compares across formats |
 | `string` + `"enum"` or a single-value `const` | ExactComparator | 1.0 | Parses as an `Enum`/`Literal`, so only a listed value is valid |
 | `array` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
+
+`NumericComparator` defaults to a tolerance of 0, so a plain `{"type": "number"}` scores `100` vs
+`100.01` as 0.0. Set a tolerance to accept small differences; this scores the same pair 1.0:
+
+```json
+{"type": "number", "x-aws-stickler-comparator-config": {"tolerance": 0.01}}
+```
 
 A `format` the schema library does not map to a distinct type (`"email"`, `"hostname"`, `"duration"`)
 parses as `str`, so the field keeps LevenshteinComparator at 0.5. To check any of this on your own
@@ -740,40 +933,12 @@ for.
         super().__init__(threshold=threshold)
     ```
 
-```python
-from stickler import BaseComparator
-
-class BaseComparator(ABC):
-    #: The threshold to use when the caller does not name one. Override per class.
-    DEFAULT_THRESHOLD: float = 0.7
-
-    def __init__(self, threshold: Optional[float] = None):
-        # None, not a number, so a threshold the caller named stays
-        # distinguishable from one nobody asked for. See below.
-        self.threshold_was_set = threshold is not None
-        self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
-
-    def compare(self, str1: Any, str2: Any) -> float:
-        """Apply the shared None policy, then delegate to _compare."""
-        if str1 is None and str2 is None:
-            return 1.0
-        if str1 is None or str2 is None:
-            return 0.0
-        return self._compare(str1, str2)
-
-    @abstractmethod
-    def _compare(self, str1: Any, str2: Any) -> float:
-        """Compare two present values. Neither argument is ever None.
-
-        Args:
-            str1: First value, never None
-            str2: Second value, never None
-
-        Returns:
-            Similarity score between 0.0 and 1.0
-        """
-        pass
-```
+Subclass `BaseComparator`, set `DEFAULT_THRESHOLD`, and accept
+`threshold: Optional[float] = None` in your constructor. Pass `threshold`
+unchanged to `super().__init__`. Implement `_compare(a, b) -> float` to return a
+similarity score between `0.0` and `1.0`; neither argument is ever `None`.
+See the [BaseComparator API reference](../../API-Reference/comparators.md#stickler.comparators.BaseComparator)
+for the full interface.
 
 `BaseComparator` also provides:
 
@@ -795,7 +960,7 @@ The policy lives in `BaseComparator.compare` and nowhere else. You don't write a
 
 ```python
 import re
-from typing import Any
+from typing import Any, Optional
 from stickler import BaseComparator
 
 class RegexComparator(BaseComparator):
