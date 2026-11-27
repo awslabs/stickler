@@ -250,7 +250,7 @@ Weights are configured per-field via `ComparableField` metadata. Default weight 
 
 ### `clip_under_threshold`
 
-When enabled on a field, a score below the threshold contributes 0.0 instead of its partial similarity. On a `StructuredModel` declared in Python it is on by default, except on dict and plain-model fields and lists of them. JSON Schema and the zero-config path have their own defaults ([JSON Schema](../../Guides/Evaluation/README.md#extension-reference), [zero-config](../../API-Reference/auto.md#inference)). It holds for every field kind except `List[StructuredModel]`, where it currently has no effect, a known gap (see the warning below); the layer that applies it differs.
+When enabled on a field, a score below the threshold contributes 0.0 instead of its partial similarity. On a `StructuredModel` declared in Python it is on by default, except on dict and plain-model fields, lists of them, and `List[StructuredModel]`. A list of models spelled any other way than `List[A]` or `List[Optional[A]]`, optionally with `Annotated` (such as `List[Union[...]]`, `List[Any]` or `Sequence[A]`) scores as if off when unset, while `explain()` still reports `True` for it, as it does for a bare (no `ComparableField`) `List[Optional[A]]` or `List[Annotated[A, ...]]`. JSON Schema and the zero-config path have their own defaults ([JSON Schema](../../Guides/Evaluation/README.md#extension-reference), [zero-config](../../API-Reference/auto.md#inference)). It holds for every field kind; the layer that applies it differs.
 
 For a primitive or a single nested `StructuredModel`, `FieldComparator` clips when producing `threshold_applied_score`, and the engine's percolation loop uses the already-clipped score:
 
@@ -289,11 +289,13 @@ else:
     Classification is separate and is never affected by this setting. A pair below
     the threshold is one `fd` whether or not its score is kept.
 
-    Two gaps remain. `List[StructuredModel]` does not honour the flag
-    ([#415](https://github.com/awslabs/stickler/issues/415)), because each pair is
-    scored through the item's own `compare_with` and clipping has already happened
-    per item. For the same reason its `raw_similarity_score` is unclipped only at
-    the list level ([#437](https://github.com/awslabs/stickler/issues/437)).
+    `List[StructuredModel]` scores each pair through the item's own
+    `compare_with`, so its fields are clipped per item first. For the same reason
+    its `raw_similarity_score` is unclipped only at the list level
+    ([#437](https://github.com/awslabs/stickler/issues/437)). The list field's own
+    `clip_under_threshold` is applied in `StructuredListComparator`: a pair below
+    the element class's `match_threshold` (an `fd`) contributes 0.0
+    ([#415](https://github.com/awslabs/stickler/issues/415)).
 
 ### `_aggregate_to_overall()`
 

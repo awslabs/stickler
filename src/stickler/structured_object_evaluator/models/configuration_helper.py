@@ -5,6 +5,9 @@ and the object-pair comparison gate.
 """
 
 import inspect
+import os
+import threading
+import weakref
 from collections.abc import Mapping as abc_Mapping
 from typing import TYPE_CHECKING, Any, Dict, List, get_args, get_origin
 
@@ -28,6 +31,102 @@ if TYPE_CHECKING:
         ComparableFieldConfig,
     )
 from stickler.comparators.structured import StructuredModelComparator
+
+# Classes whose list-of-models clip default waits for a forward reference to
+# resolve (#415), each mapped to the finalizer that refreshes the flag if the
+# class is collected while pending, and whether there are any. The flag is
+# False whenever none is pending, so `get_comparison_info` pays one global read
+# per call; a class stops being pending the first time one of its recorded
+# fields is read after pydantic completes it, or when it is garbage collected.
+# Weak keys, so a dynamically created model is not kept alive by being recorded
+# here. The lock covers recording, settling and the collection callback; the
+# per-call read of the flag stays lock-free. Re-entrant because a collection
+# can run while the lock is held (inside `note` or `settle`), and its callback
+# takes the lock too.
+_DEFERRED_CLIP_SEEN = False
+_DEFERRED_CLIP_CLASSES: "weakref.WeakKeyDictionary[type, weakref.finalize]" = (
+    weakref.WeakKeyDictionary()
+)
+_DEFERRED_CLIP_LOCK = threading.RLock()
+
+
+def _reset_deferred_clip_lock_after_fork() -> None:
+    """A forked child gets a fresh lock, as ``logging`` does for its own: a
+    lock some other thread held at the fork would never be released there."""
+    global _DEFERRED_CLIP_LOCK
+    _DEFERRED_CLIP_LOCK = threading.RLock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_deferred_clip_lock_after_fork)
+
+
+def _refresh_deferred_clip_flag() -> None:
+    """Recompute the flag from the live pending classes. Callers hold the lock.
+
+    Iterates rather than taking ``len``: iteration yields only classes that are
+    still alive, whatever order the collection callbacks run in.
+    """
+    global _DEFERRED_CLIP_SEEN
+    _DEFERRED_CLIP_SEEN = any(True for _ in _DEFERRED_CLIP_CLASSES.keys())
+
+
+def _on_deferred_class_collected() -> None:
+    with _DEFERRED_CLIP_LOCK:
+        _refresh_deferred_clip_flag()
+
+
+def note_deferred_clip_fields(cls, field_names) -> None:
+    """Record fields whose list-of-models clip default is settled later.
+
+    Called for a class pydantic could not complete at definition, whose
+    forward references hide a ``List["Item"]`` from the class-definition
+    amendment. ``_settle_deferred_clip_fields`` applies the default once the
+    class is complete.
+    """
+    global _DEFERRED_CLIP_SEEN
+    names = frozenset(field_names)
+    if not names:
+        return
+    with _DEFERRED_CLIP_LOCK:
+        cls._stickler_deferred_clip_fields = names
+        if cls not in _DEFERRED_CLIP_CLASSES:
+            finalizer = weakref.finalize(cls, _on_deferred_class_collected)
+            # Nothing to refresh at interpreter exit, and taking the lock then
+            # could hang on a daemon thread that holds it.
+            finalizer.atexit = False
+            _DEFERRED_CLIP_CLASSES[cls] = finalizer
+        _DEFERRED_CLIP_SEEN = True
+
+
+def _settle_deferred_clip_fields(cls) -> None:
+    """Apply the list-of-models clip default to a completed class's recorded
+    fields, as ``_install_object_grade_comparators`` does at definition, and
+    stop tracking the class.
+
+    Amending the field's metadata here, rather than answering per read, is
+    what lets the per-comparison check stop: afterwards the field reads, scores
+    and exports as one amended at definition does. The class's finalizer is
+    detached, so a settled class leaves nothing registered behind.
+    """
+    from .structured_model import _amend_clip_default
+
+    with _DEFERRED_CLIP_LOCK:
+        for name in getattr(cls, "_stickler_deferred_clip_fields", ()):
+            field_info = cls.model_fields.get(name)
+            extra = getattr(field_info, "json_schema_extra", None)
+            if callable(extra) and ConfigurationHelper.is_list_of_structured_models(
+                field_info
+            ):
+                clip = ConfigurationHelper.object_grade_clip(extra)
+                if clip != getattr(extra, "_clip_under_threshold", True):
+                    _amend_clip_default(field_info, extra, clip)
+        cls._stickler_deferred_clip_fields = frozenset()
+        finalizer = _DEFERRED_CLIP_CLASSES.pop(cls, None)
+        if finalizer is not None:
+            finalizer.detach()
+        _refresh_deferred_clip_flag()
+
 
 # Comparators that must not be handed a mapping, matched by exact class name.
 # Differently named external comparators are left alone, but this also misses
@@ -269,6 +368,38 @@ class ConfigurationHelper:
             or ConfigurationHelper.is_plain_model_field_type(field_info)
             or ConfigurationHelper._is_list_of_plain_models(field_info)
         )
+
+    @staticmethod
+    def is_list_of_structured_models(field_info) -> bool:
+        """Whether a field is a list of one ``StructuredModel`` class.
+
+        The list and its element may each be optional or ``Annotated``
+        (``List[Optional[A]]``, ``List[Annotated[A, ...]]``), in any nesting
+        order, as ``strip_annotation_wrappers`` reads them. Such a list takes
+        the object-grade clip default (off unless stated) but not the
+        comparator substitution: its items are paired by the element class's
+        own matcher and ``match_threshold`` (#415).
+
+        Other spellings (``List[Union[A, B]]``, ``List[Any]``, ``Sequence[A]``)
+        are left out. A union of models must keep its 1.0.0 export shape until
+        1.1.0, which this must not change. Their scores do not depend on this
+        answer, since ``StructuredListComparator`` reads the field's stated
+        clip directly.
+        """
+        from .structured_model import StructuredModel
+
+        def is_model(arg) -> bool:
+            return inspect.isclass(arg) and issubclass(arg, StructuredModel)
+
+        strip = ConfigurationHelper.strip_annotation_wrappers
+        try:
+            annotation = strip(getattr(field_info, "annotation", None))
+            if get_origin(annotation) is not list:
+                return False
+            args = get_args(annotation)
+            return bool(args) and is_model(strip(args[0]))
+        except (TypeError, AttributeError):
+            return False
 
     @staticmethod
     def object_grade_clip(extra) -> bool:
@@ -724,6 +855,16 @@ class ConfigurationHelper:
         Returns:
             ComparableFieldConfig object with comparison configuration
         """
+        # The read-time half of the list-of-models clip default, for a field
+        # whose forward reference `_install_object_grade_comparators` could not
+        # see (#415). Settled once, when the class is complete; this runs for
+        # every field of every pair, so it costs one global read otherwise.
+        if (
+            _DEFERRED_CLIP_SEEN
+            and field_name in getattr(cls, "_stickler_deferred_clip_fields", ())
+            and getattr(cls, "__pydantic_complete__", False)
+        ):
+            _settle_deferred_clip_fields(cls)
         field_info = cls.model_fields[field_name]
 
         # NEW HYBRID APPROACH: Try function attribute access first (fixes custom comparators)
@@ -840,6 +981,12 @@ class ConfigurationHelper:
                 comparator=StructuredModelComparator(),
                 threshold=0.9,  # Higher threshold for structured object matching
                 weight=1.0,
+                # A bare `List[StructuredModel]` keeps partial credit, as one
+                # declared with `ComparableField()` does (#415). A single
+                # nested model keeps the default it had.
+                clip_under_threshold=not (
+                    ConfigurationHelper.is_list_of_structured_models(field_info)
+                ),
             )
 
         # A bare dict annotation declares no keys, so there is no per-key

@@ -161,11 +161,12 @@ def test_extension_reference_defaults_match_an_undeclared_schema():
     infos = [UNDECLARED._get_comparison_info(f) for f in UNDECLARED_PROPERTIES]
     assert (
         default["x-aws-stickler-clip-under-threshold"]
-        == "`true`, `false` on a free-form object or an array of them"
+        == "`true`; `false` on a free-form object, an array of them, or an array"
+        " of models"
     )
-    free_form = {"mapping", "mappings"}
+    unclipped = {"mapping", "mappings", "models"}
     assert all(
-        info.clip_under_threshold is (name not in free_form)
+        info.clip_under_threshold is (name not in unclipped)
         for name, info in zip(UNDECLARED_PROPERTIES, infos)
     )
     assert default["x-aws-stickler-weight"] == "1.0"

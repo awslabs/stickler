@@ -11,6 +11,40 @@ Each release links to full notes on the
 
 ### Changed
 
+- **`clip_under_threshold` now applies to a `List[StructuredModel]` field.**
+  It was accepted there and ignored, so an item below the element class's
+  `match_threshold` (an FD) kept its partial score either way. With
+  `clip_under_threshold=True` that item now contributes `0.0` to the list's
+  score. The default is `False`, as on dict and plain-model fields and lists of
+  them, so a list that does not set it scores as before; on the JSON Schema
+  path the same holds for an array of models without
+  `x-aws-stickler-clip-under-threshold`, and on the Stickler-config path for a
+  `list_structured_model` without `clip_under_threshold`. Scores change for a
+  list field that sets it to `True`: in the issue's example, one line item with
+  two of its three fields wrong scores `0.0` instead of `0.33`. Counts do not
+  change, and the list's own `raw_similarity_score` stays unclipped at the list
+  level; a list that holds such a list scores each item through its
+  `compare_with`, so its `raw_similarity_score` reflects the inner clip
+  ([#437](https://github.com/awslabs/stickler/issues/437)).
+  - **A schema or config exported by 1.0.x clips.** `to_json_schema()` and
+    `to_stickler_config()` in 1.0.x wrote `true` on every array of models that
+    did not set the flag, and that `true` now takes effect on import, so the
+    example above scores `0.0` instead of `0.33` from such a file. To keep
+    1.0.x scores, delete `x-aws-stickler-clip-under-threshold` (or
+    `clip_under_threshold`) from those arrays, or set it to `false`.
+  - `to_json_schema()` and `to_stickler_config()` now export `false` for a
+    `List[StructuredModel]` that sets nothing, where they exported `true`, so a
+    round trip keeps its score, and `explain()` reports `clip_under_threshold`
+    `False` for it, where it reported `True`. That covers `List[A]` and
+    `List[Optional[A]]` declared with `ComparableField`, with the list optional
+    and either wrapped in `Annotated`, and a bare `List[A]` or
+    `Optional[List[A]]`. A bare `List[Optional[A]]` or `List[Annotated[A, ...]]`
+    still reports `True`, and scores the same. Any other spelling of a list of
+    models, such as
+    `List[Union[A, B]]`, `List[Any]` or `Sequence[A]`, keeps partial credit
+    too, but `explain()` still reports `True` for it, as before
+    ([#415](https://github.com/awslabs/stickler/issues/415)).
+
 - **The Stickler-config and JSON Schema importers now resolve an unstated
   `threshold` and `clip_under_threshold` as the documented Python path
   (`ComparableField`) does.** Both importers filled in their

@@ -51,7 +51,7 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 | `comparator` | `BaseComparator` | `LevenshteinComparator()` | The comparison algorithm to use. See [Comparators](../Comparators/README.md) for the full list. |
 | `threshold` | `float` (0.0--1.0) | `0.5` | Minimum similarity score required for a field to be classified as a match. |
 | `weight` | `float` (> 0.0) | `1.0` | Relative importance of this field when computing aggregate scores. |
-| `clip_under_threshold` | `bool` | `True` (`False` on dict and plain-model fields and lists of them) | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. List fields follow the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract. |
+| `clip_under_threshold` | `bool` | `True` (`False` on dict and plain-model fields, lists of them, and `List[StructuredModel]`) | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. List fields follow the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract, which also covers a list of models spelled another way, such as `List[Union[...]]`, `List[Any]` or `Sequence[...]`. |
 
 ### How Each Parameter Affects Scoring
 
@@ -195,7 +195,7 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`). On an object with `properties`, which is scored field by field, it has no effect except for a threshold it names, and warns |
 | `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value from 0.0 to 1.0 other than 0.5 warns there (in Python, `ComparableField(threshold=...)` on a `List[StructuredModel]` raises `ValueError`); any other value raises, naming `x-aws-stickler-match-threshold`. Read, not ignored, on an array of free-form `{"type": "object"}` items |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
-| `x-aws-stickler-clip-under-threshold` | boolean | `true`, `false` on a free-form object or an array of them | Zero out scores below threshold. An inferred property takes it from inference (see below) |
+| `x-aws-stickler-clip-under-threshold` | boolean | `true`; `false` on a free-form object, an array of them, or an array of models | Zero out scores below threshold. An inferred property takes it from inference (see below) |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
 | `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold, weight and clip setting for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
@@ -231,7 +231,10 @@ and not checked. See [Valid Threshold Values](../../Getting-Started/thresholds-a
 `x-aws-stickler-clip-under-threshold` defaults to `true`, except on a free-form
 object or an array of them, where it defaults to `false` so a comparator such as
 `ANLSStarComparator` keeps its partial credit. The default `ExactComparator`
-scores each object `0.0` or `1.0`, so clipping does not change them.
+scores each object `0.0` or `1.0`, so clipping does not change them. On an array
+of models it also defaults to `false`, so an item below the element class's
+`x-aws-stickler-match-threshold` keeps its partial score; set it to `true` to
+score such an item `0.0`.
 
 With `x-aws-stickler-infer-unspecified`, a scalar, a free-form object, or an
 array of either that names no comparator takes any threshold or clip setting it
