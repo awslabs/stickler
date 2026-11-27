@@ -346,7 +346,7 @@ class TestEvaluationHTMLReporter:
         assert report.metadata["document_count"] == 7
 
     def test_get_document_count_reads_a_results_dict_key(self):
-        """The title and ReportResult.metadata use a dict's document_count (#467)."""
+        """_get_document_count reads a results dict's document_count key (#467)."""
         assert self.reporter._get_document_count({'overall': {}, 'document_count': 7}) == 7
 
     def test_generate_title_individual_results(self):
