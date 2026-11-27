@@ -33,8 +33,8 @@ matcher.calculate_metrics(["apple", "banana"], ["banana", "aple"])
 
 The assignment decides what is paired. `match_threshold` then splits the paired
 items into two groups. It never puts a pair back into the unpaired counts. With
-`m` and `n` as the two list lengths and `k` as the pair count, which is always
-`min(m, n)`:
+`m` and `n` as the two list lengths and `k` as the pair count, which is
+`min(m, n)` unless `is_pair_excluded` vetoes pairs:
 
 | Key | Meaning | Closed form |
 |---|---|---|
@@ -44,8 +44,9 @@ items into two groups. It never puts a pair back into the unpaired counts. With
 | `fa` | prediction item with no partner, a false alarm | `n` minus `k` |
 | `fp` | the rollup, `fd` plus `fa` | `n` minus `tp` |
 
-The four leaf counts cover `max(m, n)` items once each, so nothing is counted
-twice and nothing is dropped. Only one of `fn` and `fa` can be non zero.
+The four leaf counts cover `m + n - k` items once each, so nothing is counted
+twice and nothing is dropped. Without exclusions `k` is `min(m, n)` and only one
+of `fn` and `fa` can be non zero; one vetoed pair leaves `fn` 1 and `fa` 1.
 `tp + fp == n` and `tp + fn + fd == m`, which is why `precision` and `recall`
 have a denominator in closed form and the method needs no special case per
 input shape.

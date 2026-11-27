@@ -32,6 +32,18 @@ Each release links to full notes on the
   always scores 0.0. A `Tuple` field exports as a string type, so a single
   point field does not round-trip through `to_json_schema()` or
   `to_stickler_config()`; a list of points does.
+- `ComparableField(required_match=True)` makes a primitive field a veto when
+  objects are paired in a list: a pair whose required field is not at or above
+  its threshold is excluded before the assignment and counts as one false
+  negative and one false alarm, never a false discovery. Off by default; scores
+  and counts do not change unless a field sets it. Only `str`, `int`, `float`
+  and `bool` fields may be required, and a class may not hold a single nested
+  model that has required fields (`ValueError` when the class is defined). When
+  the two objects have different classes, a field required by either one vetoes
+  the pair. The vetoed objects follow the `aggregate` rule for any FN or FA
+  item: left out when a sibling was accepted, in the list's own counts when
+  none was. Python only: `to_json_schema()` and `to_stickler_config()` do not
+  write it, and `model_from_json()` and `from_json_schema()` do not read it.
 
 ### Changed
 
