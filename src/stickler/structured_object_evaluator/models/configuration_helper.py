@@ -24,6 +24,8 @@ from .optional_annotation import (
     unwrap_annotated,
     unwrap_optional,
 )
+from .threshold_helper import model_identity
+from .threshold_rule import stacklevel_outside
 
 if TYPE_CHECKING:
     from stickler.structured_object_evaluator.models.comparison_info import (
@@ -732,7 +734,9 @@ class ConfigurationHelper:
         name = comparison_config.get("comparator_type", "LevenshteinComparator")
         config = comparison_config.get("comparator_config") or {}
         registry = get_global_registry()
-        where = f"{cls.__name__}.{field_name}"
+        # `model_identity`, not the bare name: every dynamic model is named
+        # `DynamicModel`, so keyed (or worded) on that only the first would warn.
+        where = f"{model_identity(cls.__name__, cls.__annotations__)}.{field_name}"
         try:
             return registry.create_instance(name, config)
         except KeyError:
@@ -750,6 +754,7 @@ class ConfigurationHelper:
             f"are not the ones {name!r} would give. Register the comparator, or "
             f"declare it with ComparableField(comparator=...).",
             category=UserWarning,
+            stacklevel=stacklevel_outside(through_warn_once=True),
         )
         return LevenshteinComparator()
 

@@ -187,28 +187,28 @@ def test_semantic_comparator_is_rebuilt_by_name():
     assert isinstance(rebuilt._get_comparison_info("d").comparator, SemanticComparator)
 
 
-def test_every_builtin_the_tests_cover_is_registered():
-    """Drift guard: a built-in added to the registry should get a case above."""
-    covered = {
-        "LevenshteinComparator",
-        "ExactComparator",
-        "NormalizedComparator",
-        "PhoneComparator",
-        "NumericComparator",
-        "DateComparator",
-        "FuzzyComparator",
-        "ANLSStarComparator",
-        "BBoxIoUComparator",
-        "SemanticComparator",
-        # Not exercised here: StructuredModelComparator is installed for nested
-        # models, which never reach this fallback; BERT downloads a model; LLM
-        # cannot be built from config (tested below).
-        "StructuredModelComparator",
-        "BERTComparator",
-        "LLMComparator",
+# Built-ins with their own test below rather than a CASES row, and built-ins
+# deliberately not exercised: StructuredModelComparator is installed for nested
+# models, which never reach this fallback, and BERT downloads a model.
+TESTED_SEPARATELY = {"SemanticComparator", "LLMComparator"}
+EXEMPT = {"StructuredModelComparator", "BERTComparator"}
+
+
+def test_every_builtin_has_a_rebuild_case():
+    """Drift guard: a built-in added to the registry needs a CASES row.
+
+    Read from what each case's field actually exports, so adding a name here
+    without a case cannot satisfy it.
+    """
+    in_cases = {
+        _exported(_model("Original", case[1], ComparableField(**case[2])))[
+            "comparator_type"
+        ]
+        for case in CASES
     }
+    assert in_cases.isdisjoint(TESTED_SEPARATELY | EXEMPT)
     builtins = set(get_global_registry()._BUILTINS)
-    assert builtins == covered
+    assert builtins == in_cases | TESTED_SEPARATELY | EXEMPT
 
 
 def test_registered_custom_comparator_is_rebuilt_with_its_config():
@@ -260,6 +260,40 @@ def test_unknown_name_warns_and_falls_back_to_levenshtein():
     with pytest.warns(UserWarning, match=r"HandBuilt\.d.*'NoSuchComparator432'"):
         comparator = model._get_comparison_info("d").comparator
     assert isinstance(comparator, LevenshteinComparator)
+
+
+def test_fallback_warning_points_at_the_callers_code():
+    model = _hand_built({"comparator_type": "NoSuchComparator432Location"})
+    with pytest.warns(UserWarning, match="NoSuchComparator432Location") as record:
+        model(d="a").compare_with(model(d="b"))
+    assert [w.filename for w in record if "x-comparison" in str(w.message)] == [
+        __file__
+    ]
+
+
+def test_same_named_dynamic_models_each_warn():
+    """Every dynamic model is `DynamicModel`; a name-only key warned once."""
+
+    def dynamic(extra_field: str) -> type:
+        return type(
+            "DynamicModel",
+            (StructuredModel,),
+            {
+                "__annotations__": {"d": str, extra_field: str},
+                "d": Field(
+                    default=None,
+                    json_schema_extra={
+                        "x-comparison": {"comparator_type": "NoSuchComparator432Dyn"}
+                    },
+                ),
+                extra_field: None,
+            },
+        )
+
+    for extra_field in ("first", "second"):
+        model = dynamic(extra_field)
+        with pytest.warns(UserWarning, match=rf"fields: .*{extra_field}"):
+            model._get_comparison_info("d")
 
 
 def test_comparator_that_cannot_be_built_from_config_warns():
