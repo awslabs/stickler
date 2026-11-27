@@ -8,11 +8,12 @@ When Stickler compares `List[StructuredModel]` fields, it uses the Hungarian alg
 
 ## Overview
 
-The algorithm has three phases:
+The algorithm has four phases:
 
 1. **Pairwise similarity** -- Compute a similarity score for every GT/Pred combination.
-2. **Optimal assignment** -- Use the Hungarian algorithm to find the pairing that maximizes total similarity.
-3. **Threshold-gated classification** -- Classify each pair as TP or FD based on `match_threshold`, then handle unmatched items.
+2. **Exclusion** -- Remove every pair that a `required_match` field vetoes. A no-op when no field sets it.
+3. **Optimal assignment** -- Use the Hungarian algorithm to find the pairing that maximizes total similarity among the allowed pairs.
+4. **Threshold-gated classification** -- Classify each pair as TP or FD based on `match_threshold`, then handle unmatched items.
 
 ## Algorithm Steps
 
@@ -20,11 +21,15 @@ The algorithm has three phases:
 
 For each (GT[i], Pred[j]) pair, Stickler calls `GT[i].compare(Pred[j])` to obtain a raw weighted similarity score. Fields absent on both sides are excluded because a true negative is not match evidence. If every field is absent, the score is `1.0`. The result is an N x M cost matrix.
 
-### 2. Hungarian Assignment
+### 2. Exclusion
 
-The Hungarian algorithm solves the assignment problem in O(n^3) time, producing a one-to-one mapping that maximizes total similarity. When lists differ in length, some items remain unmatched.
+A pair is excluded when a field marked `required_match` is null on one side only, or scores below its threshold, on either object's class. The assignment then keeps as many allowed pairs as it can, even at lower similarity. See `required_match` in [Evaluation](../Guides/Evaluation/README.md).
 
-### 3. Threshold-Gated Classification
+### 3. Hungarian Assignment
+
+The Hungarian algorithm solves the assignment problem in O(n^3) time, producing a one-to-one mapping that maximizes total similarity over the allowed pairs. When lists differ in length, or pairs were excluded, some items remain unmatched.
+
+### 4. Threshold-Gated Classification
 
 Each matched pair is classified using `StructuredModel.match_threshold`, with `>=` as described in [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold):
 
@@ -39,7 +44,8 @@ The threshold splits matched pairs into TP and FD; it does not un-match them.
 A pair the algorithm assigned is a match, so **similarity magnitude never
 changes the classification** -- a pair at similarity `0.0` is still an assigned
 pair and is therefore FD, not FN + FA. Only items with no partner at all
-become FN or FA. This holds identically for a one-item list and a hundred-item
+become FN or FA. An excluded pair is never assigned, so its two items each
+have no partner: one FN and one FA, never an FD. This holds identically for a one-item list and a hundred-item
 one; see `tests/common/algorithms/test_hungarian_path_parity.py`.
 
 `HungarianMatcher.calculate_metrics` returns these same four counts if you call
