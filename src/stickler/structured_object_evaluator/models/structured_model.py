@@ -33,7 +33,6 @@ from .comparable_field import ComparableField, _named_comparator_threshold
 from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper, in_list_item_metrics
-from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
@@ -1654,27 +1653,6 @@ class StructuredModel(BaseModel):
         field_type = field_info.annotation
         return _annotation_is_list(field_type)
 
-    def _handle_list_field_dispatch(
-        self, gt_val: Any, pred_val: Any, weight: float
-    ) -> dict:
-        """Handle list field comparison using match statements.
-
-        DEPRECATED: This method now delegates to ComparisonDispatcher.
-        Kept for backward compatibility with any external callers.
-
-        Args:
-            gt_val: Ground truth list value
-            pred_val: Predicted list value
-            weight: Field weight for scoring
-
-        Returns:
-            Comparison result dictionary
-        """
-        from .comparison_dispatcher import ComparisonDispatcher
-
-        dispatcher = ComparisonDispatcher(self)
-        return dispatcher.handle_list_field_dispatch(gt_val, pred_val, weight)
-
     def _compare_unordered_lists(
         self,
         gt_list: List[Any],
@@ -1808,37 +1786,6 @@ class StructuredModel(BaseModel):
 
         calculator = DerivedMetricsCalculator()
         return calculator.add_derived_metrics_to_result(result, recall_with_fd)
-
-    def _has_basic_metrics(self, metrics_dict: dict) -> bool:
-        """Check if a dictionary has basic confusion matrix metrics.
-
-        Args:
-            metrics_dict: Dictionary to check
-
-        Returns:
-            True if it has the basic metrics (tp, fp, fn, etc.)
-        """
-        basic_metrics = ["tp", "fp", "fn", "tn", "fa", "fd"]
-        return all(metric in metrics_dict for metric in basic_metrics)
-
-    def _collect_enhanced_non_matches(
-        self, recursive_result: dict, other: "StructuredModel"
-    ) -> List[Dict[str, Any]]:
-        """Collect enhanced non-matches with object-level granularity.
-
-        This method delegates to NonMatchCollector for the actual implementation.
-
-        Args:
-            recursive_result: Result from compare_recursive containing field comparison details
-            other: The predicted StructuredModel instance
-
-        Returns:
-            List of non-match dictionaries with enhanced object-level information
-        """
-        from .non_match_collector import NonMatchCollector
-
-        collector = NonMatchCollector(self)
-        return collector.collect_enhanced_non_matches(recursive_result, other)
 
     def compare(self, other: "StructuredModel") -> float:
         """Compare this model with another and return a scalar similarity score.
@@ -2017,21 +1964,6 @@ class StructuredModel(BaseModel):
             bbox_iou_thresholds=bbox_iou_thresholds,
         )
 
-    def _convert_score_to_binary_metrics(
-        self, score: float, threshold: float = 0.5
-    ) -> Dict[str, float]:
-        """Convert similarity score to binary classification metrics using MetricsHelper.
-
-        Args:
-            score: Similarity score [0-1]
-            threshold: Threshold for considering a match
-
-        Returns:
-            Dictionary with TP, FP, FN, TN counts converted to metrics
-        """
-        metrics_helper = MetricsHelper()
-        return metrics_helper.convert_score_to_binary_metrics(score, threshold)
-
     def _format_for_evaluator(
         self,
         result: Dict[str, Any],
@@ -2053,28 +1985,6 @@ class StructuredModel(BaseModel):
         """
         return EvaluatorFormatHelper.format_for_evaluator(
             self, result, other, recall_with_fd, recursive_result
-        )
-
-    def _calculate_list_item_metrics(
-        self,
-        field_name: str,
-        gt_list: List[Any],
-        pred_list: List[Any],
-        recall_with_fd: bool = False,
-    ) -> List[Dict[str, Any]]:
-        """Calculate metrics for individual items in a list field.
-
-        Args:
-            field_name: Name of the list field
-            gt_list: Ground truth list
-            pred_list: Prediction list
-            recall_with_fd: Whether to include FD in recall denominator
-
-        Returns:
-            List of metrics dictionaries for each matched item pair
-        """
-        return EvaluatorFormatHelper.calculate_list_item_metrics(
-            field_name, gt_list, pred_list, recall_with_fd
         )
 
     @classmethod
