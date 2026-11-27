@@ -2,7 +2,9 @@
 
 """Test handling of hallucinated fields (extra_fields) as False Alarms."""
 
-from typing import ClassVar
+from typing import Any, ClassVar, List
+
+from pydantic import BaseModel
 
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -241,3 +243,39 @@ class TestHallucinatedFieldsFA:
         assert actual_fa == expected_fa, (
             "Hallucinated fields on list elements should count as False Alarms"
         )
+
+    def test_unmatched_predicted_element_with_extra_fields_not_double_counted(self):
+        """Test that an unmatched predicted list element is counted as 1 FA, not 1 + extra fields."""
+
+        class Two(StructuredModel):
+            a: str = ComparableField()
+            b: str = ComparableField()
+
+        class Container(StructuredModel):
+            items: list[Two] = ComparableField()
+
+        gt = Container(items=[Two(a="x", b="y")])
+        pred = Container(items=[Two(a="x", b="y"), Two(a="p", b="q", z="h")])
+
+        result = gt.compare_with(pred, include_confusion_matrix=True)
+        # 0 extra fields on matched item + 1 FA for the unmatched element = 1 FA total
+        assert result["confusion_matrix"]["overall"]["fa"] == 1
+
+    def test_mixed_list_with_non_structured_models(self):
+        """Test that lists with non-StructuredModel items do not crash."""
+
+        class Scored(BaseModel):
+            a: str = "x"
+
+            def compare_with(self, other, **kw):
+                return {"overall_score": 1.0}
+
+        class Loose(StructuredModel):
+            items: List[Any] = ComparableField(weight=1.0)
+
+        v = [SimpleContract(date="2024-01-15", company_name="Acme Corp"), Scored()]
+        result = Loose(items=v).compare_with(
+            Loose(items=list(v)), include_confusion_matrix=True
+        )
+        assert result["overall_score"] == 1.0
+        assert result["confusion_matrix"]["overall"]["fa"] == 0
