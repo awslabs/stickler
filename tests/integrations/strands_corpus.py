@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime
 import enum
+import functools
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Type
 
@@ -499,6 +500,49 @@ def _cases() -> List[CorpusCase]:
 
 CORPUS: List[CorpusCase] = _cases()
 SNAPSHOT_CORPUS: List[CorpusCase] = [case for case in CORPUS if case.snapshot]
+CASE_IDS = [case.id for case in CORPUS]
+
+
+def case_by_id(case_id: str) -> CorpusCase:
+    return next(case for case in CORPUS if case.id == case_id)
+
+
+# --- scoring helpers shared by the contract and e2e tests --------------------
+
+
+def build_spec(
+    model: Type[BaseModel],
+    threshold: float = STRANDS_DEFAULT_THRESHOLD,
+    weight_hints: bool = False,
+) -> Any:
+    from stickler import eval_for
+
+    # The exact call at line 344 of the 1.6.0 evaluator.
+    return eval_for(model, match_threshold=threshold, weight_hints=weight_hints)
+
+
+@functools.lru_cache(maxsize=None)
+def shared_spec(model: Type[BaseModel], threshold: float) -> Any:
+    # One spec per model and threshold, shared across cases, as the evaluator
+    # shares the one it builds at line 344.
+    return build_spec(model, threshold)
+
+
+def evaluate_case(
+    case: CorpusCase, threshold: float = STRANDS_DEFAULT_THRESHOLD
+) -> Any:
+    return shared_spec(case.model, threshold).evaluate(case.expected, case.actual)
+
+
+def evaluate_direct(
+    case: CorpusCase,
+    threshold: float = STRANDS_DEFAULT_THRESHOLD,
+    weight_hints: bool = False,
+) -> Any:
+    """Score a case with a fresh spec, the way a caller outside the evaluator would."""
+    return build_spec(case.model, threshold, weight_hints).evaluate(
+        case.expected, case.actual
+    )
 
 
 # --- the 1.6.0 verdict, re-implemented --------------------------------------

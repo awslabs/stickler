@@ -13,7 +13,6 @@ tests assert that keys EXIST, rather than that a lookup succeeds.
 Line numbers below refer to structured_output.py in strands-agents-evals 1.6.0.
 """
 
-import functools
 import inspect
 import json
 import math
@@ -23,6 +22,7 @@ from typing import Any, Dict, List
 import pytest
 
 from tests.integrations.strands_corpus import (
+    CASE_IDS,
     CORPUS,
     MODELS,
     STRANDS_DEFAULT_THRESHOLD,
@@ -30,6 +30,9 @@ from tests.integrations.strands_corpus import (
     Invoice,
     Lead,
     Order,
+    build_spec,
+    case_by_id,
+    evaluate_case,
     stored_comparison,
     strands_test_pass,
 )
@@ -44,28 +47,6 @@ EXPLAIN_KEYS = {
     "source",
     "why",
 }
-
-
-def _spec(model, threshold=STRANDS_DEFAULT_THRESHOLD, weight_hints=False):
-    from stickler import eval_for
-
-    # The exact call at line 344.
-    return eval_for(model, match_threshold=threshold, weight_hints=weight_hints)
-
-
-@functools.lru_cache(maxsize=None)
-def _shared_spec(model, threshold):
-    # One spec per model and threshold, shared across cases, as the evaluator
-    # shares the one it builds at line 344.
-    return _spec(model, threshold)
-
-
-def _evaluate(case, threshold=STRANDS_DEFAULT_THRESHOLD):
-    return _shared_spec(case.model, threshold).evaluate(case.expected, case.actual)
-
-
-def _case(case_id):
-    return next(case for case in CORPUS if case.id == case_id)
 
 
 def _is_int(value: Any) -> bool:
@@ -88,9 +69,6 @@ def _aggregate(stored: List[Dict[str, Any]]):
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         return aggregate_from_comparisons(stored)
-
-
-CASE_IDS = [case.id for case in CORPUS]
 
 
 # --- import paths -----------------------------------------------------------
@@ -133,14 +111,16 @@ class TestEvalForSignature:
     @pytest.mark.parametrize("weight_hints", [False, True])
     @pytest.mark.parametrize("threshold", [0.5, 0.7, 0.9, 1.0])
     def test_builds_a_spec_for_every_corpus_model(self, model, weight_hints, threshold):
-        spec = _spec(model, threshold, weight_hints)
+        spec = build_spec(model, threshold, weight_hints)
         # Line 423 calls evaluate(expected, actual) positionally; line 459 explain().
         inspect.signature(spec.evaluate).bind(object(), object())
         inspect.signature(spec.explain).bind()
 
     def test_weight_hints_true_still_scores_identical_as_one(self):
-        case = _case("invoice/identical")
-        result = _spec(Invoice, weight_hints=True).evaluate(case.expected, case.actual)
+        case = case_by_id("invoice/identical")
+        result = build_spec(Invoice, weight_hints=True).evaluate(
+            case.expected, case.actual
+        )
         assert result.overall_score == pytest.approx(1.0)
 
 
@@ -149,7 +129,7 @@ class TestExplain:
 
     @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
     def test_entry_shape(self, model):
-        explained = _spec(model).explain()
+        explained = build_spec(model).explain()
         assert isinstance(explained, dict) and explained
         for path, entry in explained.items():
             assert isinstance(path, str)
@@ -163,7 +143,7 @@ class TestExplain:
             assert all(isinstance(step, str) for step in entry["why"])
 
     def test_keyed_by_dotted_path(self):
-        assert set(_spec(Invoice).explain()) == {
+        assert set(build_spec(Invoice).explain()) == {
             "invoice_number",
             "issue_date",
             "total",
@@ -190,7 +170,7 @@ class TestExplain:
         }
 
     def test_list_inside_list_paths(self):
-        assert set(_spec(Order).explain()) == {
+        assert set(build_spec(Order).explain()) == {
             "order_id",
             "placed_on",
             "shipments",
@@ -204,7 +184,7 @@ class TestExplain:
         }
 
     def test_aliased_field_is_keyed_by_field_name(self):
-        explained = _spec(Contact).explain()
+        explained = build_spec(Contact).explain()
         assert "email" in explained
         assert "emailAddress" not in explained
 
@@ -217,7 +197,7 @@ class TestEvalResultShape:
 
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_scalar_attributes(self, case):
-        result = _evaluate(case)
+        result = evaluate_case(case)
         assert _is_unit_float(result.overall_score)
         assert isinstance(result.matched, bool)
         # Never None: line 147 would read None as a failed gate.
@@ -226,7 +206,7 @@ class TestEvalResultShape:
 
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_field_scores_keyed_by_top_level_field(self, case):
-        result = _evaluate(case)
+        result = evaluate_case(case)
         # Line 438 builds the reason from these; line 442 stores dict(...).
         assert isinstance(result.field_scores, dict)
         assert set(result.field_scores) == set(case.model.model_fields)
@@ -234,7 +214,7 @@ class TestEvalResultShape:
 
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_raw_overall_counts_exist(self, case):
-        raw = _evaluate(case).raw
+        raw = evaluate_case(case).raw
         assert isinstance(raw, dict)
         assert "confusion_matrix" in raw
         assert "overall" in raw["confusion_matrix"]
@@ -248,7 +228,7 @@ class TestEvalResultShape:
 
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_attributes_agree_with_raw(self, case):
-        result = _evaluate(case)
+        result = evaluate_case(case)
         overall = result.raw["confusion_matrix"]["overall"]
         derived = overall["derived"]
         # The report's aggregate reads raw; per_case reads the attributes.
@@ -262,7 +242,7 @@ class TestEvalResultShape:
     def test_recall_excludes_wrong_values(self, case):
         # The 1.6.0 docstring (lines 136-138) relies on this: a wrong value is
         # fd, not fn, so recall measures only what was left empty.
-        result = _evaluate(case)
+        result = evaluate_case(case)
         overall = result.raw["confusion_matrix"]["overall"]
         denominator = overall["tp"] + overall["fn"]
         expected = overall["tp"] / denominator if denominator else 0.0
@@ -271,19 +251,19 @@ class TestEvalResultShape:
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     @pytest.mark.parametrize("threshold", [0.5, 0.7, 0.9, 1.0])
     def test_matched_is_score_against_threshold(self, case, threshold):
-        result = _evaluate(case, threshold)
+        result = evaluate_case(case, threshold)
         assert result.matched == (result.overall_score >= threshold)
 
     def test_recall_is_zero_not_none_with_nothing_to_find(self):
-        case = _case("lead/nothing_to_find_empty")
-        result = _evaluate(case)
+        case = case_by_id("lead/nothing_to_find_empty")
+        result = evaluate_case(case)
         overall = result.raw["confusion_matrix"]["overall"]
         assert overall["tp"] + overall["fn"] == 0
         assert result.recall == 0.0
         assert result.recall is not None
 
     def test_findable_is_positive_when_ground_truth_has_values(self):
-        overall = _evaluate(_case("lead/sparse_empty_prediction")).raw[
+        overall = evaluate_case(case_by_id("lead/sparse_empty_prediction")).raw[
             "confusion_matrix"
         ]["overall"]
         assert overall["tp"] + overall["fn"] + overall["fd"] > 0
@@ -294,7 +274,7 @@ class TestStoredComparison:
 
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_is_plain_json(self, case):
-        stored = stored_comparison(_evaluate(case))
+        stored = stored_comparison(evaluate_case(case))
         for key in ("overall_score", "field_scores", "confusion_matrix"):
             assert key in stored, key
         # model_dump_json and from_file carry it as JSON, so it must survive
@@ -331,20 +311,22 @@ class TestGuard:
     @pytest.mark.parametrize("case_id,expected", sorted(GUARD_VERDICTS.items()))
     def test_verdict(self, case_id, expected):
         assert (
-            strands_test_pass(_evaluate(_case(case_id)), STRANDS_DEFAULT_THRESHOLD)
+            strands_test_pass(
+                evaluate_case(case_by_id(case_id)), STRANDS_DEFAULT_THRESHOLD
+            )
             is expected
         )
 
     def test_sparse_empty_prediction_is_matched_but_fails(self):
         # The case the guard exists for: blank-on-both fields lift the score
         # over the bar, but nothing populated was found.
-        result = _evaluate(_case("lead/sparse_empty_prediction"))
+        result = evaluate_case(case_by_id("lead/sparse_empty_prediction"))
         assert result.matched is True
         assert result.recall == 0.0
         assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is False
 
     def test_nothing_to_find_passes_on_score(self):
-        result = _evaluate(_case("lead/nothing_to_find_empty"))
+        result = evaluate_case(case_by_id("lead/nothing_to_find_empty"))
         overall = result.raw["confusion_matrix"]["overall"]
         assert overall["tp"] + overall["fn"] + overall["fd"] == 0
         assert overall["fa"] == 0
@@ -352,7 +334,7 @@ class TestGuard:
         assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is True
 
     def test_nothing_to_find_with_invention_fails(self):
-        result = _evaluate(_case("lead/nothing_to_find_invented"))
+        result = evaluate_case(case_by_id("lead/nothing_to_find_invented"))
         overall = result.raw["confusion_matrix"]["overall"]
         assert overall["tp"] + overall["fn"] + overall["fd"] == 0
         assert overall["fa"] > 0
@@ -360,19 +342,19 @@ class TestGuard:
 
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_expected_against_itself_passes(self, case):
-        result = _spec(case.model).evaluate(case.expected, case.expected)
+        result = build_spec(case.model).evaluate(case.expected, case.expected)
         assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is True
 
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_verdict_never_passes_unmatched(self, case):
-        result = _evaluate(case)
+        result = evaluate_case(case)
         if not result.matched:
             assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is False
 
     def test_a_renamed_key_would_silently_pass(self):
         # Why the shape tests above assert presence: with the subtree gone,
         # every `.get()` falls back to 0 and the empty prediction passes.
-        result = _evaluate(_case("lead/sparse_empty_prediction"))
+        result = evaluate_case(case_by_id("lead/sparse_empty_prediction"))
         result.raw = {k: v for k, v in result.raw.items() if k != "confusion_matrix"}
         assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is True
 
@@ -381,7 +363,7 @@ class TestGuard:
 
 
 def _results(model) -> List[Any]:
-    return [_evaluate(case) for case in CORPUS if case.model is model]
+    return [evaluate_case(case) for case in CORPUS if case.model is model]
 
 
 class TestAggregate:
@@ -400,7 +382,7 @@ class TestAggregate:
     def test_field_metrics_keyed_by_explain_paths(self, model):
         results = _results(model)
         evaluation = _aggregate([stored_comparison(r) for r in results])
-        assert set(evaluation.field_metrics) == set(_spec(model).explain())
+        assert set(evaluation.field_metrics) == set(build_spec(model).explain())
         for path, entry in evaluation.field_metrics.items():
             for key in COUNT_KEYS:
                 assert _is_int(entry[key]), (path, key)
@@ -446,7 +428,7 @@ class TestAggregate:
 
     def test_nested_path_counts_only_matched_parents(self):
         # The metrics() docstring (lines 177-179) states this as behaviour.
-        result = _evaluate(_case("invoice/line_item_replaced"))
+        result = evaluate_case(case_by_id("invoice/line_item_replaced"))
         metrics = _aggregate([stored_comparison(result)]).field_metrics
         assert metrics["line_items"]["tp"] == 2
         assert metrics["line_items"]["fd"] == 1
@@ -455,13 +437,13 @@ class TestAggregate:
             assert sum(entry[k] for k in ("tp", "fa", "fd", "fn")) == 2, leaf
 
     def test_aliased_field_is_keyed_by_field_name(self):
-        result = _evaluate(_case("contact/one_wrong_str"))
+        result = evaluate_case(case_by_id("contact/one_wrong_str"))
         metrics = _aggregate([stored_comparison(result)]).field_metrics
         assert metrics["email"]["fd"] == 1
         assert "emailAddress" not in metrics
 
     def test_sparse_documents_count_true_negatives(self):
-        results = [_evaluate(_case("lead/nothing_to_find_empty"))]
+        results = [evaluate_case(case_by_id("lead/nothing_to_find_empty"))]
         metrics = _aggregate([stored_comparison(r) for r in results]).metrics
         assert metrics["tn"] == len(Lead.model_fields)
         assert metrics["tp"] == metrics["fn"] == 0
