@@ -33,7 +33,6 @@ import datetime
 import decimal
 import enum
 import re
-import types
 from dataclasses import dataclass, field
 from typing import (
     Any,
@@ -42,7 +41,6 @@ from typing import (
     Literal,
     Optional,
     Tuple,
-    Union,
     get_args,
     get_origin,
 )
@@ -54,6 +52,8 @@ from ..structured_object_evaluator.models.comparator_registry import (
     ComparatorRegistry,
     get_global_registry,
 )
+from ..utils.optional_annotation import is_union as _is_union
+from ..utils.optional_annotation import unwrap_optional as _unwrap_optional
 
 # Comparators we will never auto-select: they need models/embeddings/creds and
 # would fail or be surprising as a silent default. A field only ever gets one
@@ -126,25 +126,14 @@ def unwrap_optional(annotation: Any) -> Tuple[Any, bool]:
     """Strip ``Optional[X]`` / ``Union[X, None]`` / ``X | None`` down to ``X``.
 
     Returns ``(inner, was_optional)``. A multi-arm union that is not simply
-    ``X | None`` is returned unchanged (the caller treats it as ambiguous and
-    falls back to a string comparator).
-
-    One of three deliberate copies of this logic, kept separate to avoid
-    cross-package dependencies. The others are
-    ``stickler.reporting.html.utils.data_extractors`` and
-    ``stickler.structured_object_evaluator.models.optional_annotation`` (which
-    additionally exposes the permissive ``is_union`` / ``union_args`` pair, for
-    sites that search a union's arms rather than unwrapping it). Keep them in
-    sync; unifying all three is tracked for 1.0.
+    ``X | None`` is returned unchanged, while still reporting ``was_optional=True``
+    when ``None`` is one of the arms so callers preserve nullability.
     """
-    origin = get_origin(annotation)
-    # PEP 604 unions (X | None) have origin types.UnionType, not typing.Union.
-    if origin is Union or origin is types.UnionType:
-        args = [a for a in get_args(annotation) if a is not type(None)]
-        if len(args) == 1:
-            return args[0], True
-        # Ambiguous multi-arm union: leave as-is, mark optional if None present.
-        return annotation, type(None) in get_args(annotation)
+    inner, was_optional = _unwrap_optional(annotation)
+    if was_optional:
+        return inner, True
+    if _is_union(annotation) and type(None) in get_args(annotation):
+        return annotation, True
     return annotation, False
 
 
