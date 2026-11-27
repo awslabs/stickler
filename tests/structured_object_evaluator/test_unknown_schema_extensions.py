@@ -3582,9 +3582,8 @@ class TestBesideARefUnderAKeywordOfAnEntry:
     `additionalProperties`, that a property or `items` `$ref`s, is checked as
     a property or `items` node anywhere in the entry is.
 
-    Model keys beside the node's `$ref` raise on an `items` node, a position no
-    doc names for them, and warn on a property typed `"object"`, which dev's
-    docs call valid for them. Dev built both at 0.7 (`items@0.7`, `p@0.7`). The
+    Model keys beside the node's `$ref` raise on an `items` node and on a
+    property typed `"object"` (#609). Dev built both at 0.7 (`items@0.7`, `p@0.7`). The
     error named `'$defs.W[]'` and `'$defs.W.p'`, nodes that do not exist: the
     walk left the keyword out of the path, as it did for a typo there.
     """
