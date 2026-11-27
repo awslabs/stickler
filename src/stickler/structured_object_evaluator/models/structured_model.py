@@ -4,7 +4,6 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
-import warnings
 from typing import (
     Annotated,
     Any,
@@ -2143,6 +2142,13 @@ class StructuredModel(BaseModel):
         Returns:
             JSON Schema dict with x-aws-stickler-* extensions
 
+        Raises:
+            ValueError: if a field is a union with a model arm, such as
+                ``Union[Card, Bank]`` or ``List[Union[Card, Bank]]``, or a
+                StructuredModel inside a nested list, such as
+                ``List[List[Card]]``. ``to_stickler_config()`` has no type
+                for these, so both exporters refuse them.
+
         Example:
             >>> class Product(StructuredModel):
             ...     name: str = ComparableField(threshold=0.8, weight=2.0)
@@ -2193,16 +2199,13 @@ class StructuredModel(BaseModel):
             field_type = ConfigurationHelper.strip_annotation_wrappers(field_type)
 
             # A union with a model arm, or a StructuredModel inside a nested
-            # list: written as 1.0.0 wrote it, with a warning, until 1.1.0.
-            if cls._warn_legacy_export(
+            # list, has no type in either export (#349).
+            cls._refuse_unexportable_shape(
                 field_info.annotation,
                 f"to_json_schema() field '{cls.__name__}.{field_name}'",
-            ):
-                property_schema = cls._legacy_json_schema_property(
-                    converter, field_info
-                )
+            )
             # Check if nested StructuredModel - recursively export to maintain full configuration
-            elif cls._is_structured_model_type(field_type):
+            if cls._is_structured_model_type(field_type):
                 property_schema = field_type.to_json_schema()
                 metadata = converter._extract_field_metadata(field_info)
                 metadata.pop("comparator", None)
@@ -2433,8 +2436,8 @@ class StructuredModel(BaseModel):
         """Raise for a StructuredModel reaching a scalar exporter.
 
         See :meth:`_model_export_shape`. A union with a model arm and a
-        StructuredModel inside a nested list are not refused in 1.0.1: they
-        warn and export as 1.0.0 did (:meth:`_warn_legacy_export`).
+        StructuredModel inside a nested list are refused by
+        :meth:`_refuse_unexportable_shape`, with their own message.
         """
         if StructuredModel._model_export_shape(field_type) == "scalar":
             raise ValueError(
@@ -2444,136 +2447,51 @@ class StructuredModel(BaseModel):
             )
 
     @staticmethod
-    def _warn_legacy_export(field_type: Type, where: str, stacklevel: int = 3) -> bool:
-        """Warn and return True for a shape 1.0.1 still exports as 1.0.0 did.
+    def _refuse_unexportable_shape(field_type: Type, where: str) -> None:
+        """Raise for a shape ``to_stickler_config()`` has no type for.
 
         A union with a model arm, or a StructuredModel inside a nested list,
-        has no type in ``to_stickler_config()``. 1.0.0 wrote both as a string
-        (or a list of strings), which re-imports as a different field (#349).
-        1.0.1 ships no breaking change, so it keeps that output and warns;
-        1.1.0 raises ``ValueError``.
-
-        ``warnings.warn``, not ``warn_once``: an export runs once per call, so
-        ordinary dedup by message is enough, as for the importer's warnings.
-        The default ``stacklevel`` reaches the caller of ``to_json_schema()``
-        or ``to_stickler_config()``.
+        has no type in ``to_stickler_config()``, so both exporters treat them
+        alike. 1.0.x wrote them as a string (or a list of strings), which
+        re-imported as a different field; 1.0.1 and 1.0.2 also warned that a
+        later release would raise (#349).
+        From 1.1.0 both exporters raise ``ValueError`` naming the field.
         """
         shape = StructuredModel._model_export_shape(field_type)
         if shape not in ("union", "nested_list"):
-            return False
-        what, fix = {
-            "union": (
-                "a union with a model arm",
-                "Declare the field as a single model type",
-            ),
-            "nested_list": (
-                "a StructuredModel inside a nested list",
-                "Wrap the inner list in its own StructuredModel (a list of rows, "
-                "each holding a list of models)",
-            ),
-        }[shape]
-        warnings.warn(
-            f"{where} cannot export {field_type!r}: to_stickler_config() has no "
-            f"type for {what}. It is written as 1.0.0 wrote it, typed as a "
-            f"string, so the re-imported model does not load or score this "
-            f"field as the original does. {fix}, or leave it out of the "
-            f"exported model. This becomes a ValueError in 1.1.0.",
-            UserWarning,
-            stacklevel=stacklevel,
+            return
+        strip = ConfigurationHelper.strip_annotation_wrappers
+        inner, depth = strip(field_type), 0
+        while get_origin(inner) is list and get_args(inner):
+            inner, depth = strip(get_args(inner)[0]), depth + 1
+        single_model = "Declare the field (or its list element) as a single model type"
+        wrap_rows = (
+            "wrap each inner list in its own StructuredModel, so that no list "
+            "directly holds a list of models"
         )
-        return True
-
-    @staticmethod
-    def _legacy_json_schema_property(converter, field_info) -> Dict[str, Any]:
-        """What 1.0.0's ``to_json_schema()`` wrote for a field
-        :meth:`_warn_legacy_export` accepts.
-
-        1.0.0 unwrapped ``Optional`` once and nothing else, so these shapes
-        reached either its list branch, an array of ``"string"`` items with the
-        field's comparison extensions, or its scalar branch, a ``"string"``
-        property with the extensions, description, alias and examples. A
-        default is written only where every export branch writes one now: a
-        safe factory on a list (#360), which 1.0.0 could not declare.
-        """
-        from .json_schema_field_converter import (
-            PYTHON_TYPE_TO_JSON_TYPE,
-            add_exportable_default,
-        )
-
-        field_type, field_is_nullable = unwrap_optional(field_info.annotation)
-        extensions = converter._build_comparison_extensions(
-            converter._extract_field_metadata(field_info), output_format="json_schema"
-        )
-        if get_origin(field_type) is list and get_args(field_type):
-            element_type, element_is_nullable = unwrap_optional(get_args(field_type)[0])
-            json_type = PYTHON_TYPE_TO_JSON_TYPE.get(element_type, "string")
-            property_schema = {
-                "type": "array",
-                "items": {
-                    "type": [json_type, "null"] if element_is_nullable else json_type
-                },
-            }
-            add_exportable_default(property_schema, field_info)
-            property_schema.update(extensions)
-            return property_schema
-        json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
-        property_schema = {
-            "type": [json_type, "null"] if field_is_nullable else json_type
-        }
-        property_schema.update(extensions)
-        for key in ("description", "alias", "examples"):
-            if getattr(field_info, key):
-                property_schema[key] = getattr(field_info, key)
-        return property_schema
-
-    @staticmethod
-    def _legacy_stickler_field_config(converter, field_info) -> Dict[str, Any]:
-        """What 1.0.0's ``to_stickler_config()`` wrote for a field
-        :meth:`_warn_legacy_export` accepts.
-
-        ``"str"`` for a field, ``List[<element name>]`` for a list (``List[List]``,
-        ``List[Union]``, ``List[Annotated]``), with the field's comparison
-        settings, ``required``, a literal ``default`` as 1.0.0 wrote it, and the
-        description, alias and examples. A factory default, which 1.0.0 could not
-        declare, is written by the rule every other field uses (#360).
-        ``List[A | B]`` raised ``AttributeError`` in 1.0.0; it is written
-        ``List[Union]``, as ``List[Union[A, B]]`` is.
-        """
-        from pydantic.fields import PydanticUndefined
-
-        from .json_schema_field_converter import (
-            PYTHON_TYPE_TO_STICKLER_TYPE,
-            add_exportable_default,
-        )
-
-        field_type, _ = unwrap_optional(field_info.annotation)
-        if get_origin(field_type) is list and get_args(field_type):
-            element_type, _ = unwrap_optional(get_args(field_type)[0])
-            element_name = getattr(element_type, "__name__", None) or (
-                "Union" if union_args(element_type) else str(element_type)
+        if shape == "union":
+            what = "a union with a model arm"
+            # Under two list levels, a StructuredModel arm would still be a
+            # model in a nested list once it is the only arm, so say both. A
+            # plain BaseModel there exports as an object, so it needs only one.
+            structured_arm = any(
+                isinstance(arm, type) and issubclass(arm, StructuredModel)
+                for arm in (strip(arm) for arm in union_args(inner))
             )
-            stickler_type = f"List[{element_name}]"
+            fix = (
+                f"{single_model}, and if you choose a StructuredModel, {wrap_rows}"
+                if depth >= 2 and structured_arm
+                else single_model
+            )
         else:
-            stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
-        field_config = {"type": stickler_type}
-        field_config.update(
-            converter._build_comparison_extensions(
-                converter._extract_field_metadata(field_info),
-                output_format="stickler_config",
-            )
+            what = "a StructuredModel inside a nested list"
+            fix = wrap_rows[0].upper() + wrap_rows[1:]
+        raise ValueError(
+            f"{where} cannot export {field_type!r}: to_stickler_config() has no "
+            f"type for {what}, so both exporters refuse it rather than write it "
+            f"as a string, which re-imports as a different field. {fix}, or "
+            f"remove the field from the model you export."
         )
-        field_config["required"] = field_info.is_required()
-        if not field_info.is_required():
-            if field_info.default is not PydanticUndefined:
-                field_config["default"] = field_info.default
-            else:
-                add_exportable_default(
-                    field_config, field_info, include_literal=True, stickler_config=True
-                )
-        for key in ("description", "alias", "examples"):
-            if getattr(field_info, key):
-                field_config[key] = getattr(field_info, key)
-        return field_config
 
     @staticmethod
     def _json_type_schema(element_type: Type) -> Dict[str, Any]:
@@ -2611,8 +2529,10 @@ class StructuredModel(BaseModel):
     ) -> Optional[str]:
         """Name a union of built-in scalars for the existing config resolver.
 
-        Keep unsupported unions on their legacy export path rather than
-        silently replacing an unrepresentable arm with a string. `nullable`
+        Return ``None`` for any other union, which the caller then writes with
+        its scalar fallback, rather than silently replacing an unrepresentable
+        arm with a string; a union with a model arm never reaches here, since
+        the exporters refuse it first (#349). `nullable`
         carries an `Optional` the caller already stripped, such as the outer
         one in `Optional[Annotated[Union[int, str], ...]]`.
         """
@@ -2640,6 +2560,12 @@ class StructuredModel(BaseModel):
 
         Returns:
             Stickler config dict with model_name and fields
+
+        Raises:
+            ValueError: if a field is a union with a model arm, such as
+                ``Union[Card, Bank]`` or ``List[Union[Card, Bank]]``, or a
+                StructuredModel inside a nested list, such as
+                ``List[List[Card]]``. This format has no type for these.
 
         Example:
             >>> class Product(StructuredModel):
@@ -2682,14 +2608,13 @@ class StructuredModel(BaseModel):
             # to_json_schema().
             field_type = ConfigurationHelper.strip_annotation_wrappers(field_type)
 
-            # As in to_json_schema(): written as 1.0.0 wrote it until 1.1.0.
-            if cls._warn_legacy_export(
+            # As in to_json_schema(): refused (#349).
+            cls._refuse_unexportable_shape(
                 field_info.annotation,
                 f"to_stickler_config() field '{cls.__name__}.{field_name}'",
-            ):
-                field_config = cls._legacy_stickler_field_config(converter, field_info)
+            )
             # Check if nested StructuredModel - use "structured_model" type
-            elif cls._is_structured_model_type(field_type):
+            if cls._is_structured_model_type(field_type):
                 nested_config = field_type.to_stickler_config()
                 field_config = {
                     "type": "structured_model",
@@ -2811,8 +2736,8 @@ class StructuredModel(BaseModel):
                             if ConfigurationHelper.is_plain_model_annotation(
                                 element_type
                             )
-                            # `A | B` has no __name__; write `Union`, as the
-                            # legacy export does for `List[Union[A, B]]`.
+                            # `A | B` has no __name__; write `Union`, the
+                            # name a `typing.Union` element gets.
                             else getattr(element_type, "__name__", None)
                             or (
                                 "Union"

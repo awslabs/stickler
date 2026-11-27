@@ -213,7 +213,19 @@ class JsonSchemaFieldConverter:
 
         Returns:
             JSON Schema property dict with x-aws-stickler-* extensions
+
+        Raises:
+            ValueError: if ``field_type`` is a union with a model arm, a
+                StructuredModel inside a nested list, or a StructuredModel,
+                which is exported through its own ``to_json_schema()``.
         """
+        from .structured_model import StructuredModel
+
+        # A union with a model arm, or a model inside a nested list, has no type
+        # in either export (#349). Checked on the annotation as passed, so the
+        # message names the same type field_to_stickler_config() names.
+        StructuredModel._refuse_unexportable_shape(field_type, "field_to_property()")
+
         # Unwrap Optional[T] in case the caller passes the wrapped type so the
         # nullability still survives the round-trip as the ["X", "null"] idiom.
         # Every spelling, including `X | None`.
@@ -225,16 +237,11 @@ class JsonSchemaFieldConverter:
         # A StructuredModel must never reach the scalar fallback below.
         # `PYTHON_TYPE_TO_JSON_TYPE.get(..., "string")` would silently discard
         # its schema, emitting one that rebuilds into a structurally different
-        # model. Raise rather than produce a wrong schema quietly. A union with
-        # a model arm, or a model inside a nested list, is written as 1.0.0
-        # wrote it, as "string", with a warning; 1.1.0 raises.
+        # model. Raise rather than produce a wrong schema quietly.
         #
         # Deliberately scoped to models, not to every dict miss:
         # Decimal, UUID and enums legitimately export as "string".
-        from .structured_model import StructuredModel
-
-        if not StructuredModel._warn_legacy_export(field_type, "field_to_property()"):
-            StructuredModel._refuse_scalar_export(field_type)
+        StructuredModel._refuse_scalar_export(field_type)
 
         # A mapping exports as an object, not the "string" fallback below: as
         # "string" it re-imported as `Optional[str]` and could not hold one.
@@ -290,6 +297,11 @@ class JsonSchemaFieldConverter:
 
         Returns:
             Stickler field config dict with type, comparator, threshold, etc.
+
+        Raises:
+            ValueError: if ``field_type`` is a union with a model arm, a
+                StructuredModel inside a nested list, or a StructuredModel,
+                which is exported through its own ``to_stickler_config()``.
         """
         # A mapping fell back to "str" here, so it rebuilt as a string field
         # that could hold no mapping, including the `{}` its factory exports.
@@ -299,14 +311,14 @@ class JsonSchemaFieldConverter:
             stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
         field_config = {"type": stickler_type}
         # As in field_to_property(): a model cannot be written as a scalar, a
-        # union with a model arm is written as "str" with a warning until
-        # 1.1.0, and a plain BaseModel is written as `dict`.
+        # union with a model arm or a model in a nested list is refused, and a
+        # plain BaseModel is written as `dict`.
         from .structured_model import StructuredModel
 
-        if not StructuredModel._warn_legacy_export(
+        StructuredModel._refuse_unexportable_shape(
             field_type, "field_to_stickler_config()"
-        ):
-            StructuredModel._refuse_scalar_export(field_type)
+        )
+        StructuredModel._refuse_scalar_export(field_type)
         if ConfigurationHelper.is_plain_model_annotation(field_type):
             field_config["type"] = "dict"
 
