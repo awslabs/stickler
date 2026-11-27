@@ -9,6 +9,30 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- `AngleComparator`, which compares angles such as heading or yaw by their
+  shortest difference around the circle, so `359` and `1` are 2 degrees apart.
+  It scores 1.0 within `max_angular_difference` and 0.0 beyond it, in
+  `angle_unit` `"degrees"` (default) or `"radians"`. Invalid configuration
+  raises `ValueError`; a non-numeric or infinite angle scores 0.0.
+- `PointDistanceComparator` scores two 2D or 3D points by Euclidean distance,
+  `max(0.0, 1.0 - distance / max_distance)`. Positions scored as separate `x`,
+  `y` and `z` fields under `NumericComparator(absolute_tolerance=...)` gate on
+  a box and give no partial credit; this gates on a radius of
+  `max_distance * (1 - threshold)` and scores by distance. `max_distance` is
+  required and must be a finite number greater than 0, or construction raises
+  `ValueError`. Points are lists, tuples or 1D NumPy arrays of
+  `numbers.Real` coordinates. A point of the wrong length, a 2D point against
+  a 3D one, and non-numeric (including `Decimal`) or non-finite coordinates
+  score 0.0. Exported from `stickler` and `stickler.comparators`, and named by
+  `"PointDistanceComparator"` in a Stickler config or
+  `x-aws-stickler-comparator`, with `max_distance` in the comparator config.
+  Annotate a single point field as a `Tuple`: a `List[float]` point field
+  always scores 0.0. A `Tuple` field exports as a string type, so a single
+  point field does not round-trip through `to_json_schema()` or
+  `to_stickler_config()`; a list of points does.
+
 ### Changed
 
 - **The Stickler-config and JSON Schema importers now resolve an unstated
@@ -181,6 +205,21 @@ Each release links to full notes on the
 - `model_from_json()` raises `ValueError` for a bare `Union` or `Optional`, in
   any position (`"List[Union]"`). Before, the result depended on the Python
   version; up to 3.13 `list[Union]` accepted any value unvalidated.
+- **`BBoxIoUComparator` on a list field scores the box, not its coordinates.**
+  A field holding one box as a list (`List[float]`, `Optional[List[float]]`,
+  `Sequence[float]`, bare `list`, or a JSON Schema `array` or config `list`
+  field) paired the coordinates one by one and scored `0.0` even against an
+  identical box, with one count per coordinate. It now scores the IoU and
+  counts one decision, as a tuple-typed box does: one TP or FD, one FN or FA
+  against `None`, `[]` or a list of only `None` or NaN, and one FD for a
+  malformed or string-element value against a box. The annotation decides
+  when it names the element type, also through a union, `NewType` or type
+  alias, so a `List[List[float]]` field stays a list of boxes whatever the
+  prediction's shape; a bare `list` is decided by the ground truth. Only fields that use
+  `BBoxIoUComparator` change score. A custom comparator opts in by overriding
+  `scores_as_one_value()`
+  ([#635](https://github.com/awslabs/stickler/issues/635)).
+
 - **A comparator key on a nested model now warns instead of being dropped in
   silence or refused.** A nested model is scored field by field, so its
   comparator is never called, as on the Python path. `comparator` on a
