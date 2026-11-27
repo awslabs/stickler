@@ -248,6 +248,15 @@ class TestDataExtractor:
         """A ProcessEvaluation whose document_count is None counts as 1 (#467)."""
         assert DataExtractor.get_document_count(ProcessEvaluation(metrics={})) == 1
 
+    def test_get_document_count_keeps_zero(self):
+        """A count of 0 stays 0, not the fallback 1 (#467)."""
+        assert DataExtractor.get_document_count(ProcessEvaluation(document_count=0, metrics={})) == 0
+        assert DataExtractor.get_document_count({"document_count": 0}) == 0
+
+    def test_get_document_count_dict_none_falls_back_to_one(self):
+        """A results dict whose document_count is None counts as 1 (#467)."""
+        assert DataExtractor.get_document_count({"document_count": None}) == 1
+
     def test_extract_similarity_score_overall_bulk(self):
         """Test overall similarity score extraction from ProcessEvaluation."""
         mock_process_eval = Mock(spec=ProcessEvaluation)
