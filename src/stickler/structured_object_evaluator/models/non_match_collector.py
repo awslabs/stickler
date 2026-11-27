@@ -6,6 +6,7 @@ and documentation of non-matching fields during structured object comparison.
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from .comparison_helper import list_pair_is_one_value
 from .non_match_field import NonMatchType
 from .non_matches_helper import NonMatchesHelper
 from .reporting_context import ReportingContext
@@ -61,9 +62,19 @@ class NonMatchCollector:
             
             # Import here to avoid circular dependency
             from .structured_model import StructuredModel
+            # A list read as one value, such as a box, is one row from the
+            # value branch below, also against an absent side (#635).
+            scored_as_one_value = list_pair_is_one_value(
+                self.model.__class__,
+                field_name,
+                self.model._get_comparison_info(field_name).comparator,
+                gt_val,
+                pred_val,
+            )
             # Handle null list cases
             if (
-                (gt_val is None or (isinstance(gt_val, list) and len(gt_val) == 0))
+                not scored_as_one_value
+                and (gt_val is None or (isinstance(gt_val, list) and len(gt_val) == 0))
                 and isinstance(pred_val, list)
                 and len(pred_val) > 0
             ):
@@ -74,7 +85,8 @@ class NonMatchCollector:
                 all_non_matches.extend(null_non_matches)
 
             elif (
-                isinstance(gt_val, list)
+                not scored_as_one_value
+                and isinstance(gt_val, list)
                 and len(gt_val) > 0
                 and (
                     pred_val is None
@@ -87,7 +99,11 @@ class NonMatchCollector:
                 )
                 all_non_matches.extend(null_non_matches)
 
-            elif isinstance(gt_val, list) and isinstance(pred_val, list):
+            elif (
+                not scored_as_one_value
+                and isinstance(gt_val, list)
+                and isinstance(pred_val, list)
+            ):
                 matching_kwargs = self.helper.resolve_list_matching(
                     self.model, field_name, gt_val,
                     report_context.lists.get(field_name) if report_context else None,

@@ -49,6 +49,7 @@ See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) fo
 | [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
 | [**BBoxIoUComparator**](#bboxioucomparator) | Bounding boxes, spatial localization | Instant | No | Continuous (0.0--1.0) |
+| [**PointDistanceComparator**](#pointdistancecomparator) | 2D or 3D positions, keypoints | Instant | No | Continuous (0.0--1.0) |
 | [**ANLSStarComparator**](#anlsstarcomparator) | Dicts and nested structures whose keys you do not declare | Moderate | No | Continuous (0.0--1.0) |
 | [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
 | [**BERTComparator**](#bertcomparator) | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
@@ -438,14 +439,18 @@ actually score.
 
 Compares two bounding boxes using Intersection over Union (IoU) as the similarity score. Accepts both two-point (`[[x1, y1], [x2, y2]]`) and flat (`[x1, y1, x2, y2]`) formats. Coordinates are automatically normalized so that x1 <= x2 and y1 <= y2.
 
+A list field holding one box, such as `List[float]`, is scored as that one box, not paired element by element: one TP or FD, one FN or FA against `None`, `[]` or a list of only `None`, and one FD against a malformed value. A list of boxes (`List[List[float]]`) is paired box by box. A bare `list` follows the ground-truth value.
+
 **When to use:** Evaluating spatial localization accuracy for document fields, signature detection, logo identification, or any use case where you need to measure how well a predicted bounding box overlaps with ground truth.
 
 ```python
+from typing import Tuple
+
 from stickler import StructuredModel, ComparableField
 from stickler.comparators import BBoxIoUComparator
 
 class DocumentField(StructuredModel):
-    bbox: list = ComparableField(
+    bbox: Tuple[float, float, float, float] = ComparableField(
         comparator=BBoxIoUComparator(threshold=0.5),
         weight=1.0
     )
@@ -459,6 +464,39 @@ class DocumentField(StructuredModel):
 
 !!! tip "Rich Value Pattern"
     For end-to-end mAP evaluation with per-field breakdown, use the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) feature instead of using BBoxIoUComparator directly.
+
+---
+
+### PointDistanceComparator
+
+Scores two 2D (`[x, y]`) or 3D (`[x, y, z]`) points by Euclidean distance: `max(0.0, 1.0 - distance / max_distance)`. A match is a point within a radius of `max_distance * (1 - threshold)`, where separate `x`, `y`, `z` fields under `NumericComparator` gate on a box and give no partial credit.
+
+**When to use:** Object positions, keypoints, or any location scored by how far the prediction is from ground truth.
+
+```python
+from typing import List, Tuple
+
+from stickler import ComparableField, PointDistanceComparator, StructuredModel
+
+class Scene(StructuredModel):
+    position: Tuple[float, float, float] = ComparableField(
+        comparator=PointDistanceComparator(max_distance=0.5)
+    )
+    keypoints: List[List[float]] = ComparableField(
+        comparator=PointDistanceComparator(max_distance=0.5)
+    )
+```
+
+Annotate a single point as a `Tuple`: a `list` or `List[float]` point field always scores 0.0, even against an identical point, because the comparator never sees the whole point. In a Stickler config a single point is `"type": "tuple"`; JSON Schema cannot declare one, and a `Tuple` field exports as `"type": "string"`, so it does not round-trip. A list of points imports and exports in both formats.
+
+Lists, tuples and 1D NumPy arrays of `numbers.Real` coordinates are accepted. A point of the wrong length, a 2D point against a 3D one, and non-numeric (including `Decimal`) or non-finite coordinates score 0.0.
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `max_distance` | required | Distance at which the score reaches 0.0, in coordinate units. Must be a finite number greater than 0 |
+| `threshold` | `0.5` | Score threshold for binary match classification, a match within half of `max_distance` |
 
 ---
 

@@ -28,6 +28,7 @@ from stickler.comparators import (
     LevenshteinComparator,
     NormalizedComparator,
     NumericComparator,
+    PointDistanceComparator,
     SemanticComparator,
     StructuredModelComparator,
 )
@@ -66,6 +67,11 @@ def _llm() -> LLMComparator:
         return LLMComparator(model="test-model")
 
 
+def _point_distance() -> PointDistanceComparator:
+    """``max_distance`` is required, so the bare class is not a factory."""
+    return PointDistanceComparator(max_distance=1.0)
+
+
 def _bert():
     """Import lazily -- ``comparators.bert`` imports ``evaluate`` at module level."""
     from stickler.comparators.bert import BERTComparator
@@ -84,6 +90,7 @@ BUILTIN_COMPARATORS = [
     pytest.param(NumericComparator, id="Numeric"),
     pytest.param(DateComparator, id="Date"),
     pytest.param(BBoxIoUComparator, id="BBox"),
+    pytest.param(_point_distance, id="PointDistance"),
     pytest.param(StructuredModelComparator, id="Structured"),
     pytest.param(_semantic, id="Semantic"),
     pytest.param(_llm, id="LLM"),

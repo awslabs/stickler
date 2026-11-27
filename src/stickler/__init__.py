@@ -25,6 +25,7 @@ from .comparators.levenshtein import LevenshteinComparator
 from .comparators.normalized import NormalizedComparator
 from .comparators.numeric import NumericComparator
 from .comparators.phone import PhoneComparator
+from .comparators.point_distance import PointDistanceComparator
 from .comparators.semantic import SemanticComparator
 from .comparators.structured import StructuredModelComparator
 from .structured_object_evaluator import (
@@ -164,6 +165,7 @@ __all__ = [
     "PhoneComparator",
     "DateComparator",
     "BBoxIoUComparator",
+    "PointDistanceComparator",
     "FuzzyComparator",
     "LevenshteinComparator",
     "NormalizedComparator",
