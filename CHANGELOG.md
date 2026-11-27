@@ -11,6 +11,11 @@ Each release links to full notes on the
 
 ### Added
 
+- `AngleComparator`, which compares angles such as heading or yaw by their
+  shortest difference around the circle, so `359` and `1` are 2 degrees apart.
+  It scores 1.0 within `max_angular_difference` and 0.0 beyond it, in
+  `angle_unit` `"degrees"` (default) or `"radians"`. Invalid configuration
+  raises `ValueError`; a non-numeric or infinite angle scores 0.0.
 - `PointDistanceComparator` scores two 2D or 3D points by Euclidean distance,
   `max(0.0, 1.0 - distance / max_distance)`. Positions scored as separate `x`,
   `y` and `z` fields under `NumericComparator(absolute_tolerance=...)` gate on

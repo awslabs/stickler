@@ -37,6 +37,7 @@ class ComparatorRegistry:
         "FuzzyComparator": ("stickler.comparators.fuzzy", None, None),
         "StructuredModelComparator": ("stickler.comparators.structured", None, None),
         "ANLSStarComparator": ("stickler.comparators.anls", None, None),
+        "AngleComparator": ("stickler.comparators.angle", None, None),
         "BBoxIoUComparator": ("stickler.comparators.bbox", None, None),
         "PointDistanceComparator": ("stickler.comparators.point_distance", None, None),
         "SemanticComparator": ("stickler.comparators.semantic", None, None),

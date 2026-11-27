@@ -15,3 +15,6 @@ field annotation names sequence elements (`List[List[float]]`).
 `PointDistanceComparator` requires `max_distance` and has no default for it, so its `config`
 always carries `max_distance`. That lets an exported list-of-points field import again. A
 single `Tuple` point field still exports as a string type and does not round-trip.
+
+`AngleComparator` scores two angles by their shortest difference around the
+circle, using `math.remainder` over a full turn in the configured unit.

@@ -45,6 +45,7 @@ See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) fo
 | [**NormalizedComparator**](#normalizedcomparator) | Text where formatting differences are noise | Instant | No | Binary (0.0 or 1.0) |
 | [**LevenshteinComparator**](#levenshteincomparator) | Names, addresses, text with typos | Instant | No | Continuous (0.0--1.0) |
 | [**NumericComparator**](#numericcomparator) | Prices, quantities, measurements | Instant | No | Binary (0.0 or 1.0) |
+| [**AngleComparator**](#anglecomparator) | Heading, yaw, orientation | Instant | No | Binary (0.0 or 1.0) |
 | [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
 | [**BBoxIoUComparator**](#bboxioucomparator) | Bounding boxes, spatial localization | Instant | No | Continuous (0.0--1.0) |
@@ -166,6 +167,32 @@ class Invoice(StructuredModel):
 | `relative_tolerance` | `0.0` | Relative tolerance (e.g., `0.1` = 10%) |
 | `absolute_tolerance` | `0.0` | Absolute tolerance (e.g., `0.01` for cents) |
 | `tolerance` | `None` | Alias for `absolute_tolerance` (backward compatibility) |
+
+---
+
+### AngleComparator
+
+Compares two angles by their shortest difference around the circle, so `359` and `1` are 2 degrees apart. Returns 1.0 if that difference is at most `max_angular_difference`, 0.0 otherwise. Strings, booleans, `Decimal` and infinite values score 0.0.
+
+**When to use:** Heading, yaw or any orientation field, alone or in a `List[float]`.
+
+```python
+from stickler import StructuredModel, ComparableField
+from stickler import AngleComparator
+
+class Pose(StructuredModel):
+    yaw: float = ComparableField(
+        comparator=AngleComparator(max_angular_difference=5)
+    )
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `threshold` | `1.0` | Similarity threshold for binary classification |
+| `max_angular_difference` | `0.0` | Largest difference that matches, in `angle_unit`; must be less than half a turn |
+| `angle_unit` | `"degrees"` | `"degrees"` or `"radians"`, for inputs and tolerance |
 
 ---
 

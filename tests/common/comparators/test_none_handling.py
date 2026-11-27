@@ -20,6 +20,7 @@ import pytest
 from stickler.comparators import (
     BERT_AVAILABLE,
     RAPIDFUZZ_AVAILABLE,
+    AngleComparator,
     BaseComparator,
     BBoxIoUComparator,
     DateComparator,
@@ -83,6 +84,7 @@ def _bert():
 # rather than silently disappearing from the sweep.
 BUILTIN_COMPARATORS = [
     pytest.param(ExactComparator, id="Exact"),
+    pytest.param(AngleComparator, id="Angle"),
     pytest.param(LevenshteinComparator, id="Levenshtein"),
     pytest.param(NormalizedComparator, id="Normalized"),
     pytest.param(NumericComparator, id="Numeric"),

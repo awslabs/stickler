@@ -42,6 +42,14 @@ comparator = NumericComparator()
 - Reads decimal digits in other scripts in string values (`١٢٥٠` equals `1250`)
 - Ideal for financial data or measurement comparisons
 
+#### Angle Comparator
+```python
+comparator = AngleComparator(max_angular_difference=5, angle_unit="degrees")
+```
+- Compares angles by the shortest difference around the circle (`359` vs `1` is 2)
+- Binary: 1.0 within `max_angular_difference`, 0.0 beyond it
+- Invalid unit or a tolerance outside `[0, half turn)` raises `ValueError`
+
 #### Date Comparator
 ```python
 comparator = DateComparator()
@@ -163,6 +171,7 @@ comparator = PointDistanceComparator(max_distance=10.0, threshold=0.5)
    - Use semantic comparators (BERT/Semantic) for meaning-based comparison
    - Use LevenshteinComparator for simple edit distance-based matching
    - Use NumericComparator for number comparisons
+   - Use AngleComparator for headings and other angles that wrap around
    - Use BBoxIoUComparator for bounding-box / spatial localization comparisons
    - Use PointDistanceComparator for 2D or 3D positions
 
