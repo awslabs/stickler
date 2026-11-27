@@ -275,12 +275,70 @@ class TestLLMComparator:
         assert "..." in message
         assert len(message) < 300
 
+    def _mock_agent_responses(self, *content_texts):
+        """Make successive agent calls return each reply in turn."""
+        results = []
+        for text in content_texts:
+            result = MagicMock()
+            result.message = {"content": [{"text": text}]}
+            results.append(result)
+        self.mock_agent.side_effect = results
+
     def test_get_comparison_details_uses_strict_verdict(self):
-        self._mock_agent_response("Not true")
-        with pytest.warns(UserWarning, match="LLMComparator"):
+        # #589: a second call would get the second reply and score it 1.0.
+        self._mock_agent_responses("Not true", "true")
+        with pytest.warns(UserWarning, match="LLMComparator") as record:
             details = self.comparator.get_comparison_details("a", "b")
+        assert self.mock_agent.call_count == 1
         assert details["llm_response"] == "Not true"
         assert details["comparison_result"] == 0.0
+        assert repr("Not true") in str(record[0].message)
+        # Attributed to the caller of get_comparison_details().
+        assert record[0].filename == __file__
+
+    # #589: the shown reply is the scored one, whichever way it scores.
+    @pytest.mark.parametrize(
+        "first, second, expected",
+        [("true", "false", 1.0), ("false", "true", 0.0), (" TRUE. ", "no", 1.0)],
+    )
+    def test_get_comparison_details_scores_the_reply_it_shows(
+        self, first, second, expected, recwarn
+    ):
+        self._mock_agent_responses(first, second)
+        details = self.comparator.get_comparison_details("a", "b")
+        assert self.mock_agent.call_count == 1
+        assert details["llm_response"] == first
+        assert details["comparison_result"] == expected
+        assert details["prompt"] == self.mock_agent.call_args[0][0]
+        assert not [w for w in recwarn if issubclass(w.category, UserWarning)]
+
+    @pytest.mark.parametrize(
+        "value1, value2, expected",
+        [
+            (None, None, 1.0),
+            (None, "test", 0.0),
+            ("test", None, 0.0),
+            (float("nan"), "test", 0.0),
+        ],
+    )
+    def test_get_comparison_details_missing_values_follow_none_policy(
+        self, value1, value2, expected
+    ):
+        details = self.comparator.get_comparison_details(value1, value2)
+        assert details["comparison_result"] == expected
+        assert details["comparison_result"] == self.comparator.compare(value1, value2)
+        assert details["prompt"] is None
+        assert details["llm_response"] is None
+        self.mock_agent.assert_not_called()
+
+    def test_get_comparison_details_malformed_reply_is_an_error(self):
+        mock_result = MagicMock()
+        mock_result.message = {"unexpected_field": "value"}
+        self.mock_agent.return_value = mock_result
+        details = self.comparator.get_comparison_details("a", "b")
+        assert "error" in details
+        assert details["comparison_result"] is False
+        assert self.mock_agent.call_count == 1
 
     def test_none_values(self):
         """Test that None values are handled properly."""

@@ -239,9 +239,8 @@ comparator = LLMComparator(
 
 details = comparator.get_comparison_details("St. John's Street", "Saint John's St")
 print(details["prompt"])              # The formatted prompt sent to the LLM
-print(details["llm_response"])        # Raw reply from one LLM call, not normalized
-                                      # (the score below comes from a separate call)
-print(details["comparison_result"])   # Final score (1.0 or 0.0)
+print(details["llm_response"])        # Raw reply, not normalized
+print(details["comparison_result"])   # Score of that same reply (1.0 or 0.0)
 ```
 
 ### Cost and Latency

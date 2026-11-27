@@ -221,6 +221,15 @@ Each release links to full notes on the
   is now a fractional expected count (a float) instead of an integer that
   varied between runs
   ([#601](https://github.com/awslabs/stickler/issues/601)).
+- `LLMComparator.get_comparison_details` now calls the model once and scores
+  the reply it returns as `llm_response`. It called the model a second time
+  for `comparison_result`, so the score could come from a different reply
+  than the one shown, and each call cost two Bedrock requests. When either
+  value is `None` or NaN it no longer calls the model: `comparison_result`
+  follows the `None` policy as before, and `prompt` and `llm_response` are
+  `None`. The warning for a reply that is neither `true` nor `false` now
+  points at the caller of `get_comparison_details`
+  ([#589](https://github.com/awslabs/stickler/issues/589)).
 
 ### Performance
 
