@@ -7,6 +7,7 @@ structured object comparison.
 import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from .comparison_helper import list_pair_is_one_value
 from .field_comparison_helper import FieldComparisonHelper, _missing_side_reason
 from .null_helper import NullHelper
 from .reporting_context import ReportingContext
@@ -89,8 +90,17 @@ class FieldComparisonCollector:
                 pred_val, list
             ) and NullHelper.is_effectively_null_for_lists(pred_val)
 
+            # A list read as one value, such as a box, is one row from the
+            # value branch below, also against an absent side (#635).
+            scored_as_one_value = list_pair_is_one_value(
+                self.model.__class__,
+                field_name,
+                self.model._get_comparison_info(field_name).comparator,
+                gt_val,
+                pred_val,
+            )
             # Handle null list cases
-            if gt_is_empty or pred_is_empty:
+            if not scored_as_one_value and (gt_is_empty or pred_is_empty):
                 # GT empty, pred has items → use helper for FA entries
                 null_comparisons = self.helper.process_null_cases(
                     field_name, gt_val, pred_val
@@ -98,7 +108,8 @@ class FieldComparisonCollector:
                 all_field_comparisons.extend(null_comparisons)
 
             elif (
-                isinstance(gt_val, list)
+                not scored_as_one_value
+                and isinstance(gt_val, list)
                 and isinstance(pred_val, list)
             ):
                 # Use FieldComparisonHelper for primitive list collection
@@ -162,6 +173,14 @@ class FieldComparisonCollector:
                     
                     # Use scoring's float-NaN-as-missing rule without changing the displayed values.
                     missing_reason = _missing_side_reason(gt_val, pred_val)
+                    if scored_as_one_value:
+                        # A list with no present element (`[]`, `[None]`) is a
+                        # missing box, as `None` is, which is what scoring
+                        # counted (#386).
+                        missing_reason = _missing_side_reason(
+                            None if gt_is_empty else gt_val,
+                            None if pred_is_empty else pred_val,
+                        )
                     if missing_reason is not None:
                         reason = missing_reason
                         is_match = False
