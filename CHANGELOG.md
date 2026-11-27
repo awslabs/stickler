@@ -259,6 +259,10 @@ Each release links to full notes on the
 
 ### Documentation
 
+- The bounding box mAP page says boxes have no page: the same coordinates on
+  another page score IoU `1.0`, and `_page` is ignored. For a multi-page
+  document, compare each page as its own document
+  ([#339](https://github.com/awslabs/stickler/issues/339)).
 - The comparator guide has a Language Support section
   ([#592](https://github.com/awslabs/stickler/issues/592)). It gives the score
   each text comparator returns for Arabic spelling variants, diacritics,

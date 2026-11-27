@@ -227,6 +227,8 @@ This is a different universe from `coverage`, which counts per-(document, field)
 
 This implementation matches the COCO/pycocotools **AP definition** — precision envelope, 101-point interpolation, and averaging over the IoU-threshold range. It is **not** a full object-detection evaluator: there is no greedy assignment of many predicted boxes to many ground-truth boxes per image. Each document field carries at most one ground-truth box and one predicted box, and they are paired by the field path (`expected_key` / `actual_key`) that the comparison already establishes. This is the right model for document field localization (each field has a single location), but it means the metric is not interchangeable with COCO mAP on detection datasets where a field/class can contain multiple instances per image.
 
+Boxes have no page. They are compared by coordinates alone, and a key such as `_page` is ignored, so a box on page 1 and a prediction with the same coordinates on page 3 score IoU `1.0`. For a multi-page document, compare each page as its own document ([#339](https://github.com/awslabs/stickler/issues/339)).
+
 ## Result Structure
 
 ```python
