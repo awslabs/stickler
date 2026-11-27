@@ -54,7 +54,7 @@ aggregate {'tp': 8, 'fd': 0, 'fn': 0, 'fa': 0}
 ```
 
 - **Class:** `ExactComparator` scores `1.0` for the same string, else `0.0`.
-- **Position:** `NumericComparator(absolute_tolerance=...)` scores `1.0` when the two values differ by at most the tolerance, else `0.0`. Set one per axis: here `z` is tighter than `x` and `y`.
+- **Position:** `NumericComparator(absolute_tolerance=...)` scores `1.0` when the two values are within the tolerance, else `0.0`. Set one per axis: here `z` is tighter than `x` and `y`.
 - **Order:** the predictions arrive in a different order and both objects still pair.
 
 ## How detections pair
@@ -173,6 +173,8 @@ class IoUBoxFrame(StructuredModel):
 cases = [
     ("Person", (10, 5, 110, 55)),
     ("Person", (40, 0, 140, 50)),
+    ("Person", (0, 0, 100, 25)),
+    ("Person", (0, 0, 100, 24)),
     ("Pallet", (0, 0, 100, 50)),
 ]
 for cls, box in cases:
@@ -188,16 +190,22 @@ aggregate {'tp': 2, 'fd': 0, 'fn': 0, 'fa': 0}
 Person IoU 0.43
 overall   {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
 aggregate {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
+Person IoU 0.50
+overall   {'tp': 1, 'fd': 0, 'fn': 0, 'fa': 0}
+aggregate {'tp': 2, 'fd': 0, 'fn': 0, 'fa': 0}
+Person IoU 0.48
+overall   {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
+aggregate {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
 Pallet IoU 1.00
 overall   {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
 aggregate {'tp': 0, 'fd': 1, 'fn': 0, 'fa': 0}
 ```
 
-For other fields or weights, set `match_threshold` to the pair score of the weakest match you accept. [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md#scope) covers one box per document field, not many boxes of one class per frame.
+For other fields or weights, set `match_threshold` to the pair score of the weakest match you accept, then check that a wrong class at IoU `1.0` scores below it. With weight `1.0` on `cls` and `3.0` on `box`, the right class at IoU `0.5` scores `(1 + 3 × 0.5) / 4 = 0.625`, but a wrong class at IoU `1.0` scores `0.75` and passes. This sets the bar for each pair, not the pairing: Hungarian maximizes the summed pair score, so in a crowded frame an object can pair with a weaker candidate and count as an FD even when another prediction meets the bar. [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md#scope) covers one box per document field, not many boxes of one class per frame.
 
 ## Read the results
 
-On the list field, `overall` counts objects and `aggregate` counts field values inside the paired objects. Read `overall` for detection precision and recall. `aggregate` covers only the fields of TP pairs, so with `match_threshold = 1.0` a failed pair adds nothing to it, unless every pair in the list failed. Then `aggregate` counts objects, as in the FD rows above ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). Summed over frames, those object counts mix with field counts. See [`overall` vs `aggregate`](../Evaluation/understanding-results.md#overall-vs-aggregate). To see what failed, read `non_matches`: each FD row holds both objects.
+On the list field, `overall` counts objects and `aggregate` counts field values inside the paired objects. Read `overall` for detection precision and recall. `aggregate` covers only the fields of TP pairs, so with `match_threshold = 1.0` a failed pair adds nothing to it, unless no pair in the list was accepted, including a frame where one side is empty. Then `aggregate` counts objects, as in the FD rows above ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). Summed over frames, those object counts mix with field counts. See [`overall` vs `aggregate`](../Evaluation/understanding-results.md#overall-vs-aggregate). To see what failed, read `non_matches`: each FD row holds both objects. The index in `field_path` is the truth position, or the prediction position for an FA row.
 
 ```python
 x_off = [pred[0], {**pred[1], "x": 3.1}]
