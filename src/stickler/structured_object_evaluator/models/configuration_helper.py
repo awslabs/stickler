@@ -11,10 +11,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, get_args, get_origin
 from pydantic import BaseModel
 
 from stickler.comparators.anls import ANLSStarComparator
+from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import _LEGACY_DEFAULT_THRESHOLD
+from .comparator_registry import get_global_registry
 from .hungarian_helper import deferring_pair_warnings
 from .optional_annotation import (
     is_union,
@@ -714,6 +716,44 @@ class ConfigurationHelper:
         return False
 
     @staticmethod
+    def _comparator_from_x_comparison(
+        cls, field_name: str, comparison_config: Dict[str, Any]
+    ) -> BaseComparator:
+        """Rebuild the comparator an ``x-comparison`` dict names.
+
+        Resolved through the global ``ComparatorRegistry``, the same lookup
+        ``model_from_json()`` and ``from_json_schema()`` use, so every
+        registered comparator comes back with its ``comparator_config``. A name
+        the registry does not know, or one it cannot build from config alone
+        (``LLMComparator`` needs a model), falls back to
+        ``LevenshteinComparator`` with a ``UserWarning`` naming the field:
+        that score is not the one the named comparator would give.
+        """
+        name = comparison_config.get("comparator_type", "LevenshteinComparator")
+        config = comparison_config.get("comparator_config") or {}
+        registry = get_global_registry()
+        where = f"{cls.__name__}.{field_name}"
+        try:
+            return registry.create_instance(name, config)
+        except KeyError:
+            reason = (
+                "is not a registered comparator (or its optional extra is not "
+                f"installed). Registered: {', '.join(registry.list_available())}"
+            )
+        except (TypeError, ValueError) as error:
+            reason = f"could not be built from comparator_config {config!r}: {error}"
+        warn_once(
+            "x-comparison-comparator-fallback",
+            f"{where}:{name}",
+            f"x-comparison on {where} names comparator {name!r}, which {reason}. "
+            f"Scoring the field with LevenshteinComparator instead, so its scores "
+            f"are not the ones {name!r} would give. Register the comparator, or "
+            f"declare it with ComparableField(comparator=...).",
+            category=UserWarning,
+        )
+        return LevenshteinComparator()
+
+    @staticmethod
     def get_comparison_info(cls, field_name: str) -> "ComparableFieldConfig":
         """Extract comparison info from a field.
 
@@ -803,15 +843,8 @@ class ConfigurationHelper:
                 comparison_config = field_info.json_schema_extra.get("x-comparison")
 
             if comparison_config:
-                # Reconstruct from type name and config
-                from .comparable_field import _reconstruct_comparator_from_type
-
-                comparator_type = comparison_config.get(
-                    "comparator_type", "LevenshteinComparator"
-                )
-                comparator_config_dict = comparison_config.get("comparator_config", {})
-                comparator = _reconstruct_comparator_from_type(
-                    comparator_type, comparator_config_dict
+                comparator = ConfigurationHelper._comparator_from_x_comparison(
+                    cls, field_name, comparison_config
                 )
 
                 # Extract all configuration parameters
@@ -828,7 +861,12 @@ class ConfigurationHelper:
                     threshold=threshold,
                     weight=weight,
                     clip_under_threshold=clip_under_threshold,
-                    comparator_explicit="comparator_type" in comparison_config,
+                    # Every x-comparison stickler writes records the bit, so a
+                    # comparator it inferred does not come back as declared. A
+                    # hand-written dict without it declared whatever it names.
+                    comparator_explicit=comparison_config.get(
+                        "comparator_explicit", "comparator_type" in comparison_config
+                    ),
                 )
 
         # Check if this is a structured field type that needs special handling

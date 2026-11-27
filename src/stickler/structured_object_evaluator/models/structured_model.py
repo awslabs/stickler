@@ -748,6 +748,7 @@ class StructuredModel(BaseModel):
                 new_metadata["comparator_name"] = comparator.name
                 new_metadata["comparator_config"] = comparator.config or {}
                 new_metadata["clip_under_threshold"] = clip
+                new_metadata["comparator_explicit"] = True
                 substituted._comparison_metadata = new_metadata
 
             field_default.json_schema_extra = substituted

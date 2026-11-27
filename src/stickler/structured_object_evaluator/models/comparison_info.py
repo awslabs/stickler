@@ -156,6 +156,7 @@ class ComparableFieldConfig:
             "threshold": self.threshold,
             "weight": self.weight,
             "clip_under_threshold": self.clip_under_threshold,
+            "comparator_explicit": self.comparator_explicit,
         }
 
 

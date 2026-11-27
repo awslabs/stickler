@@ -235,6 +235,9 @@ def ComparableField(
         "threshold": threshold,
         "weight": weight,
         "clip_under_threshold": clip_under_threshold,
+        # Read back when a field is rebuilt from this dict, so an inferred
+        # comparator is not restored as a declared one (#432).
+        "comparator_explicit": comparator_was_explicit,
     }
 
     # Create json_schema_extra function that stores runtime data
@@ -334,75 +337,6 @@ def ComparableField(
     )
 
     return field
-
-
-def _reconstruct_comparator_from_type(
-    comparator_type: str, config: Optional[Dict[str, Any]] = None
-) -> BaseComparator:
-    """Reconstruct a comparator instance from its type name and configuration.
-
-    Args:
-        comparator_type: Name of the comparator class
-        config: Configuration dictionary for the comparator
-
-    Returns:
-        Reconstructed comparator instance
-    """
-    config = config or {}
-
-    # Map of comparator type names to their classes
-    comparator_map: Dict[str, type] = {
-        "LevenshteinComparator": LevenshteinComparator,
-    }
-
-    # Import additional comparators as needed
-    try:
-        from stickler.comparators.exact import ExactComparator
-
-        comparator_map["ExactComparator"] = ExactComparator
-    except ImportError:
-        pass
-
-    try:
-        from stickler.comparators.normalized import NormalizedComparator
-
-        comparator_map["NormalizedComparator"] = NormalizedComparator
-    except ImportError:
-        pass
-
-    try:
-        from stickler.comparators.phone import PhoneComparator
-
-        comparator_map["PhoneComparator"] = PhoneComparator
-    except ImportError:
-        pass
-
-    try:
-        from stickler.comparators.numeric import NumericComparator
-
-        comparator_map["NumericComparator"] = NumericComparator
-    except ImportError:
-        pass
-
-    try:
-        from stickler.comparators.structured import StructuredModelComparator
-
-        comparator_map["StructuredModelComparator"] = StructuredModelComparator
-    except ImportError:
-        pass
-
-    # Get the comparator class and instantiate it
-    comparator_class = comparator_map.get(comparator_type)
-    if comparator_class:
-        try:
-            # Try to instantiate with config if the constructor accepts it
-            return comparator_class(**config)
-        except TypeError:
-            # Fallback to parameterless constructor
-            return comparator_class()
-
-    # Default fallback
-    return LevenshteinComparator()
 
 
 # Backward compatibility: Keep some legacy helper functions if needed by existing code
