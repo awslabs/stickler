@@ -15,8 +15,10 @@ from stickler.reporting.html.visualization_engine import VisualizationEngine
 from stickler.structured_object_evaluator import StructuredModel
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
+    aggregate_from_comparisons,
 )
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.utils.pretty_print import print_non_matches
 
 
 class _Person(StructuredModel):
@@ -105,6 +107,118 @@ def test_a_bulk_result_with_records_lists_them():
 
     assert "No non-matches found" not in _section(results)
     assert "document_non_matches=True" not in _section(results)
+
+
+def test_aggregating_results_without_records_is_not_reported_as_clean(capsys):
+    """#425: a missing `non_matches` key was read as "no non-matches"."""
+    gt, pred = _wrong_pair()
+    results = aggregate_from_comparisons(
+        [gt.compare_with(pred, include_confusion_matrix=True)]
+    )
+
+    assert results.non_matches is None
+    assert "No non-matches found" not in _section(results)
+    print_non_matches(results)
+    assert "No non-match records in these results." in capsys.readouterr().out
+
+
+def test_one_result_without_records_is_enough_to_withhold_success():
+    """A clean result with records says nothing about the one without them."""
+    same = _Person(name="Ada", city="London")
+    gt, pred = _wrong_pair()
+    clean = same.compare_with(
+        same, include_confusion_matrix=True, document_non_matches=True
+    )
+    missing = gt.compare_with(pred, include_confusion_matrix=True)
+
+    assert aggregate_from_comparisons([clean, missing]).non_matches is None
+    assert aggregate_from_comparisons([missing, clean]).non_matches is None
+
+
+def test_collected_records_survive_a_result_without_them():
+    gt, pred = _wrong_pair()
+    recorded = gt.compare_with(
+        pred, include_confusion_matrix=True, document_non_matches=True
+    )
+    missing = gt.compare_with(pred, include_confusion_matrix=True)
+
+    results = aggregate_from_comparisons([missing, recorded])
+
+    assert [nm["field_path"] for nm in results.non_matches] == ["name"]
+
+
+def test_aggregating_clean_results_with_records_is_a_success():
+    same = _Person(name="Ada", city="London")
+    clean = same.compare_with(
+        same, include_confusion_matrix=True, document_non_matches=True
+    )
+
+    results = aggregate_from_comparisons([clean])
+
+    assert results.non_matches == []
+    assert "<p>No non-matches found.</p>" in _section(results)
+
+
+def test_reset_forgets_a_result_without_records():
+    same = _Person(name="Ada", city="London")
+    evaluator = BulkStructuredModelEvaluator(target_schema=_Person)
+    evaluator.update_from_comparison_result(
+        same.compare_with(same, include_confusion_matrix=True)
+    )
+    assert evaluator.compute().non_matches is None
+
+    evaluator.reset()
+    evaluator.update(same, same)
+
+    assert evaluator.compute().non_matches == []
+
+
+def test_a_bulk_run_where_every_document_raised_is_not_reported_as_clean(capsys):
+    """#425: documents that raised have no records because they were not compared."""
+    evaluator = BulkStructuredModelEvaluator(target_schema=_Person)
+    evaluator.update(None, None, "doc-1")
+    evaluator.update(None, None, "doc-2")
+    results = evaluator.compute()
+
+    assert len(results.errors) == 2
+    assert results.non_matches == []
+
+    html = _section(results)
+    assert "No non-matches found" not in html
+    assert "2 could not be compared" in html
+
+    print_non_matches(results)
+    out = capsys.readouterr().out
+    assert "No non-matches found" not in out
+    assert "2 could not be compared" in out
+
+
+class _FailingAccumulator:
+    name = "failing"
+
+    def reset(self):
+        pass
+
+    def accumulate(self, comparison_result, prediction_raw):
+        raise RuntimeError("accumulator failed")
+
+    def compute(self):
+        return None
+
+
+def test_a_failed_accumulator_does_not_withhold_success(capsys):
+    """Its document was compared, and the records say it was clean."""
+    same = _Person(name="Ada", city="London")
+    evaluator = BulkStructuredModelEvaluator(
+        target_schema=_Person, accumulators=[_FailingAccumulator()]
+    )
+    evaluator.update(same, same)
+    results = evaluator.compute()
+
+    assert len(results.errors) == 1
+    assert "<p>No non-matches found.</p>" in _section(results)
+    print_non_matches(results)
+    assert "No non-matches found." in capsys.readouterr().out
 
 
 def test_an_evaluator_format_dict_without_records_reads_as_1_0_0_did():

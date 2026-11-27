@@ -112,6 +112,22 @@ class SectionGenerator:
             return html_string
 
         if not non_matches:
+            # A document that raised was never compared, so it has no records
+            # and is not clean (#425). A failed accumulator is not counted: its
+            # document was compared.
+            failed = sum(
+                1
+                for error in getattr(self.results, "errors", None) or []
+                if "accumulator" not in error
+            )
+            if failed:
+                html_string += (
+                    "<p>No non-matches in the documents that were compared. "
+                    f"{failed} could not be compared; see <code>errors</code> on "
+                    "the results.</p></div>"
+                )
+                return html_string
+
             html_string += "<p>No non-matches found.</p></div>"
             return html_string
         

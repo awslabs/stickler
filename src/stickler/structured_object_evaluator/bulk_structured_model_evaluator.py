@@ -259,6 +259,9 @@ class BulkStructuredModelEvaluator:
 
         # Non-match tracking (when document_non_matches=True)
         self._non_matches = []
+        # Set once a comparison result carries no `non_matches` key, so an empty
+        # list no longer means that every field matched (#425)
+        self._non_matches_uncollected = False
 
         # Error tracking
         self._errors = []
@@ -369,11 +372,14 @@ class BulkStructuredModelEvaluator:
 
         try:
             # Collect non-matches if enabled and present
-            if self.document_non_matches and "non_matches" in comparison_result:
-                for non_match in comparison_result["non_matches"]:
-                    non_match_with_doc = non_match.copy()
-                    non_match_with_doc["doc_id"] = doc_id
-                    self._non_matches.append(non_match_with_doc)
+            if self.document_non_matches:
+                if "non_matches" in comparison_result:
+                    for non_match in comparison_result["non_matches"]:
+                        non_match_with_doc = non_match.copy()
+                        non_match_with_doc["doc_id"] = doc_id
+                        self._non_matches.append(non_match_with_doc)
+                else:
+                    self._non_matches_uncollected = True
 
             cm_result = comparison_result["confusion_matrix"]
             self._accumulate_confusion_matrix(cm_result)
@@ -710,13 +716,22 @@ class BulkStructuredModelEvaluator:
             dict(self._accumulator_errors) if self._accumulator_errors else None
         )
 
+        # `[]` claims that records were collected and none were produced, so it
+        # is None when a result carried no records. Records that were collected
+        # are kept either way.
+        non_matches = None
+        if self.document_non_matches and (
+            self._non_matches or not self._non_matches_uncollected
+        ):
+            non_matches = list(self._non_matches)
+
         return ProcessEvaluation(
             document_count=self._processed_count,
             metrics=overall_metrics,
             field_metrics=field_metrics,
             errors=list(self._errors),
             total_time=total_time,
-            non_matches=list(self._non_matches) if self.document_non_matches else None,
+            non_matches=non_matches,
             confidence_metrics=confidence_metrics,
             accumulator_metrics=accumulator_metrics or None,
             accumulator_errors=accumulator_errors,

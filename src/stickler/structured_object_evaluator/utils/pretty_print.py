@@ -1009,6 +1009,22 @@ def _print_no_non_matches(
         if isinstance(results, dict) and "overall_score" in results:
             message += " For an EvalResult's .raw, pass the EvalResult itself."
         print(_colorize(message, Colors.YELLOW, use_color))
+        return
+
+    # A document that raised was never compared, so it has no records and is
+    # not clean (#425). A failed accumulator is not counted: its document was
+    # compared.
+    failed = sum(
+        1
+        for error in getattr(results, "errors", None) or []
+        if "accumulator" not in error
+    )
+    if failed:
+        message = (
+            "No non-matches in the documents that were compared. "
+            f"{failed} could not be compared; see errors on the results."
+        )
+        print(_colorize(message, Colors.YELLOW, use_color))
     else:
         print(_colorize("✅ No non-matches found.", Colors.GREEN, use_color))
 

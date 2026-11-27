@@ -221,6 +221,13 @@ Each release links to full notes on the
   is now a fractional expected count (a float) instead of an integer that
   varied between runs
   ([#601](https://github.com/awslabs/stickler/issues/601)).
+- The HTML report and the terminal printer no longer print "No non-matches
+  found." for a bulk run that has no records to show it.
+  `ProcessEvaluation.non_matches` is now `None` instead of `[]` when there are
+  no records and a `compare_with()` result had no `non_matches` key, as from
+  `aggregate_from_comparisons()` on default results. When documents raised, both
+  say how many could not be compared
+  ([#425](https://github.com/awslabs/stickler/issues/425)).
 
 ### Performance
 
