@@ -1,21 +1,41 @@
 # API Reference
 
-::: stickler
-    options:
-      heading_level: 1
-      members: false
+The names below are exported from `stickler`. Follow each link for the detailed reference.
 
-!!! tip "Model Classes"
-    For documentation on `StructuredModel`, `ComparableField`, `NonMatchField`, and `NonMatchType`, see the [Models](models.md) page.
+## Models
 
-::: stickler.structured_object_evaluator.utils.anls_score.compare_structured_models
-    options:
-      heading_level: 2
+- [`StructuredModel`](models.md)
+- [`ComparableField`](models.md)
+- [`NonMatchField`](models.md)
+- [`NonMatchType`](models.md)
 
-::: stickler.structured_object_evaluator.utils.anls_score.anls_score
-    options:
-      heading_level: 2
+## Evaluation
 
-::: stickler.structured_object_evaluator.utils.compare_json.compare_json
-    options:
-      heading_level: 2
+- [`compare_structured_models`](utils.md)
+- [`anls_score`](utils.md)
+- [`compare_json`](utils.md)
+- [`aggregate_from_comparisons`](evaluator.md)
+
+## Zero-config evaluation
+
+- [`evaluate`](auto.md)
+- [`eval_for`](auto.md)
+- [`EvalResult`](auto.md)
+- [`EvalSpec`](auto.md)
+
+## Comparators
+
+- [`BaseComparator`](comparators.md)
+- [`ANLSStarComparator`](comparators.md)
+- [`ExactComparator`](comparators.md)
+- [`PhoneComparator`](comparators.md)
+- [`DateComparator`](comparators.md)
+- [`BBoxIoUComparator`](comparators.md)
+- [`FuzzyComparator`](comparators.md)
+- [`LevenshteinComparator`](comparators.md)
+- [`NormalizedComparator`](comparators.md)
+- [`NumericComparator`](comparators.md)
+- [`SemanticComparator`](comparators.md)
+- [`StructuredModelComparator`](comparators.md)
+- [`LLMComparator`](comparators.md) *(optional dependency)*
+- [`BERTComparator`](comparators.md) *(optional dependency)*

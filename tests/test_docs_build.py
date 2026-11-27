@@ -126,10 +126,6 @@ def test_missing_navigation_target_fails(docs_project):
             "models/comparable_field.py",
             "No type or annotation for returned value 1",
         ),
-        (
-            "models/field.py",
-            "No type or annotation for parameter '**kwargs'",
-        ),
     ],
 )
 @pytest.mark.parametrize("separator", ["/", "\\"])
@@ -154,8 +150,8 @@ def test_known_warning_remains_visible_without_failing(
 @pytest.mark.parametrize("second_line", [51, 2500])
 def test_duplicate_known_warning_fails(docs_project, second_line):
     first = (
-        "griffe: src/stickler/structured_object_evaluator/models/field.py:51: "
-        "No type or annotation for parameter '**kwargs'"
+        "griffe: src/stickler/structured_object_evaluator/models/comparable_field.py:51: "
+        "No type or annotation for parameter '**field_kwargs'"
     )
     second = first.replace(":51:", f":{second_line}:")
     result = docs_project(
@@ -165,15 +161,17 @@ def test_duplicate_known_warning_fails(docs_project, second_line):
         f"    logger.warning({first!r})\n"
         f"    logger.warning({second!r})\n"
     )
-    assert result.stderr.count("No type or annotation for parameter '**kwargs'") == 2
+    assert (
+        result.stderr.count("No type or annotation for parameter '**field_kwargs'") == 2
+    )
     assert result.returncode != 0, result.stderr
     assert "Documentation check failed: 1 warning(s) or error(s)." in result.stderr
 
 
 def test_known_warning_allowance_resets_per_build(docs_config, tmp_path, caplog):
     message = (
-        "griffe: src/stickler/structured_object_evaluator/models/field.py:51: "
-        "No type or annotation for parameter '**kwargs'"
+        "griffe: src/stickler/structured_object_evaluator/models/comparable_field.py:51: "
+        "No type or annotation for parameter '**field_kwargs'"
     )
     config = docs_config(
         hook="import logging\n"
@@ -433,12 +431,15 @@ def test_real_site_review_cases(tmp_path, fault, from_docs):
             "# comment\n" + source.read_text(encoding="utf-8"), encoding="utf-8"
         )
     elif fault == "duplicate-warning":
-        source = tmp_path / "src/stickler/structured_object_evaluator/models/field.py"
-        parameter = "            **kwargs: Additional field parameters\n"
+        source = (
+            tmp_path
+            / "src/stickler/structured_object_evaluator/models/comparable_field.py"
+        )
+        parameter = "        **field_kwargs: Additional Pydantic Field arguments\n"
         content = source.read_text(encoding="utf-8")
         assert content.count(parameter) == 1
         source.write_text(content.replace(parameter, parameter * 2), encoding="utf-8")
-        expected = "No type or annotation for parameter '**kwargs'"
+        expected = "No type or annotation for parameter '**field_kwargs'"
     result = subprocess.run(
         [
             *BUILD_COMMAND,
@@ -459,10 +460,10 @@ def test_real_site_review_cases(tmp_path, fault, from_docs):
         assert expected in output, output
         assert result.returncode != 0, output
         if fault == "duplicate-warning":
-            assert output.count("WARNING - griffe:") == 7, output
+            assert output.count("WARNING - griffe:") == 6, output
             assert "Documentation check failed: 1 warning(s) or error(s)." in output
     else:
         assert "WARNING - mkdocs_autorefs:" not in output, output
         assert result.returncode == 0, output
-        assert output.count("WARNING - griffe:") == 6, output
+        assert output.count("WARNING - griffe:") == 5, output
         assert 'not included in the "nav"' not in output, output

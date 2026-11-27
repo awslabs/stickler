@@ -4,22 +4,26 @@ title: Advanced Topics
 
 # Advanced Topics
 
-This section provides deep dives into Stickler's internal algorithms and advanced features. These pages assume familiarity with the basics of defining a `StructuredModel`, running comparisons, and reading evaluation results.
+Reference for users who already compare models. Each page answers one question about how to configure, interpret, or extend an evaluation.
 
 ## Contents
 
-- **[Classification Logic](classification-logic.md)** -- How Stickler categorizes comparison results into True Positives, False Alarms, False Negatives, False Discoveries, and True Negatives, and how derived metrics (precision, recall, F1) are calculated.
+- **[Rich Value Pattern](rich-value-pattern.md)** — How to attach confidence scores, bounding boxes, and other metadata to field values while preserving normal model validation and comparison.
 
-- **[Hungarian Matching](hungarian-matching.md)** -- The optimal bipartite matching algorithm used to pair list elements before classification, including worked examples with `List[StructuredModel]`.
+- **[Classification Logic](classification-logic.md)** — How Stickler classifies comparison outcomes as true positives, false alarms, false negatives, false discoveries, and true negatives, and derives evaluation metrics from those counts.
 
-- **[How Below-Threshold Pairs Are Classified](threshold-gated-evaluation.md)** -- What happens to an object pair that falls below the similarity threshold: it becomes an atomic False Discovery with no field-by-field breakdown.
+- **[Hungarian Matching](hungarian-matching.md)** — How Stickler pairs list elements before classifying their comparison results.
 
-- **[Dynamic Model Creation](dynamic-models.md)** -- Creating `StructuredModel` classes at runtime from JSON Schema or custom JSON configuration, enabling configuration-driven evaluation without writing Python model code.
+- **[How Below-Threshold Pairs Are Classified](threshold-gated-evaluation.md)** — What happens when a matched pair falls below its similarity threshold and why it may not receive field-by-field breakdowns.
 
-- **[Confidence Metrics](confidence-metrics.md)** -- AUROC-based confidence calibration: attaching confidence scores to predictions, measuring how well confidence correlates with accuracy, and interpreting the results.
+- **[Dynamic Model Creation](dynamic-models.md)** — How to create `StructuredModel` classes at runtime from JSON Schema or Stickler configuration.
 
-- **[Bounding Box mAP Metrics](bbox-map-metrics.md)** -- Mean Average Precision for bounding-box localization: attaching `_bbox` metadata to fields and computing COCO-style AP (precision envelope + 101-point interpolation) over a configurable IoU-threshold range.
+- **[Confidence Metrics](confidence-metrics.md)** — How to measure whether prediction confidence scores correlate with actual accuracy using metrics such as AUROC.
 
-- **[Aggregate Metrics](aggregate-metrics.md)** -- Automatic hierarchical confusion-matrix aggregation at every node in the comparison result tree.
+- **[Bounding Box mAP Metrics](bbox-map-metrics.md)** — How to evaluate bounding-box localization using mean Average Precision and configurable IoU thresholds.
 
-- **[Model Export](model-export.md)** -- Exporting and importing model schemas in JSON Schema and Stickler-config formats for round-trip serialization, version control, and cross-system interoperability.
+- **[Map/Reduce Evaluation](map-reduce-evaluation.md)** — How to compare documents individually, store their results, and combine them into bulk evaluation metrics.
+
+- **[Aggregate Metrics](aggregate-metrics.md)** — How to understand hierarchical confusion-matrix counts. See [Understanding Results](../Guides/Evaluation/understanding-results.md) for the canonical explanation.
+
+- **[Model Export](model-export.md)** — How to export and import model schemas using JSON Schema and Stickler configuration formats.
