@@ -180,6 +180,16 @@ class BaseComparator(ABC):
             self.threshold_was_set = _caller_named_it(self, threshold)
         self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
 
+    def scores_as_one_value(self, value: Any) -> bool:
+        """Whether this comparator scores the list ``value`` as one value.
+
+        A list field pairs its elements and scores each pair. A comparator
+        whose own input is a list, such as a bounding box, returns True for a
+        list it reads whole, so the field passes the list on unsplit instead
+        of handing the comparator single numbers.
+        """
+        return False
+
     def compare(self, str1: Any, str2: Any) -> float:
         """Compare two values and return a similarity score.
 

@@ -73,6 +73,10 @@ class BBoxIoUComparator(BaseComparator):
 
         return self._compute_iou(coords1, coords2)
 
+    def scores_as_one_value(self, value: Any) -> bool:
+        """A list that parses as one box is one box, not four numbers."""
+        return self._normalize_bbox(value) is not None
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
