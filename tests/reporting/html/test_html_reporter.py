@@ -323,12 +323,27 @@ class TestEvaluationHTMLReporter:
         
         assert title == "Evaluation Report - 15 Documents"
 
-    def test_bulk_title_and_metadata_never_show_none_document_count(self):
+    def test_bulk_title_never_shows_none_document_count(self):
         """A ProcessEvaluation without document_count counts as 1, not None (#467)."""
         results = ProcessEvaluation(metrics={})
 
         assert self.reporter._generate_title(results, True) == "Evaluation Report - 1 Documents"
         assert self.reporter._get_document_count(results) == 1
+
+    def test_generate_report_never_shows_none_document_count(self):
+        """generate_report's metadata and bulk page title use the count (#467)."""
+        report = self.reporter.generate_report(ProcessEvaluation(metrics={}), self.output_path)
+        with open(self.output_path, encoding='utf-8') as f:
+            page = f.read()
+
+        assert report.success, report.errors
+        assert report.metadata["document_count"] == 1
+        assert '<title>Evaluation Report - 1 Document' in page
+
+        report = self.reporter.generate_report({'overall': {}, 'document_count': 7}, self.output_path)
+
+        assert report.success, report.errors
+        assert report.metadata["document_count"] == 7
 
     def test_get_document_count_reads_a_results_dict_key(self):
         """The title and ReportResult.metadata use a dict's document_count (#467)."""
