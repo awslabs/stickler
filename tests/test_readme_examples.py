@@ -56,6 +56,15 @@ def _annotated_rows(code, namespace=None):
     """Capture each annotated print at its source call, including loop executions."""
     tree = ast.parse(code)
     sources = {}
+    annotated_calls = set()
+    # A trailing comment belongs to the last statement when a line contains several.
+    last_statement = {}
+    for statement in ast.walk(tree):
+        if isinstance(statement, ast.stmt):
+            line = statement.lineno
+            last_statement[line] = max(
+                last_statement.get(line, 0), statement.col_offset
+            )
     comments = [
         token
         for token in tokenize.generate_tokens(io.StringIO(code).readline)
@@ -71,6 +80,11 @@ def _annotated_rows(code, namespace=None):
         claims = []
         for comment in comments:
             if node.lineno <= comment.start[0] <= node.end_lineno:
+                if (
+                    comment.start[0] == node.end_lineno
+                    and last_statement.get(node.end_lineno, -1) >= node.end_col_offset
+                ):
+                    continue
                 claim = re.match(r"#\s*(?:(?:~|≈)\s*|about\s+)?(\S+)", comment.string)
                 if claim and re.match(r"[+-]?(?:\d|\.\d)", claim.group(1)):
                     claims.append(claim.group(1))
@@ -99,16 +113,13 @@ def _annotated_rows(code, namespace=None):
             r"\[['\"]field_scores['\"]\]\[['\"]([^'\"]+)['\"]\]",
             ast.unparse(value.value),
         )
+        annotated_calls.add(node)
         sources[node.lineno] = (label, field.group(1) if field else None, claimed)
 
     class CapturePrint(ast.NodeTransformer):
         def visit_Call(self, node):
             self.generic_visit(node)
-            if (
-                isinstance(node.func, ast.Name)
-                and node.func.id == "print"
-                and node.lineno in sources
-            ):
+            if node in annotated_calls:
                 node.func = ast.Name(id="_record_readme_print", ctx=ast.Load())
                 node.args.insert(0, ast.Constant(value=node.lineno))
             return node
@@ -675,6 +686,11 @@ def test_only_the_annotated_print_contributes_a_claim(unannotated):
     text = f"{QUICK_START}\n```python\n{code}```\n"
     _, rows = _run_readme_example(text, QUICK_START)
     assert rows == [("Score", None, 1.0, 1.0)]
+
+
+def test_trailing_claim_belongs_only_to_the_last_print_on_the_line():
+    code = 'print("Score: n/a"); print(f"Score: {1.0}")  # 1.0'
+    assert _annotated_rows(code) == [("Score", None, 1.0, 1.0)]
 
 
 def test_each_annotated_print_keeps_its_own_claim_when_labels_repeat():
