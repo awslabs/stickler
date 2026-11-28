@@ -4,12 +4,26 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, List, Tuple, Type, get_args, get_origin
+import warnings
+from enum import Enum
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    NewType,
+    Optional,
+    Tuple,
+    Type,
+    get_args,
+    get_origin,
+)
 
 from pydantic.fields import FieldInfo, PydanticUndefined
 
 from .configuration_helper import ConfigurationHelper
 from .optional_annotation import is_optional_union, unwrap_annotated, unwrap_optional
+from .threshold_rule import stacklevel_outside
 
 # Bidirectional type mappings for export
 PYTHON_TYPE_TO_JSON_TYPE = {
@@ -170,6 +184,75 @@ def _stickler_mapping_type(annotation: Any) -> str:
     return "dict"
 
 
+def _stickler_tuple_type(annotation: Any) -> str:
+    """``Tuple[float, int]`` for a tuple of named primitives, else ``tuple``.
+
+    ``model_from_json`` resolves both spellings. It has none for ``...`` or for
+    an element it cannot be handed by name, so those fall back to ``tuple``,
+    which keeps the field a tuple and drops the length and element checks.
+    """
+    names = [
+        "Any" if arg is Any else PYTHON_TYPE_TO_STICKLER_TYPE.get(arg)
+        for arg in get_args(annotation)
+    ]
+    if names and all(names):
+        return f"Tuple[{', '.join(names)}]"
+    return "tuple"
+
+
+def string_accepts_every_value(annotation: Any) -> bool:
+    """Whether a ``str`` field accepts every value ``annotation`` allows.
+
+    The rule for the unmapped-type warning: a type written as a string warns
+    only when the re-imported string field rejects some of its values.
+    Pydantic's ``str`` accepts a str, an enum member and a ``Literal`` of
+    those. It rejects a number, so ``Any``, ``Union[int, str]`` and an enum
+    with an int value warn: the original takes ``1`` for ``Level.LOW``, the
+    rebuilt field does not. It rejects bytes that are not UTF-8, so ``bytes``
+    warns. A ``NewType`` or ``type`` alias is read as the type it names.
+    """
+    while True:
+        if isinstance(annotation, NewType):
+            annotation = annotation.__supertype__
+        elif type(annotation).__name__ == "TypeAliasType":
+            annotation = annotation.__value__
+        else:
+            break
+    if isinstance(annotation, type) and issubclass(annotation, str):
+        return True
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        return all(isinstance(member.value, str) for member in annotation)
+    if get_origin(annotation) is Literal:
+        return all(
+            isinstance(arg.value if isinstance(arg, Enum) else arg, str)
+            for arg in get_args(annotation)
+        )
+    return False
+
+
+def warn_unmapped_export(
+    field_type: Any,
+    where: str,
+    written_as: str,
+    effect: str = "which re-imports as a string field and rejects values the "
+    "original accepts",
+) -> None:
+    """Warn that ``field_type`` has no export type the importer reads back.
+
+    A warning, not an error: Decimal, UUID, dates and sets reach this path in
+    1.0.x exports, and raising would break them in a patch release. Without
+    it the rebuilt model rejected the original values with no sign at
+    export, as for a tuple (#636).
+    """
+    warnings.warn(
+        f"{where} has no export type for {field_type!r}. It is written as "
+        f"{written_as}, {effect}. Declare a type the exporters map, or leave "
+        f"the field out of the exported model.",
+        UserWarning,
+        stacklevel=stacklevel_outside(),
+    )
+
+
 class JsonSchemaFieldConverter:
     """Compatibility entry point for schema import and field export.
 
@@ -198,7 +281,11 @@ class JsonSchemaFieldConverter:
         ).convert_properties_to_fields(properties, required)
 
     def field_to_property(
-        self, field_type: Type, field_info: FieldInfo, is_nullable: bool = False
+        self,
+        field_type: Type,
+        field_info: FieldInfo,
+        is_nullable: bool = False,
+        where: str = "field_to_property()",
     ) -> Dict[str, Any]:
         """Convert Pydantic field to JSON Schema property.
 
@@ -210,6 +297,8 @@ class JsonSchemaFieldConverter:
             field_info: Pydantic FieldInfo object containing field metadata
             is_nullable: Whether the source field was Optional[T]; emits the
                 list-form ``["X", "null"]`` type so nullability round-trips.
+            where: The model and field a warning names, as the exporter
+                passes them.
 
         Returns:
             JSON Schema property dict with x-aws-stickler-* extensions
@@ -229,35 +318,41 @@ class JsonSchemaFieldConverter:
         # a model arm, or a model inside a nested list, is written as 1.0.0
         # wrote it, as "string", with a warning; 1.1.0 raises.
         #
-        # Deliberately scoped to models, not to every dict miss:
-        # Decimal, UUID and enums legitimately export as "string".
+        # Deliberately scoped to models, not to every dict miss: Decimal, UUID
+        # and enums still export as "string", with the warning below when a
+        # string field rejects some of their values.
         from .structured_model import StructuredModel
 
-        if not StructuredModel._warn_legacy_export(field_type, "field_to_property()"):
+        written_as_legacy = StructuredModel._warn_legacy_export(
+            field_type, "field_to_property()"
+        )
+        if not written_as_legacy:
             StructuredModel._refuse_scalar_export(field_type)
 
         # A mapping exports as an object, not the "string" fallback below: as
         # "string" it re-imported as `Optional[str]` and could not hold one.
         # Object keys are strings in JSON, so only the value type is carried,
         # and only when it is a primitive JSON has a name for.
+        #
+        # A plain BaseModel is scored as one object, as a mapping is
+        # (`ConfigurationHelper.is_object_grade_annotation`), so it exports as a
+        # free-form object, which re-imports as `dict`. As "string" it rebuilt
+        # as `str` and rejected the original data (#349).
         is_mapping = ConfigurationHelper.is_mapping_annotation(field_type)
-        if is_mapping:
+        if is_mapping or ConfigurationHelper.is_plain_model_annotation(field_type):
             json_type = "object"
+        elif field_type in PYTHON_TYPE_TO_JSON_TYPE:
+            json_type = PYTHON_TYPE_TO_JSON_TYPE[field_type]
         else:
-            json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
+            json_type = "string"
+            if not written_as_legacy and not string_accepts_every_value(field_type):
+                warn_unmapped_export(field_type, where, '"string"')
         property_schema = {"type": [json_type, "null"] if is_nullable else json_type}
         if is_mapping:
             value_type = PYTHON_TYPE_TO_JSON_TYPE.get(_mapping_value_type(field_type))
             if value_type:
                 property_schema["additionalProperties"] = {"type": value_type}
         add_exportable_default(property_schema, field_info)
-
-        # A plain BaseModel is scored as one object, as a mapping is
-        # (`ConfigurationHelper.is_object_grade_annotation`), so it exports as a
-        # free-form object, which re-imports as `dict`. As "string" it rebuilt
-        # as `str` and rejected the original data (#349).
-        if ConfigurationHelper.is_plain_model_annotation(field_type):
-            property_schema["type"] = ["object", "null"] if is_nullable else "object"
 
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)
@@ -277,7 +372,10 @@ class JsonSchemaFieldConverter:
         return property_schema
 
     def field_to_stickler_config(
-        self, field_type: Type, field_info: FieldInfo
+        self,
+        field_type: Type,
+        field_info: FieldInfo,
+        where: Optional[str] = "field_to_stickler_config()",
     ) -> Dict[str, Any]:
         """Convert Pydantic field to Stickler config format.
 
@@ -287,28 +385,45 @@ class JsonSchemaFieldConverter:
         Args:
             field_type: Python type annotation (e.g., str, int, float)
             field_info: Pydantic FieldInfo object containing field metadata
+            where: The model and field a warning names, as the exporter
+                passes them. None when the caller writes the type itself, as
+                the list branch of ``to_stickler_config()`` does for an element.
 
         Returns:
             Stickler field config dict with type, comparator, threshold, etc.
         """
-        # A mapping fell back to "str" here, so it rebuilt as a string field
-        # that could hold no mapping, including the `{}` its factory exports.
-        if ConfigurationHelper.is_mapping_annotation(field_type):
-            stickler_type = _stickler_mapping_type(field_type)
-        else:
-            stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
-        field_config = {"type": stickler_type}
         # As in field_to_property(): a model cannot be written as a scalar, a
         # union with a model arm is written as "str" with a warning until
         # 1.1.0, and a plain BaseModel is written as `dict`.
         from .structured_model import StructuredModel
 
-        if not StructuredModel._warn_legacy_export(
+        written_as_legacy = StructuredModel._warn_legacy_export(
             field_type, "field_to_stickler_config()"
-        ):
+        )
+        if not written_as_legacy:
             StructuredModel._refuse_scalar_export(field_type)
-        if ConfigurationHelper.is_plain_model_annotation(field_type):
-            field_config["type"] = "dict"
+        # A mapping fell back to "str" here, so it rebuilt as a string field
+        # that could hold no mapping, including the `{}` its factory exports.
+        # A tuple did too, so the rebuilt field rejected the tuple (#636).
+        if ConfigurationHelper.is_mapping_annotation(field_type):
+            stickler_type = _stickler_mapping_type(field_type)
+        elif ConfigurationHelper.is_plain_model_annotation(field_type):
+            stickler_type = "dict"
+        elif field_type is tuple or get_origin(field_type) is tuple:
+            # Every tuple gets a type model_from_json() reads back, so none
+            # reaches the warning below.
+            stickler_type = _stickler_tuple_type(field_type)
+        elif field_type in PYTHON_TYPE_TO_STICKLER_TYPE:
+            stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE[field_type]
+        else:
+            stickler_type = "str"
+            if (
+                where is not None
+                and not written_as_legacy
+                and not string_accepts_every_value(field_type)
+            ):
+                warn_unmapped_export(field_type, where, '"str"')
+        field_config = {"type": stickler_type}
 
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)

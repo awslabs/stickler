@@ -9,7 +9,7 @@ datetime, nested models, lists), weight hints, and provenance.
 import datetime
 import decimal
 import enum
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import pytest
 from pydantic import BaseModel
@@ -123,6 +123,11 @@ def test_auto_path_handles_models_regardless_of_json_schema_path():
 
 def test_unwrap_optional():
     assert unwrap_optional(Optional[str]) == (str, True)
+    assert unwrap_optional(Union[str, None]) == (str, True)
+    assert unwrap_optional(str | None) == (str, True)
+    assert unwrap_optional(Union[str, int, None]) == (Union[str, int, None], True)
+    assert unwrap_optional(str | int | None) == (str | int | None, True)
+    assert unwrap_optional(str | int) == (str | int, False)
     assert unwrap_optional(str) == (str, False)
 
 

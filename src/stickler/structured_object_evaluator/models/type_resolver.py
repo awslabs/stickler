@@ -84,6 +84,17 @@ class TypeResolver:
         """
         type_string = type_string.strip()
 
+        # A bare `Union` or `Optional` names no type. Before, the result
+        # depended on the Python version: an error, a field that accepts any
+        # value unvalidated (`list[Union]` up to 3.13), or one that rejects
+        # every value (3.14 made `Union` a class). One rule for all versions.
+        if type_string in ("Union", "Optional"):
+            example = "Union[int, str]" if type_string == "Union" else "Optional[int]"
+            raise ValueError(
+                f"Invalid type '{type_string}': give its arguments, as in "
+                f"'{example}', or use 'Any' to accept any value"
+            )
+
         # Handle simple types first
         if type_string in self._type_registry:
             return self._type_registry[type_string]

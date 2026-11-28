@@ -28,7 +28,10 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   adapts nested models to `StructuredModel`. Evaluation annotations stay
   permissive so malformed predictions reach the comparator instead of raising
   during model construction. The converter retains the public compatibility
-  entry point and the inverse field-export helpers.
+  entry point and the inverse field-export helpers. A field type those helpers
+  cannot map is written as a string, with a `UserWarning` naming the model,
+  field and type when a string field rejects some of its values
+  (`string_accepts_every_value`).
 - `optional_annotation.py` — the single source for destructuring a type
   annotation: union arms in every spelling (`Optional[T]`, `Union[T, None]`,
   `T | None`) and `Annotated` unwrapping. Ask through it rather than rebuilding

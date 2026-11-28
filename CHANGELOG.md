@@ -9,6 +9,30 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- `AngleComparator`, which compares angles such as heading or yaw by their
+  shortest difference around the circle, so `359` and `1` are 2 degrees apart.
+  It scores 1.0 within `max_angular_difference` and 0.0 beyond it, in
+  `angle_unit` `"degrees"` (default) or `"radians"`. Invalid configuration
+  raises `ValueError`; a non-numeric or infinite angle scores 0.0.
+- `PointDistanceComparator` scores two 2D or 3D points by Euclidean distance,
+  `max(0.0, 1.0 - distance / max_distance)`. Positions scored as separate `x`,
+  `y` and `z` fields under `NumericComparator(absolute_tolerance=...)` gate on
+  a box and give no partial credit; this gates on a radius of
+  `max_distance * (1 - threshold)` and scores by distance. `max_distance` is
+  required and must be a finite number greater than 0, or construction raises
+  `ValueError`. Points are lists, tuples or 1D NumPy arrays of
+  `numbers.Real` coordinates. A point of the wrong length, a 2D point against
+  a 3D one, and non-numeric (including `Decimal`) or non-finite coordinates
+  score 0.0. Exported from `stickler` and `stickler.comparators`, and named by
+  `"PointDistanceComparator"` in a Stickler config or
+  `x-aws-stickler-comparator`, with `max_distance` in the comparator config.
+  Annotate a single point field as a `Tuple`: a `List[float]` point field
+  always scores 0.0. A `Tuple` field exports as a string type, so a single
+  point field does not round-trip through `to_json_schema()` or
+  `to_stickler_config()`; a list of points does.
+
 ### Changed
 
 - **The Stickler-config and JSON Schema importers now resolve an unstated
@@ -167,7 +191,24 @@ Each release links to full notes on the
   start with a text block**, as with a reasoning model that sends
   `reasoningContent` first. The verdict is read from the reply's text blocks; a
   reply with none still raises, now as a `ValueError` that says so.
-
+- **`to_stickler_config()` exports a tuple field as a tuple.** It was written
+  as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
+  value. Tuples of primitives keep their element types (`Tuple[float, float]`);
+  others are written as `tuple`. `to_json_schema()` is unchanged.
+- **An exported field type that re-imports as a string field now warns.**
+  `to_json_schema()` and `to_stickler_config()` still write a type they do not
+  map as a string, and now emit a `UserWarning` naming the model, the field and
+  the type when the rebuilt string field rejects some of its values: `Decimal`,
+  `UUID`, dates, sets, `bytes`, `Any`, `Union[int, str]`, an `IntEnum`, a tuple
+  in `to_json_schema()`, and a list of these in `to_json_schema()`. An enum with
+  only string values, a `Literal` of strings, and a `NewType` or `type` alias of
+  `str` do not warn. `to_stickler_config()` also warns for a list element type
+  `model_from_json()` cannot read, such as `List[Decimal]`. `model_from_json()`
+  turns a list default on a tuple field back into a tuple
+  ([#636](https://github.com/awslabs/stickler/issues/636)).
+- `model_from_json()` raises `ValueError` for a bare `Union` or `Optional`, in
+  any position (`"List[Union]"`). Before, the result depended on the Python
+  version; up to 3.13 `list[Union]` accepted any value unvalidated.
 - **`BBoxIoUComparator` on a list field scores the box, not its coordinates.**
   A field holding one box as a list (`List[float]`, `Optional[List[float]]`,
   `Sequence[float]`, bare `list`, or a JSON Schema `array` or config `list`

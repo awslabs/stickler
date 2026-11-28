@@ -251,8 +251,10 @@ def test_a_factory_default_is_not_written_into_a_scalar_export():
             default_factory=set, comparator=ExactComparator()
         )
 
-    assert "default" not in TagSet.to_stickler_config()["fields"]["tags"]
-    assert "default" not in TagSet.to_json_schema()["properties"]["tags"]
+    with pytest.warns(UserWarning, match="'TagSet.tags' has no export type"):
+        assert "default" not in TagSet.to_stickler_config()["fields"]["tags"]
+    with pytest.warns(UserWarning, match="'TagSet.tags' has no export type"):
+        assert "default" not in TagSet.to_json_schema()["properties"]["tags"]
 
 
 def test_a_literal_set_default_exports_as_a_list():

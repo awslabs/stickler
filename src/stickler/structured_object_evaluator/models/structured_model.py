@@ -2155,6 +2155,8 @@ class StructuredModel(BaseModel):
             PYTHON_TYPE_TO_JSON_TYPE,
             JsonSchemaFieldConverter,
             add_exportable_default,
+            string_accepts_every_value,
+            warn_unmapped_export,
         )
 
         # schema/field_path unused for export operations - only needed for import
@@ -2296,13 +2298,30 @@ class StructuredModel(BaseModel):
                         ConfigurationHelper.is_plain_model_annotation(element_type)
                     ):
                         property_schema["items"] = cls._json_type_schema(args[0])
+                    # The same rule as a scalar field (#636): string items
+                    # that reject some element values warn.
+                    elif (
+                        json_element_type == "string"
+                        and element_type is not str
+                        and not string_accepts_every_value(element_type)
+                    ):
+                        warn_unmapped_export(
+                            element_type,
+                            f"to_json_schema() field '{cls.__name__}.{field_name}'",
+                            "string items",
+                            effect="which re-import as strings and reject "
+                            "elements the original accepts",
+                        )
             else:
                 # Primitive type - use converter for consistent formatting.
                 # field_type is already unwrapped above, so pass whether the
                 # original annotation was Optional so nullability round-trips.
                 _, field_is_nullable = cls._unwrap_optional(field_info.annotation)
                 property_schema = converter.field_to_property(
-                    field_type, field_info, is_nullable=field_is_nullable
+                    field_type,
+                    field_info,
+                    is_nullable=field_is_nullable,
+                    where=f"to_json_schema() field '{cls.__name__}.{field_name}'",
                 )
 
             schema["properties"][field_name] = property_schema
@@ -2652,7 +2671,9 @@ class StructuredModel(BaseModel):
         from .json_schema_field_converter import (
             JsonSchemaFieldConverter,
             add_exportable_default,
+            warn_unmapped_export,
         )
+        from .type_resolver import resolve_type_string
 
         # schema/field_path unused for export operations - only needed for import
         converter = JsonSchemaFieldConverter(schema={}, field_path="")
@@ -2771,7 +2792,7 @@ class StructuredModel(BaseModel):
                     # sees only the element.
                     cls._refuse_scalar_export(field_type)
                     field_config = converter.field_to_stickler_config(
-                        element_type, field_info
+                        element_type, field_info, where=None
                     )
                     if ConfigurationHelper.is_mapping_annotation(element_type):
                         # Every mapping element is written `Dict`, the spelling
@@ -2821,10 +2842,25 @@ class StructuredModel(BaseModel):
                             )
                         )
                         field_config["type"] = f"List[{element_name}]"
+                    # An element written by its class name, such as
+                    # `List[Decimal]`, is a type model_from_json() cannot read
+                    # (#636).
+                    try:
+                        resolve_type_string(field_config["type"])
+                    except ValueError:
+                        warn_unmapped_export(
+                            element_type,
+                            f"to_stickler_config() field "
+                            f"'{cls.__name__}.{field_name}'",
+                            f'"{field_config["type"]}"',
+                            effect="which model_from_json() cannot read",
+                        )
             else:
                 # Primitive type - use converter for consistent formatting
                 field_config = converter.field_to_stickler_config(
-                    field_type, field_info
+                    field_type,
+                    field_info,
+                    where=f"to_stickler_config() field '{cls.__name__}.{field_name}'",
                 )
 
             config["fields"][field_name] = field_config
