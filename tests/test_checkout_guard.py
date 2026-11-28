@@ -60,13 +60,16 @@ def _run_guard(tmp_path, test_directory, import_location, xfail=False, parallel=
 
     target = tests / test_directory / "test_probe.py"
     target.parent.mkdir(parents=True, exist_ok=True)
+    (target.parent / "__init__.py").touch()
+    expected_package = ".".join(target.parent.relative_to(checkout).parts)
     marker = checkout / "test-body-ran"
     probe = (
         "from pathlib import Path\n\n"
         "import pytest\n\n"
         + ("@pytest.mark.xfail(strict=True)\n" if xfail else "")
         + "def test_probe():\n"
-        f"    Path({str(marker)!r}).write_text('ran')\n"
+        + f"    assert __package__ == {expected_package!r}\n"
+        + f"    Path({str(marker)!r}).write_text('ran')\n"
         + ("    assert False\n" if xfail else "")
     )
     target.write_text(probe)
