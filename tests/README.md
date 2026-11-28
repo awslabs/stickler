@@ -2,6 +2,13 @@
 
 Quick reference for running and writing tests.
 
+The session-start guard in `conftest.py` requires `stickler` to import from
+this checkout's `src/` directory. Otherwise it stops the run with exit code 4
+before tests or xdist workers start, including runs of `xfail` tests. Packages
+without a `__file__` (such as namespace packages) are rejected too.
+If an editable install points elsewhere, run `uv sync --frozen` here or set `PYTHONPATH` to this checkout's
+`src/` before running pytest.
+
 ## Quick Commands
 
 ```bash
