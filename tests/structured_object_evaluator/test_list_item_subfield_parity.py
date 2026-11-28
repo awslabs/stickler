@@ -426,6 +426,79 @@ def test_a_sequence_sub_field_counts_per_element_as_at_top_level(
     assert _field_names(top) == fields
 
 
+class OptionalSequenceFloatElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Sequence[float]] = ComparableField()
+    match_threshold = 0.4
+
+
+class OptionalSequenceFloatHolder(StructuredModel):
+    items: List[OptionalSequenceFloatElement] = ComparableField()
+
+
+class OptionalSequenceStrElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Sequence[str]] = ComparableField()
+    match_threshold = 0.4
+
+
+class OptionalSequenceStrHolder(StructuredModel):
+    items: List[OptionalSequenceStrElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred",
+    [
+        pytest.param(
+            OptionalSequenceFloatHolder,
+            OptionalSequenceFloatElement,
+            None,
+            [],
+            id="float-none-empty",
+        ),
+        pytest.param(
+            OptionalSequenceFloatHolder,
+            OptionalSequenceFloatElement,
+            [],
+            None,
+            id="float-empty-none",
+        ),
+        pytest.param(
+            OptionalSequenceFloatHolder,
+            OptionalSequenceFloatElement,
+            None,
+            [float("nan")] * 4,
+            id="float-none-all-nan",
+        ),
+        pytest.param(
+            OptionalSequenceStrHolder,
+            OptionalSequenceStrElement,
+            None,
+            [],
+            id="str-none-empty",
+        ),
+        pytest.param(
+            OptionalSequenceStrHolder,
+            OptionalSequenceStrElement,
+            [],
+            None,
+            id="str-empty-none",
+        ),
+    ],
+)
+def test_two_null_sequences_in_a_list_element_score_as_a_match(
+    holder, element, gt, pred
+):
+    # The sub-field takes the list null rule, so the pair scores `1.0` in the
+    # element and at top level, as `List[X]` does. Before, it counted a TN but
+    # scored `0.0`, so the element and `compare()` scored `0.5`.
+    result = _in_list(gt, pred, holder=holder, element=element)
+    assert _counts(_value_node(result)) == _expect(tn=1)
+    assert result["overall_score"] == 1.0
+
+    assert element(key="k", value=gt).compare(element(key="k", value=pred)) == 1.0
+
+
 class AnnotatedModelElement(StructuredModel):
     key: str = ComparableField(threshold=1.0)
     value: Optional[Annotated[Inner, Field(description="A nested model.")]] = (
