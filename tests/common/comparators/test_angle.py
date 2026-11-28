@@ -59,6 +59,7 @@ def test_radians():
     "kwargs",
     [
         {"angle_unit": "deg"},
+        {"angle_unit": ["degrees"]},
         {"max_angular_difference": -1},
         {"max_angular_difference": 180},
         {"max_angular_difference": 5, "angle_unit": "radians"},
