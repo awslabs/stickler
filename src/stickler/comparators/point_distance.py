@@ -68,18 +68,21 @@ class PointDistanceComparator(BaseComparator):
     ):
         # A bool, NaN, inf or non-positive max_distance would make every score
         # 0.0, 1.0 or undefined, so reject it instead of scoring with it.
-        if (
-            isinstance(max_distance, bool)
-            or not isinstance(max_distance, (int, float))
-            or not math.isfinite(max_distance)
-            or max_distance <= 0
-        ):
+        is_number = isinstance(max_distance, (int, float)) and not isinstance(
+            max_distance, bool
+        )
+        try:
+            max_distance_float = float(max_distance) if is_number else math.nan
+        except OverflowError:
+            # An int beyond float range, such as 10**400.
+            max_distance_float = math.inf
+        if not math.isfinite(max_distance_float) or max_distance_float <= 0:
             raise ValueError(
                 f"max_distance must be a finite number greater than 0; "
                 f"got {max_distance!r}"
             )
         super().__init__(threshold=threshold)
-        self.max_distance = float(max_distance)
+        self.max_distance = max_distance_float
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
