@@ -187,6 +187,10 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **`LLMComparator` no longer raises `KeyError: 'text'` when the reply does not
+  start with a text block**, as with a reasoning model that sends
+  `reasoningContent` first. The verdict is read from the reply's text blocks; a
+  reply with none still raises, now as a `ValueError` that says so.
 - **`to_stickler_config()` exports a tuple field as a tuple.** It was written
   as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
   value. Tuples of primitives keep their element types (`Tuple[float, float]`);

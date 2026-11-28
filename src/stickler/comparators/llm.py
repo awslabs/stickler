@@ -222,13 +222,18 @@ class LLMComparator(BaseComparator):
             prompt: The formatted prompt string to send to the LLM.
 
         Returns:
-            str: The text response from the LLM.
+            str: The reply's text blocks, joined. Other blocks, such as the
+                ``reasoningContent`` a reasoning model sends first, are skipped.
 
         Raises:
             Exception: If the agent call fails or response format is unexpected.
         """
         result = self.agent(prompt)
-        return result.message["content"][0]["text"]
+        content = result.message["content"]
+        texts = [block["text"] for block in content if "text" in block]
+        if not texts:
+            raise ValueError("LLM reply has no text content block")
+        return "".join(texts)
 
     def _compare(self, value1: Any, value2: Any) -> float:
         """Compare two values using LLM-based semantic analysis.
