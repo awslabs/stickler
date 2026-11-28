@@ -449,6 +449,18 @@ def _cases() -> List[CorpusCase]:
             lead(annual_revenue=float("nan")),
             lead(),
         ),
+        CorpusCase(
+            "lead/none_vs_nan",
+            Lead,
+            Lead(),
+            Lead(annual_revenue=float("nan")),
+        ),
+        CorpusCase(
+            "lead/nan_both_nothing_to_find",
+            Lead,
+            Lead(annual_revenue=float("nan")),
+            Lead(annual_revenue=float("nan")),
+        ),
         # Order: List[Model] inside List[Model].
         CorpusCase("order/identical", Order, order(), order()),
         CorpusCase(
