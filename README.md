@@ -284,11 +284,13 @@ Omitting it is safe but blunt. The fallback reads structure and never field name
 | `"LevenshteinComparator"` | Names, addresses, text with typos | Calculates edit distance between strings. Score = 1 - (edits / max_length) |
 | `"ExactComparator"` | IDs, codes, booleans, exact matches | Returns 1.0 for exact match, 0.0 otherwise |
 | `"NumericComparator"` | Prices, quantities, measurements | Compares numbers with configurable tolerance |
+| `"AngleComparator"` | Heading, yaw, orientation | Matches when the shortest difference around the circle is within `max_angular_difference` |
 | `"FuzzyComparator"` | Flexible text, descriptions | Token-based fuzzy matching (order-independent) |
 | `"SemanticComparator"` | Semantic similarity | Embedding-based comparison for meaning |
 | `"BERTComparator"` | Deep semantic understanding | BERT model for contextual similarity. Needs the `[bert]` extra |
 | `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning. Needs the `[llm]` extra |
 | `"BBoxIoUComparator"` | Bounding boxes, spatial localization | Intersection over Union (IoU) between two boxes; accepts `[[x1,y1],[x2,y2]]` or `[x1,y1,x2,y2]`. See [Bounding Box mAP Metrics](docs/docs/Advanced/bbox-map-metrics.md) for end-to-end mAP scoring |
+| `"PointDistanceComparator"` | 2D or 3D positions, keypoints | Euclidean distance; score = 1 - (distance / max_distance), floored at 0. Needs `max_distance` in the comparator config |
 | `"NormalizedComparator"` | Formatting-insensitive equality | Compares after an explicit set of normalizations — by default case, whitespace, and punctuation |
 | `"ANLSStarComparator"` | Dicts and nesting with keys unknown up front | Scores structured values by ANLS*. Where the keys *are* known, a nested model is the better tool |
 | `"DateComparator"` | Dates in mixed formats, partial dates, ranges | Parses both sides as dates and scores on a tier system |
@@ -346,7 +348,8 @@ even though the field on the built class ends up a plain `str` — read the choi
 
 **Type:** `number` (0.0 to 1.0, inclusive)  
 **Required:** No  
-**Default:** position-dependent, not one number. `0.5` for a plain scalar, an array of plain
+**Default:** a threshold named on the comparator, in `x-aws-stickler-comparator-config` or by a
+custom comparator's constructor, unless the property is an array of models. Otherwise position-dependent, not one number. `0.5` for a plain scalar, an array of plain
 scalars, and an array of models; `0.7` for an object with `properties`; `1.0` for a free-form
 `{"type": "object"}` (or an array of them) and for any property or array `items` with `enum`,
 `const`, or a string `format` of `date`/`date-time`/`uri`/`uuid`/`time`, whether or not a
@@ -354,6 +357,14 @@ comparator is declared. See the table in
 [Evaluation](https://awslabs.github.io/stickler/Guides/Evaluation/#extension-reference).
 
 Minimum similarity score required for binary match classification.
+
+The threshold a property uses, this key or a `threshold` in `x-aws-stickler-comparator-config`,
+must be a number from 0.0 to 1.0. Anything else, such as `85`, `"0.9"` or `true`, raises
+`ValueError` on import:
+
+```text
+ValueError: Invalid threshold for field 'total_amount' of model 'Invoice': the field sets no "x-aws-stickler-threshold", so it adopts its comparator's: "x-aws-stickler-comparator-config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write "x-aws-stickler-comparator-config": {"threshold": 0.85}, or "x-aws-stickler-threshold": 0.85 on the property, which wins over the comparator's.
+```
 
 **How Threshold Works:**
 - Similarity score **≥ threshold** → Classified as **MATCH** (True Positive or True Negative)
@@ -470,9 +481,9 @@ Relative importance of this field in aggregate scoring and weighted averages.
 
 **Type:** `boolean`  
 **Required:** No  
-**Default:** `true`
+**Default:** `true`, except `false` for a free-form `{"type": "object"}` or an array of them
 
-Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity.
+Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** for a scalar unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity. A free-form object keeps the partial credit its comparator gives, such as `ANLSStarComparator`'s, unless you set `true`. The default `ExactComparator` scores it `0.0` or `1.0`, so clipping does not change it.
 
 **How Clipping Works:**
 - `true`: Scores below threshold are **set to 0.0** (hard cutoff)

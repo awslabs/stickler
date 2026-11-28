@@ -25,6 +25,10 @@
     options:
       heading_level: 2
 
+::: stickler.comparators.AngleComparator
+    options:
+      heading_level: 2
+
 ::: stickler.comparators.DateComparator
     options:
       heading_level: 2
@@ -55,5 +59,9 @@
       heading_level: 2
 
 ::: stickler.comparators.BBoxIoUComparator
+    options:
+      heading_level: 2
+
+::: stickler.comparators.PointDistanceComparator
     options:
       heading_level: 2

@@ -330,7 +330,7 @@ class TestAListOfModelsStillAcceptsAComparator:
         class Item(StructuredModel):
             name: str = ComparableField(comparator=LevenshteinComparator())
 
-        with pytest.raises(ValueError, match="cannot have a 'threshold' parameter"):
+        with pytest.raises(ValueError, match=r"^Unused threshold .* has no effect on a List\[\w+\] field: its items are matched up using"):
 
             class Doc(StructuredModel):
                 items: list[Item] = ComparableField(threshold=0.9)
@@ -605,7 +605,7 @@ class TestAListOfModelsRefusesAFieldThresholdAtEveryValue:
         class Line(StructuredModel):
             sku: Optional[str] = ComparableField(default=None)
 
-        with pytest.raises(ValueError, match="cannot have a 'threshold' parameter"):
+        with pytest.raises(ValueError, match=r"^Unused threshold .* has no effect on a List\[\w+\] field: its items are matched up using"):
 
             class Doc(StructuredModel):
                 items: Optional[List[Line]] = ComparableField(
@@ -659,7 +659,7 @@ class TestAListOfModelsReportsASwallowedComparatorThreshold:
         )
 
     def test_it_warns(self):
-        with pytest.warns(UserWarning, match="threshold set on its comparator"):
+        with pytest.warns(UserWarning, match=r"so LevenshteinComparator\(threshold=0\.9\) is never used"):
             self._build(LevenshteinComparator(threshold=0.9))
 
     def test_the_warning_names_the_knob_that_works(self):
@@ -706,7 +706,7 @@ class TestAListOfModelsReportsASwallowedComparatorThreshold:
 
     def test_the_field_level_spelling_still_raises(self):
         """The two spellings must not swap places: one warns, one is an error."""
-        with pytest.raises(ValueError, match="cannot have a 'threshold' parameter"):
+        with pytest.raises(ValueError, match=r"^Unused threshold .* has no effect on a List\[\w+\] field: its items are matched up using"):
             type(
                 "Doc",
                 (StructuredModel,),

@@ -33,6 +33,25 @@ name). Through JSON Schema it re-imports as `dict`, so the value type is not enf
 produces (`[]`, `{}`, a set as a list) and re-imports as that default. Any other factory, or one on
 a field exported as a scalar such as `Set[str]`, exports no default and re-imports as `None`.
 
+A `Tuple` of `str`, `int`, `float`, `bool` or `Any` exports to a Stickler config as its typing
+string (`"Tuple[float, float, float, float]"`) and re-imports as that tuple. Any other tuple,
+including `Tuple[int, ...]`, is written as `tuple`: it re-imports as a tuple without the length
+and element checks. The default of a tuple field becomes a list in JSON and re-imports as a
+tuple; a tuple inside a list default, as in `List[Tuple[int, int]]`, stays a list.
+`to_json_schema()` has no tuple type and writes it as `"string"`.
+
+A field type an exporter does not map is written as a string (`"string"`, `"str"`, or `string`
+items for a list element). It emits a `UserWarning` naming the model, the field and the type when
+the re-imported string field rejects some of the original's values: `Decimal`, `UUID`, `date`,
+`datetime`, `Set`, a tuple in `to_json_schema()`, `bytes` (non-UTF-8 bytes are rejected), `Any`
+and `Union[int, str]` (a number is rejected), an enum with a non-string value such as an `IntEnum`
+(the raw `1` is rejected), and a list of any of these in `to_json_schema()`. An enum whose values
+are all strings, and a `Literal` of strings or of such members, are accepted by a string field and
+do not warn. A `NewType` or `type` alias is judged as the type it names.
+`to_stickler_config()` writes a list element by its type name, so it warns when
+`model_from_json()` cannot read that name, as for `List[Decimal]`, `List[Literal["a"]]` or
+`List[Union]` ([#636](https://github.com/awslabs/stickler/issues/636)).
+
 A Stickler config has no nullable flag: `model_from_json()` makes a field `Optional` only when its
 default is `None`. So on an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
 default, from a factory or written literally. The field re-imports nullable with a `None` default,
@@ -241,8 +260,14 @@ so a prediction element that is not a mapping raises instead of scoring `0.0`. A
 inside `Annotated` (`List[Annotated[Optional[Dict], ...]]`) loses its `null`; write
 `Optional[Annotated[...]]` instead.
 
-A mapping field that is not in a list, and a list whose element is a union such as
-`List[Union[Dict, str]]`, still export as a string ([#349](https://github.com/awslabs/stickler/issues/349)).
+A mapping field that is not in a list still exports as a string. A list whose element is a union
+of built-in scalars, such as `List[Union[int, str]]`, including an `Optional` element, round-trips
+through `to_stickler_config()`. `to_json_schema()` still exports its items as `string`, so that
+re-import rejects non-string elements. A list whose element is any other union, such as
+`List[Union[Dict, str]]`, exports `string` items from `to_json_schema()` and `List[Union]` from
+`to_stickler_config()`, which `model_from_json()` rejects. The config format cannot carry a
+`union_mode` set on the element, so `List[Annotated[Union[int, str], Field(union_mode=...)]]`
+rebuilds with Pydantic's default smart mode.
 
 ## Round-Trip Examples
 

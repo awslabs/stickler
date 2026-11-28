@@ -220,7 +220,9 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
                 # json.loads doesn't reverse it.
                 "<budget>": {
                     "fields_reviewed": int,
-                    "errors_found": int,
+                    # Float only when the cutoff splits a confidence tie;
+                    # otherwise this remains an integer count.
+                    "errors_found": int | float,
                     "pct_errors_caught": float,
                     "pct_errors_random": float,   # actual reviewed fraction (k/n)
                     "gain": float                 # pct_errors_caught / (k/n)
@@ -269,7 +271,45 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
             # numbers when n=1 and budget=0.1.
             k = min(n, max(1, int(n * budget)))
             reviewed_fraction = k / n
-            errors_found = sum(1 for p in sorted_pairs[:k] if not p.is_match)
+            errors_found: int | float = sum(
+                1 for p in sorted_pairs[:k] if not p.is_match
+            )
+
+            # A stable sort alone leaves a split confidence tie dependent on
+            # input order. When the cutoff falls inside a tie, count the
+            # tied group's errors in proportion to the reviewed share. This
+            # is the expected error count across every ordering of the tie.
+            if k < n and (
+                sorted_pairs[k - 1].confidence == sorted_pairs[k].confidence
+            ):
+                cutoff_confidence = sorted_pairs[k - 1].confidence
+
+                tie_start = k - 1
+                while (
+                    tie_start > 0
+                    and sorted_pairs[tie_start - 1].confidence
+                    == cutoff_confidence
+                ):
+                    tie_start -= 1
+
+                tie_end = k + 1
+                while (
+                    tie_end < n
+                    and sorted_pairs[tie_end].confidence == cutoff_confidence
+                ):
+                    tie_end += 1
+
+                errors_before_tie = sum(
+                    1 for p in sorted_pairs[:tie_start] if not p.is_match
+                )
+                errors_in_tie = sum(
+                    1 for p in sorted_pairs[tie_start:tie_end] if not p.is_match
+                )
+                # Multiply before dividing: dividing first adds float noise
+                # (7 errors, 1 of 10 tied pairs reviewed: 0.7000000000000001).
+                errors_found = errors_before_tie + (
+                    errors_in_tie * (k - tie_start) / (tie_end - tie_start)
+                )
             pct_errors_caught = errors_found / total_errors
             gain = (
                 pct_errors_caught / reviewed_fraction

@@ -13,18 +13,39 @@ exporters write those as 1.0.0 did and warn; 1.1.0 raises. `Optional` and
 `Annotated` are stripped first, so a nested model under `Field(...)` on an
 optional field exports as the model.
 
-The warning reads the field, its list levels and the arms of a union, not other
-containers, so `Union[List[Card], str]` and `Tuple[Card, ...]` are not warned
-about and still export as `"string"`.
+The legacy warning reads the field, its list levels and the arms of a union, not
+other containers, so `Union[List[Card], str]` takes the unmapped-type warning
+instead and still exports as `"string"`.
+
+A tuple exports to a Stickler config as `Tuple[...]` for primitive elements and
+`tuple` otherwise, which `model_from_json()` reads back. Any other field type
+with no export mapping is still written as a string, with a warning naming the
+model, field and type when the re-imported string field rejects some of its
+values (#636).
 """
 
+import enum
 import inspect
+import json
 import warnings
-from typing import Annotated, Dict, List, Optional, Union
+from decimal import Decimal
+from typing import (
+    Annotated,
+    Any,
+    Dict,
+    List,
+    Literal,
+    NewType,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import pytest
 from pydantic import BaseModel, Field
+from typing_extensions import TypeAliasType
 
+from stickler.comparators import BBoxIoUComparator, ExactComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.configuration_helper import (
     ConfigurationHelper,
@@ -33,6 +54,15 @@ from stickler.structured_object_evaluator.models.json_schema_field_converter imp
     JsonSchemaFieldConverter,
 )
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+
+
+class Level(enum.IntEnum):
+    """A string field rejects the raw ``1`` this enum accepts."""
+
+    LOW = 1
+
+
+NumericId = NewType("NumericId", int)
 
 
 class Plain(BaseModel):
@@ -443,3 +473,223 @@ class TestFieldToProperty:
 
     def test_a_plain_model_is_written_as_an_object(self):
         assert self._convert(Plain)["type"] == "object"
+
+
+class Boxed(StructuredModel):
+    box: Tuple[float, float, float, float] = ComparableField(
+        comparator=BBoxIoUComparator(), threshold=0.5
+    )
+    ids: Tuple[int, ...] = ComparableField(comparator=ExactComparator())
+
+
+def test_a_tuple_round_trips_through_stickler_config():
+    config = Boxed.to_stickler_config()
+    assert config["fields"]["box"]["type"] == "Tuple[float, float, float, float]"
+    # No config spelling for `...`, so it stays a tuple (#637).
+    assert config["fields"]["ids"]["type"] == "tuple"
+    Reimported = StructuredModel.model_from_json(config)
+    gt = {"box": (0.0, 0.0, 10.0, 10.0), "ids": (1, 2)}
+    pred = {"box": (0.0, 0.0, 10.0, 5.0), "ids": (1, 2)}
+    original = Boxed(**gt).compare_with(Boxed(**pred))
+    rebuilt = Reimported(**gt).compare_with(Reimported(**pred))
+    assert original["field_scores"] == {"box": 0.5, "ids": 1.0}
+    assert rebuilt["field_scores"] == original["field_scores"]
+    assert rebuilt["overall_score"] == original["overall_score"]
+
+
+def _unmapped_warnings(export):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        exported = export()
+    unmapped = [w for w in caught if "has no export type" in str(w.message)]
+    # One warning, attributed to the caller's file rather than to stickler.
+    assert [w.filename for w in unmapped] == [__file__]
+    return exported, str(unmapped[0].message)
+
+
+def test_json_schema_writes_a_tuple_as_a_string_and_warns():
+    class Holder(StructuredModel):
+        ids: Tuple[int, ...] = ComparableField(comparator=ExactComparator())
+
+    exported, message = _unmapped_warnings(Holder.to_json_schema)
+    assert exported["properties"]["ids"]["type"] == "string"
+    assert (
+        f"to_json_schema() field 'Holder.ids' has no export type for "
+        f'{Tuple[int, ...]!r}. It is written as "string"' in message
+    )
+
+
+@pytest.mark.parametrize(
+    "path, written_as", [("json_schema", "string"), ("stickler_config", "str")]
+)
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        Decimal,
+        Any,
+        Union[int, str],
+        Level,
+        Literal[Level.LOW],
+        NumericId,
+    ],
+)
+def test_an_unmapped_type_is_written_as_a_string_and_warns(
+    path, written_as, annotation
+):
+    class Holder(StructuredModel):
+        value: annotation = ComparableField(comparator=ExactComparator())
+
+    if path == "json_schema":
+        export = lambda: Holder.to_json_schema()["properties"]  # noqa: E731
+    else:
+        export = lambda: Holder.to_stickler_config()["fields"]  # noqa: E731
+    exported, message = _unmapped_warnings(export)
+    assert exported["value"]["type"] == written_as
+    assert f"field 'Holder.value' has no export type for {annotation!r}" in message
+    assert f'It is written as "{written_as}"' in message
+
+
+@pytest.mark.parametrize(
+    "annotation, json_schema, stickler_type",
+    [
+        (str, {"type": "string"}, "str"),
+        (int, {"type": "integer"}, "int"),
+        (float, {"type": "number"}, "float"),
+        (bool, {"type": "boolean"}, "bool"),
+        (Optional[int], {"type": ["integer", "null"]}, "int"),
+        (
+            Dict[str, int],
+            {"type": "object", "additionalProperties": {"type": "integer"}},
+            "Dict[str, int]",
+        ),
+        (Plain, {"type": "object"}, "dict"),
+    ],
+)
+def test_a_mapped_type_exports_as_before_without_a_warning(
+    annotation, json_schema, stickler_type
+):
+    class Holder(StructuredModel):
+        value: annotation = None
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        prop = Holder.to_json_schema()["properties"]["value"]
+        field = Holder.to_stickler_config()["fields"]["value"]
+    # Serialized, so key order is pinned too.
+    assert json.dumps(prop) == json.dumps(json_schema)
+    assert json.dumps(field) == json.dumps(
+        {"type": stickler_type, "required": False, "default": None}
+    )
+
+
+class Letter(str, enum.Enum):
+    A = "a"
+
+
+class Colour(enum.Enum):
+    RED = "red"
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        Literal["a", "b"],
+        Letter,
+        Colour,
+        Literal[Colour.RED],
+        NewType("UserId", str),
+        TypeAliasType("Code", str),
+    ],
+)
+def test_a_type_a_string_field_holds_is_written_as_a_string_without_a_warning(
+    annotation,
+):
+    class Holder(StructuredModel):
+        value: annotation = ComparableField(comparator=ExactComparator())
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert Holder.to_json_schema()["properties"]["value"]["type"] == "string"
+        assert Holder.to_stickler_config()["fields"]["value"]["type"] == "str"
+
+
+@pytest.mark.parametrize(
+    "annotation, json_schema_warns, stickler_config_warns",
+    [
+        # String items reject a Decimal; `List[Decimal]` is no config type.
+        (List[Decimal], True, True),
+        # String items reject a tuple; `List[Tuple]` holds one.
+        (List[Tuple[int, int]], True, False),
+        # String items hold "a"; `List[Literal]` is no config type.
+        (List[Literal["a"]], False, True),
+    ],
+)
+def test_a_list_element_warns_by_the_same_rule(
+    annotation, json_schema_warns, stickler_config_warns
+):
+    class Holder(StructuredModel):
+        items: annotation = ComparableField(comparator=ExactComparator())
+
+    for export, warns in (
+        (Holder.to_json_schema, json_schema_warns),
+        (Holder.to_stickler_config, stickler_config_warns),
+    ):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            export()
+        messages = [str(w.message) for w in caught]
+        unmapped = [m for m in messages if "has no export type" in m]
+        assert len(unmapped) == int(warns)
+        if warns:
+            assert "field 'Holder.items'" in unmapped[0]
+
+
+@pytest.mark.parametrize(
+    "annotation, comparator, default",
+    [
+        (Tuple[int, int], ExactComparator(), (1, 2)),
+        # Written as `tuple`, which has no element type to coerce to.
+        (Tuple[int, ...], ExactComparator(), (1, 2, 3)),
+        (
+            Tuple[float, float, float, float],
+            BBoxIoUComparator(),
+            (0.0, 0.0, 1.0, 1.0),
+        ),
+    ],
+)
+def test_a_tuple_default_round_trips_as_a_tuple(annotation, comparator, default):
+    class Holder(StructuredModel):
+        value: annotation = ComparableField(comparator=comparator, default=default)
+
+    config = json.loads(json.dumps(Holder.to_stickler_config()))
+    assert config["fields"]["value"]["default"] == list(default)
+    Reimported = StructuredModel.model_from_json(config)
+    assert Reimported().value == default
+    original = Holder().compare_with(Holder(value=default))["overall_score"]
+    rebuilt = Reimported().compare_with(Reimported(value=default))["overall_score"]
+    assert rebuilt == original == 1.0
+
+
+# Each raised, built a field that accepts any value unvalidated, or built one
+# that rejects every value, depending on the Python version.
+@pytest.mark.parametrize(
+    "type_string",
+    [
+        "Union",
+        "Optional",
+        "List[Union]",
+        "list[Union]",
+        "list[Optional]",
+        "Dict[str, Union]",
+        "List[List[Union]]",
+        "Tuple[Union, int]",
+        "Tuple[Optional, int]",
+    ],
+)
+def test_a_bare_union_or_optional_raises_value_error(type_string):
+    config = {
+        "model_name": "Holder",
+        "fields": {"value": {"type": type_string, "comparator": "ExactComparator"}},
+    }
+    with pytest.raises(ValueError, match="give its arguments"):
+        StructuredModel.model_from_json(config)
