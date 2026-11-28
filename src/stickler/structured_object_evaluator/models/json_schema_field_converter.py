@@ -22,7 +22,12 @@ from typing import (
 from pydantic.fields import FieldInfo, PydanticUndefined
 
 from .configuration_helper import ConfigurationHelper
-from .optional_annotation import is_optional_union, unwrap_annotated, unwrap_optional
+from .optional_annotation import (
+    is_optional_union,
+    is_union,
+    unwrap_annotated,
+    unwrap_optional,
+)
 from .threshold_rule import stacklevel_outside
 
 # Bidirectional type mappings for export
@@ -209,7 +214,8 @@ def string_accepts_every_value(annotation: Any) -> bool:
     those. It rejects a number, so ``Any``, ``Union[int, str]`` and an enum
     with an int value warn: the original takes ``1`` for ``Level.LOW``, the
     rebuilt field does not. It rejects bytes that are not UTF-8, so ``bytes``
-    warns. A ``NewType`` or ``type`` alias is read as the type it names.
+    warns. A ``NewType`` or ``type`` alias is read as the type it names, and
+    a union by its arms: it accepts every value only when each arm does.
     """
     while True:
         if isinstance(annotation, NewType):
@@ -218,6 +224,8 @@ def string_accepts_every_value(annotation: Any) -> bool:
             annotation = annotation.__value__
         else:
             break
+    if is_union(annotation):
+        return all(string_accepts_every_value(arm) for arm in get_args(annotation))
     if isinstance(annotation, type) and issubclass(annotation, str):
         return True
     if isinstance(annotation, type) and issubclass(annotation, Enum):
