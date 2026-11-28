@@ -219,6 +219,16 @@ Each release links to full notes on the
   `BBoxIoUComparator` change score. A custom comparator opts in by overriding
   `scores_as_one_value()`
   ([#635](https://github.com/awslabs/stickler/issues/635)).
+- **A `Sequence[X]` field holding a list follows the list null rule, as `List[X]` does.**
+  `None` against `[]` or a list of only NaN was an FA scoring `0.0` (the
+  reverse an FN), and `[]` against `[]` recorded no count at all, where
+  `List[X]` records a TN scoring `1.0`.
+  Under `BBoxIoUComparator`, `Optional[Sequence[float]]` now gives a TN for two
+  null lists, as `Optional[List[float]]` does. In a `List[StructuredModel]`
+  element, a `Sequence[str]` sub-field now goes to the dispatcher directly,
+  and `None` against `[]` there scores `1.0`, not `0.0`.
+  Bare `Sequence` and `Sequence[Any]` are unchanged, since they also hold a
+  string ([#661](https://github.com/awslabs/stickler/issues/661)).
 
 - **A comparator key on a nested model now warns instead of being dropped in
   silence or refused.** A nested model is scored field by field, so its
