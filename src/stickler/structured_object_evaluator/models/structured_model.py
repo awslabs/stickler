@@ -4,6 +4,7 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
+import collections.abc
 import warnings
 from typing import (
     Annotated,
@@ -21,6 +22,7 @@ from typing import (
     get_origin,
 )
 
+import typing_extensions
 from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.json_schema import GenerateJsonSchema
 
@@ -191,7 +193,7 @@ def _annotation_is_list(annotation: Any) -> bool:
     non-list records no TN when both sides are empty, so it silently drops
     classification evidence rather than failing loudly.
 
-    Three traps make that easy to get wrong, and all three are handled here:
+    Four traps make that easy to get wrong, and all four are handled here:
 
     - ``get_origin`` returns ``list`` only for a *parameterized* spelling, so
       bare ``list`` needs an identity test alongside it. Without one, ``list``
@@ -209,6 +211,9 @@ def _annotation_is_list(annotation: Any) -> bool:
       ``Field(description=...)`` produces, and what ``Annotated[List[str], ...]
       | None`` normalises to -- read as non-list. Arms are unwrapped through
       :func:`optional_annotation.unwrap_annotated` before being tested.
+    - ``Sequence[float]`` reports ``collections.abc.Sequence`` as its origin,
+      so it read as non-list and ``None`` against ``[]`` was an FA, while the
+      same box under ``List[float]`` was a TN.
 
     Union members are recursed with the same rules rather than a bare ``is
     list``, so a bare and a parameterized member inside one union answer alike.
@@ -228,6 +233,18 @@ def _annotation_is_list(annotation: Any) -> bool:
         return True
 
     if get_origin(annotation) is list:
+        return True
+
+    # `Sequence[float]` holds the lists `List[float]` holds, so it takes the
+    # same list null rule. Bare `Sequence` and `Sequence[Any]` also admit a
+    # string, so they are left out, as `Any` is. On Python 3.10
+    # `typing_extensions.Any` is a distinct object, so both spellings are tested.
+    sequence_args = get_args(annotation)
+    if (
+        get_origin(annotation) is collections.abc.Sequence
+        and sequence_args
+        and sequence_args[0] not in (Any, typing_extensions.Any)
+    ):
         return True
 
     # Any union arm being a list is enough, in every spelling. `union_args`

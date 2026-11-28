@@ -409,10 +409,9 @@ class SequenceModelHolder(StructuredModel):
 def test_a_sequence_sub_field_counts_per_element_as_at_top_level(
     holder, element, gt, pred, overall, aggregate, fields
 ):
-    # `Sequence[...]` is not routed as a list, so its pairs are read by value,
-    # and two lists go to the dispatcher. It counts one per element and keeps
-    # a list of models' fields, as at top level. Before, both rows counted one
-    # TP with no fields.
+    # `Sequence[...]` is routed as a list, so its pairs go to the dispatcher.
+    # It counts one per element and keeps a list of models' fields, as at top
+    # level. Before, both rows counted one TP with no fields.
     node = _value_node(_in_list(gt, pred, holder=holder, element=element))
     assert _counts(node) == overall
     assert _counts(node, "aggregate") == aggregate
