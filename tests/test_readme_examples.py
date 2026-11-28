@@ -57,32 +57,29 @@ def _annotated_rows(code, namespace=None):
     tree = ast.parse(code)
     sources = {}
     annotated_calls = set()
-    # A trailing comment belongs to the last statement when a line contains several.
-    last_statement = {}
-    for statement in ast.walk(tree):
-        if isinstance(statement, ast.stmt):
-            line = statement.lineno
-            last_statement[line] = max(
-                last_statement.get(line, 0), statement.col_offset
-            )
+    prints = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "print"
+    ]
+    last_print_end = {}
+    for node in prints:
+        line = node.end_lineno
+        last_print_end[line] = max(last_print_end.get(line, 0), node.end_col_offset)
     comments = [
         token
         for token in tokenize.generate_tokens(io.StringIO(code).readline)
         if token.type == tokenize.COMMENT
     ]
-    for node in ast.walk(tree):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "print"
-        ):
-            continue
+    for node in prints:
         claims = []
         for comment in comments:
             if node.lineno <= comment.start[0] <= node.end_lineno:
                 if (
                     comment.start[0] == node.end_lineno
-                    and last_statement.get(node.end_lineno, -1) >= node.end_col_offset
+                    and last_print_end[node.end_lineno] > node.end_col_offset
                 ):
                     continue
                 claim = re.match(r"#\s*(?:(?:~|≈)\s*|about\s+)?(\S+)", comment.string)
@@ -688,8 +685,9 @@ def test_only_the_annotated_print_contributes_a_claim(unannotated):
     assert rows == [("Score", None, 1.0, 1.0)]
 
 
-def test_trailing_claim_belongs_only_to_the_last_print_on_the_line():
-    code = 'print("Score: n/a"); print(f"Score: {1.0}")  # 1.0'
+@pytest.mark.parametrize("suffix", ["", "; y = 1"])
+def test_trailing_claim_belongs_only_to_the_last_print_on_the_line(suffix):
+    code = 'print("Score: n/a"); print(f"Score: {1.0}")' + suffix + "  # 1.0"
     assert _annotated_rows(code) == [("Score", None, 1.0, 1.0)]
 
 
