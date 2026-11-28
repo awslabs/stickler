@@ -180,6 +180,21 @@ Each release links to full notes on the
 
 ### Removed
 
+- **`compare_with(evaluator_format=True)` no longer returns a `non_matches`
+  key unless `document_non_matches=True`.** This is a breaking change: code
+  that reads `result["non_matches"]` from evaluator-format output without
+  `document_non_matches=True` now raises `KeyError`. Through 1.0.x the key
+  held `[]`, which meant the records were not collected, not that none were
+  found, and 1.0.1 and 1.0.2 warned about it with a `DeprecationWarning`. The
+  key and that warning are gone, as is the `[]` on each per-item entry under a
+  list field's `items`. Pass `document_non_matches=True` for records, or read
+  `result.get("non_matches")`. With the key absent, `print_non_matches`,
+  `print_evaluation_results` and the HTML report now say the records were not
+  collected instead of `No non-matches found.`, as they already did for the
+  default `compare_with()` dict. Output with `document_non_matches=True` is
+  unchanged, and so are scores and counts
+  ([#608](https://github.com/awslabs/stickler/issues/608)).
+
 - The deprecated `stickler.structured_object_evaluator.models.confusion_matrix_calculator`
   shim that 1.0.2 restored for 1.0.x is gone. Nothing in Stickler used it;
   `compare_with(include_confusion_matrix=True)` reports the counts

@@ -68,10 +68,9 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `field_comparisons` rows (each carries a GT-side `expected_key` and a
   prediction-side `actual_key`, which diverge for reordered list items).
 - `non_match_collector.py`, `null_helper.py`, `result_helper.py`,
-  `evaluator_format_helper.py` — result shaping. Without
-  `document_non_matches=True`, evaluator-format `non_matches` is `[]` (as in
-  1.0.0) although no records were collected, so it reads as "none found" until
-  1.1.0 omits the key.
+  `evaluator_format_helper.py` — result shaping. Evaluator-format output
+  carries `non_matches` only with `document_non_matches=True`, as the default
+  dict does, so a missing key means "not collected" and `[]` "none found".
 
 **Metrics**
 - `derived_metrics_calculator.py`, `aggregate_metrics_calculator.py`,
