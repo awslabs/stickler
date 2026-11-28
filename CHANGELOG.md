@@ -197,8 +197,10 @@ Each release links to full notes on the
   the type when the rebuilt string field rejects some of its values: `Decimal`,
   `UUID`, dates, sets, `bytes`, `Any`, `Union[int, str]`, an `IntEnum`, a tuple
   in `to_json_schema()`, and a list of these in `to_json_schema()`. An enum with
-  only string values, a `Literal` of strings, and a `NewType` or `type` alias of
-  `str` do not warn. `to_stickler_config()` also warns for a list element type
+  only string values, a `Literal` of strings, a `NewType` or `type` alias of
+  `str`, and a union whose arms other than `None` are all `str` or one of these
+  do not warn ([#662](https://github.com/awslabs/stickler/issues/662)).
+  `to_stickler_config()` also warns for a list element type
   `model_from_json()` cannot read, such as `List[Decimal]`. `model_from_json()`
   turns a list default on a tuple field back into a tuple
   ([#636](https://github.com/awslabs/stickler/issues/636)).
