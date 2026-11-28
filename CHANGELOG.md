@@ -187,6 +187,14 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **A tuple held in a list is scored as one value, not by its repr.**
+  `List[Tuple[int, int]]` with no comparator named scored each element by the
+  edit distance between `"(1, 2)"` and `"(2, 1)"`, so a swapped pair kept most
+  of the credit and `[(1, 2), (3, 4)]` against `[(2, 1), (3, 4)]` scored `0.83`.
+  The inferred comparator for a list of tuples is now `ExactComparator`, so that
+  pair scores `0.0` and the list `0.5`. A comparator named with `comparator=`
+  is never replaced. A tuple field on its own is unchanged
+  ([#659](https://github.com/awslabs/stickler/issues/659)).
 - **`to_stickler_config()` exports a tuple field as a tuple.** It was written
   as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
   value. Tuples of primitives keep their element types (`Tuple[float, float]`);
