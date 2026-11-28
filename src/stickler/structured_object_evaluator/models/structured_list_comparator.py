@@ -129,6 +129,11 @@ class StructuredListComparator:
             "similarity_score": list_score,
             "threshold_applied_score": list_score,
             "weight": weight,
+            "_matched_items": [
+                (gt_list[i], pred_list[j])
+                for i, j, _ in matched_pairs
+                if i < len(gt_list) and j < len(pred_list)
+            ],
         }
 
         return final_result

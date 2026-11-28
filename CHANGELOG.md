@@ -219,6 +219,16 @@ Each release links to full notes on the
   `BBoxIoUComparator` change score. A custom comparator opts in by overriding
   `scores_as_one_value()`
   ([#635](https://github.com/awslabs/stickler/issues/635)).
+- **Extra fields on `List[StructuredModel]` elements are now properly counted as
+  false alarms in root `overall`.** Previously,
+  `isinstance(gt_val[0].__class__, StructuredModel)` checked whether the class
+  object itself was an instance of `StructuredModel`, which always evaluated to
+  `False`. This bypassed extra field counting on list elements, causing extra
+  fields on models in lists to report `fa = 0`. The fix counts extra fields on
+  matched list elements, increasing root `overall.fa` and `overall.fp` by 1 per
+  extra field while keeping `fields.<list>.overall.fa` and `aggregate.fa` at 0,
+  matching the behaviour of a single nested model
+  ([#439](https://github.com/awslabs/stickler/issues/439)).
 
 - **A comparator key on a nested model now warns instead of being dropped in
   silence or refused.** A nested model is scored field by field, so its

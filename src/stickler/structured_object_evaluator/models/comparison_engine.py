@@ -12,6 +12,7 @@ from stickler.utils.deprecation import warn_once
 
 from .aggregate_metrics_calculator import AggregateMetricsCalculator
 from .derived_metrics_calculator import DerivedMetricsCalculator
+from .null_helper import NullHelper
 from .reporting_context import ReportingContext
 
 if TYPE_CHECKING:
@@ -183,9 +184,16 @@ class ComparisonEngine:
                 total_weight += weight
 
         # CRITICAL FIX: Handle hallucinated fields (extra fields) as False Alarms
-        extra_fields_fa = self._count_extra_fields_as_false_alarms(other)
+        extra_fields_fa = self._count_extra_fields_as_false_alarms(
+            other, field_results=result["fields"]
+        )
         result["overall"]["fa"] += extra_fields_fa
         result["overall"]["fp"] += extra_fields_fa
+
+        # Clean up internal _matched_items from field results
+        for field_res in result["fields"].values():
+            if isinstance(field_res, dict):
+                field_res.pop("_matched_items", None)
 
         # Calculate overall similarity score from percolated scores
         if total_weight > 0:
@@ -500,11 +508,14 @@ class ComparisonEngine:
                 elif "overall" in field_result and metric in field_result["overall"]:
                     overall[metric] += field_result["overall"][metric]
 
-    def _count_extra_fields_as_false_alarms(self, other: "StructuredModel") -> int:
+    def _count_extra_fields_as_false_alarms(
+        self, other: "StructuredModel", field_results: Optional[Dict[str, Any]] = None
+    ) -> int:
         """Count hallucinated fields (extra fields) in the prediction as False Alarms.
 
         Args:
             other: The predicted StructuredModel instance to check for extra fields
+            field_results: Optional dictionary of already-computed field comparison results
 
         Returns:
             Number of hallucinated fields that should count as False Alarms
@@ -540,39 +551,28 @@ class ComparisonEngine:
                 and pred_val
             ):
                 # Check if list contains StructuredModel instances
-                if gt_val and isinstance(gt_val[0], StructuredModel) and isinstance(gt_val[0].__class__, StructuredModel):
-                    # Import HungarianHelper for matching
-                    from .hungarian_helper import HungarianHelper
-                    
-                    # For lists, we need to match them up properly using Hungarian matching
-                    hungarian_helper = HungarianHelper()
-                    hungarian_info = hungarian_helper.get_complete_matching_info(
-                        gt_val, pred_val
+                representative = NullHelper.first_present(gt_val, pred_val)
+                if isinstance(representative, StructuredModel):
+                    # Reuse matched items from list comparison to avoid re-scoring
+                    field_res = (field_results or {}).get(field_name, {})
+                    matched_items = (
+                        field_res.get("_matched_items")
+                        if isinstance(field_res, dict)
+                        else None
                     )
-                    matched_pairs = hungarian_info["matched_pairs"]
+                    if matched_items is None:
+                        gt_present = NullHelper.present(gt_val)
+                        pred_present = NullHelper.present(pred_val)
+                        matched_items = list(zip(gt_present, pred_present))
 
-                    # Count extra fields in matched pairs
-                    for gt_idx, pred_idx, similarity in matched_pairs:
-                        if gt_idx < len(gt_val) and pred_idx < len(pred_val):
-                            gt_item = gt_val[gt_idx]
-                            pred_item = pred_val[pred_idx]
+                    # Count extra fields on matched pairs only
+                    for gt_item, pred_item in matched_items:
+                        if isinstance(gt_item, StructuredModel) and isinstance(
+                            pred_item, StructuredModel
+                        ):
                             nested_engine = ComparisonEngine(gt_item)
-                            fa_count += nested_engine._count_extra_fields_as_false_alarms(pred_item)
-
-                    # For unmatched prediction items, count their extra fields too
-                    matched_pred_indices = {pred_idx for _, pred_idx, _ in matched_pairs}
-                    for pred_idx, pred_item in enumerate(pred_val):
-                        if pred_idx not in matched_pred_indices:
-                            # Check if it's a StructuredModel
-                            if hasattr(pred_item, '__class__') and hasattr(pred_item.__class__, 'model_fields'):
-                                # For unmatched items, we need a dummy GT to compare against
-                                if gt_val:  # Use first GT item as template
-                                    dummy_gt = gt_val[0]
-                                    nested_engine = ComparisonEngine(dummy_gt)
-                                    fa_count += nested_engine._count_extra_fields_as_false_alarms(pred_item)
-                                else:
-                                    # If no GT items, count all extra fields in this pred item
-                                    if hasattr(pred_item, "__pydantic_extra__"):
-                                        fa_count += len(pred_item.__pydantic_extra__)
+                            fa_count += nested_engine._count_extra_fields_as_false_alarms(
+                                pred_item
+                            )
 
         return fa_count

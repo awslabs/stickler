@@ -801,11 +801,12 @@ def _false_alarms(node):
         yield from _false_alarms(child)
 
 
-def test_an_extra_field_on_a_predicted_element_is_not_counted():
+def test_an_extra_field_on_a_predicted_element_is_counted():
     # An extra field is one the prediction carries but its class does not
     # declare. At top level it adds an FA to the root `overall`. In a list
-    # element nothing counts it. A field the ground truth's class declares
-    # and the prediction's lacks is counted, as an FN (see the union tests).
+    # element it adds an FA to root `overall` (#439). A field the ground truth's
+    # class declares and the prediction's lacks is counted, as an FN (see the
+    # union tests).
     gt = ExtraElement(key="k", value="p")
     pred = ExtraElement(key="k", value="p", color="red")
 
@@ -816,8 +817,8 @@ def test_an_extra_field_on_a_predicted_element_is_not_counted():
         ExtraHolder(items=[pred]), include_confusion_matrix=True
     )
     assert listed["overall_score"] == alone["overall_score"] == 1.0
-    assert _counts(listed["confusion_matrix"]) == _expect(tp=1)
-    assert set(_false_alarms(listed["confusion_matrix"])) == {0}
+    assert _counts(listed["confusion_matrix"]) == _expect(tp=1, fa=1)
+    assert set(_false_alarms(listed["confusion_matrix"])) == {0, 1}
 
 
 class Pets(StructuredModel):
