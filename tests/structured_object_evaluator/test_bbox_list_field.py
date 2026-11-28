@@ -56,6 +56,12 @@ class SequenceList(StructuredModel):
     )
 
 
+class OptionalSequenceList(StructuredModel):
+    box: Optional[Sequence[float]] = ComparableField(
+        comparator=BBoxIoUComparator(), threshold=0.5
+    )
+
+
 class AnyList(StructuredModel):
     box: List[Any] = ComparableField(comparator=BBoxIoUComparator(), threshold=0.5)
 
@@ -227,6 +233,30 @@ def test_box_against_absent_side_is_one_fn_or_fa(model, gt_box, pred_box, expect
     assert len(result["non_matches"]) == 1
     [row] = result["field_comparisons"]
     assert row["reason"].startswith(("false alarm", "false negative"))
+
+
+@pytest.mark.parametrize(
+    "model", [OptionalFloatList, OptionalSequenceList], ids=lambda m: m.__name__
+)
+@pytest.mark.parametrize(
+    "gt_box,pred_box",
+    [(None, []), ([], None), (None, [float("nan")] * 4), ([], [])],
+    ids=["none-empty", "empty-none", "none-all-nan", "empty-empty"],
+)
+def test_two_null_lists_are_one_true_negative(model, gt_box, pred_box):
+    # `Sequence[float]` follows the list null rule, as `List[float]` does.
+    result = model(box=gt_box).compare_with(
+        model(box=pred_box), include_confusion_matrix=True
+    )
+
+    overall = result["confusion_matrix"]["fields"]["box"]["overall"]
+    assert {k: overall[k] for k in ("tp", "fd", "fa", "fn", "tn")} == {
+        "tp": 0,
+        "fd": 0,
+        "fa": 0,
+        "fn": 0,
+        "tn": 1,
+    }
 
 
 @pytest.mark.parametrize("model", [BoxList, BareList], ids=lambda m: m.__name__)

@@ -8,9 +8,12 @@ not treated as atomic primitive values.
 See: https://github.com/awslabs/stickler/issues/33
 """
 
-from typing import Annotated, Any, Dict, List, Optional
+import collections.abc
+import typing
+from typing import Annotated, Any, Dict, List, Optional, Sequence
 
 import pytest
+import typing_extensions
 from pydantic import Field
 
 from stickler.comparators.base import BaseComparator
@@ -55,7 +58,7 @@ class Pep604Invoice(StructuredModel):
 class EveryListSpelling(StructuredModel):
     """Every spelling of a list annotation. All must be recognized alike.
 
-    Two families used to read as non-list:
+    Three families used to read as non-list:
 
     - The unparameterized ones, because ``get_origin`` returns ``list`` only for
       a *parameterized* spelling -- including ``list | None``, a PEP 604
@@ -65,6 +68,8 @@ class EveryListSpelling(StructuredModel):
       rather than the type inside. ``annotated_whole`` is the spelling pydantic
       does strip, so it always worked; it is here to hold that contrast in
       place.
+    - ``Sequence[str]``, because ``get_origin`` reports
+      ``collections.abc.Sequence``, not ``list``.
 
     See ``_annotation_is_list`` and ``optional_annotation.unwrap_annotated``.
     """
@@ -84,6 +89,8 @@ class EveryListSpelling(StructuredModel):
     annotated_field: Optional[Annotated[List[str], Field(description="d")]] = (
         ComparableField(weight=1.0)
     )
+    sequence: Sequence[str] = ComparableField(weight=1.0)
+    sequence_optional: Optional[Sequence[str]] = ComparableField(weight=1.0)
 
 
 LIST_SPELLINGS = (
@@ -98,6 +105,8 @@ LIST_SPELLINGS = (
     "annotated_pep604",
     "annotated_bare",
     "annotated_field",
+    "sequence",
+    "sequence_optional",
 )
 
 # The spellings that carry an `Annotated` wrapper on the *union arm*, which is
@@ -577,6 +586,40 @@ def test_every_list_spelling_is_recognized_as_a_list_field(field_name):
     instance = EveryListSpelling(**{name: [] for name in LIST_SPELLINGS})
 
     assert instance._is_list_field(field_name) is True
+
+
+class SequenceOfAny(StructuredModel):
+    value: Optional[Sequence[Any]] = ComparableField(weight=1.0)
+
+
+class SequenceOfExtensionsAny(StructuredModel):
+    value: Optional[Sequence[typing_extensions.Any]] = ComparableField(weight=1.0)
+
+
+class BareTypingSequence(StructuredModel):
+    value: Optional[typing.Sequence] = ComparableField(weight=1.0)
+
+
+class BareAbcSequence(StructuredModel):
+    value: Optional[collections.abc.Sequence] = ComparableField(weight=1.0)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [SequenceOfAny, SequenceOfExtensionsAny, BareTypingSequence, BareAbcSequence],
+    ids=lambda m: m.__name__,
+)
+def test_a_sequence_that_admits_a_string_is_not_a_list_field(model):
+    # pydantic lets these hold a string, so `""` against `None` must stay a
+    # primitive TN rather than a list FA. On Python 3.10
+    # `typing_extensions.Any` is not `typing.Any`, and a bare `typing.Sequence`
+    # has the `Sequence` origin but no arguments.
+    result = model(value=None).compare_with(
+        model(value=""), include_confusion_matrix=True
+    )
+
+    assert model(value="")._is_list_field("value") is False
+    assert _overall(result["confusion_matrix"], "value")["tn"] == 1
 
 
 def test_every_list_spelling_records_a_true_negative_when_empty_on_both_sides():
