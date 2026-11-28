@@ -40,10 +40,29 @@ class TestScore:
 
 
 class TestInvalidConfig:
-    @pytest.mark.parametrize("max_distance", [0, -1.0, math.nan, math.inf, True, "10"])
+    @pytest.mark.parametrize(
+        "max_distance",
+        [
+            0,
+            -1.0,
+            math.nan,
+            math.inf,
+            True,
+            "10",
+            # Ints beyond float range, named so the test id is not 400 digits.
+            pytest.param(10**400, id="10**400"),
+            pytest.param(2**1024, id="2**1024"),
+            pytest.param(-(10**400), id="-10**400"),
+        ],
+    )
     def test_invalid_max_distance_raises(self, max_distance):
         with pytest.raises(ValueError, match="max_distance"):
             PointDistanceComparator(max_distance=max_distance)
+
+    def test_int_max_distance_is_stored_as_float(self):
+        comparator = PointDistanceComparator(max_distance=5)
+        assert type(comparator.max_distance) is float
+        assert comparator.config == {"max_distance": 5.0}
 
     def test_max_distance_is_required(self):
         with pytest.raises(TypeError):

@@ -54,7 +54,9 @@ class AngleComparator(BaseComparator):
         angle_unit: str = "degrees",
     ):
         super().__init__(threshold=threshold)
-        if angle_unit not in _FULL_TURN:
+        # The type check first, because an unhashable value such as a list
+        # raises TypeError on the dict lookup.
+        if not isinstance(angle_unit, str) or angle_unit not in _FULL_TURN:
             raise ValueError(
                 f"angle_unit must be 'degrees' or 'radians', got {angle_unit!r}"
             )
