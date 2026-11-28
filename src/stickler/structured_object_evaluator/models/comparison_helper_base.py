@@ -57,6 +57,7 @@ class ComparisonHelperBase(ABC):
     def get_optimal_assignments(
         self, gt_list: List[Any], pred_list: List[Any],
         comparator: Optional[BaseComparator] = None,
+        match_threshold: Optional[float] = None,
     ) -> tuple:
         """Get optimal assignments and matched pairs with scores.
         
@@ -64,6 +65,7 @@ class ComparisonHelperBase(ABC):
             gt_list: Ground truth list
             pred_list: Prediction list
             comparator: Field comparator for non-structured list elements.
+            match_threshold: Field threshold, used to break assignment ties.
             
         Returns:
             Tuple of (assignments, matched_pairs_with_scores)
@@ -81,7 +83,7 @@ class ComparisonHelperBase(ABC):
                 # Direct helper calls use the scoring matcher, but do not emit
                 # selected-pair warnings a second time.
                 matched_pairs_with_scores = _match_non_structured_lists(
-                    gt_list, pred_list, comparator
+                    gt_list, pred_list, comparator, threshold=match_threshold
                 )
             assignments = [(i, j) for i, j, _ in matched_pairs_with_scores]
             
@@ -396,6 +398,7 @@ class ComparisonHelperBase(ABC):
             assignments, matched_pairs_with_scores = self.get_optimal_assignments(
                 gt_list, pred_list, **self._supported_options(
                     self.get_optimal_assignments, comparator=comparator,
+                    match_threshold=match_threshold,
                 )
             )
             if match_threshold is None:
