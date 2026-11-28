@@ -4,6 +4,7 @@ This module tests the functionality of all comparators in the common module
 to ensure they work correctly and maintain compatibility with existing code.
 """
 
+import pytest
 
 from stickler.comparators import (
     LevenshteinComparator,
@@ -107,6 +108,19 @@ class TestNumericComparator:
         """Test that negative numbers are handled properly."""
         assert self.comparator.compare("-123", -123) == 1.0
         assert self.comparator.compare("(123)", -123) == 1.0
+
+    @pytest.mark.parametrize(
+        "kwargs, first, second",
+        [
+            ({"absolute_tolerance": 0.3}, 8.0, 8.3),
+            ({"tolerance": 0.3}, 8.0, 8.3),
+            ({"relative_tolerance": 0.3}, 10, 13),
+            ({"relative_tolerance": 0.3}, 0, 0.3),
+        ],
+    )
+    def test_difference_equal_to_tolerance_matches(self, kwargs, first, second):
+        """A difference exactly at the tolerance is within it (#648)."""
+        assert NumericComparator(**kwargs).compare(first, second) == 1.0
 
     def test_tolerance(self):
         """Test that tolerance is respected."""

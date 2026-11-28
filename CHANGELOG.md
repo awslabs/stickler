@@ -187,6 +187,12 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **`NumericComparator` matches a difference exactly at its tolerance.** The
+  exact decimal difference was compared against the float's binary value, so
+  `absolute_tolerance=0.3` failed `8.0` against `8.3` while `0.5` passed `2.0`
+  against `2.5`. `absolute_tolerance`, `tolerance` and `relative_tolerance` are
+  now read as written
+  ([#648](https://github.com/awslabs/stickler/issues/648)).
 - **`to_stickler_config()` exports a tuple field as a tuple.** It was written
   as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
   value. Tuples of primitives keep their element types (`Tuple[float, float]`);

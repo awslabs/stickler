@@ -653,18 +653,22 @@ class NumericComparator(BaseComparator):
 
         # Check with relative tolerance
         if self.relative_tolerance > 0:
+            # Read the tolerance as written, as the values are: the float 0.3 is
+            # slightly below Decimal("0.3"), which would fail an exact boundary.
+            relative_tolerance = Decimal(str(self.relative_tolerance))
+
             # Handle zero case
             if num1 == 0:
-                return abs(num2) <= self.relative_tolerance
+                return abs(num2) <= relative_tolerance
 
             # Calculate relative difference using num1 as base
             relative_diff = abs(num1 - num2) / abs(num1)
-            if relative_diff <= self.relative_tolerance:
+            if relative_diff <= relative_tolerance:
                 return True
 
         # Check with absolute tolerance
         if self.absolute_tolerance > 0:
-            if abs(num1 - num2) <= self.absolute_tolerance:
+            if abs(num1 - num2) <= Decimal(str(self.absolute_tolerance)):
                 return True
 
         return False
