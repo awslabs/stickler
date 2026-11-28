@@ -187,6 +187,9 @@ Each release links to full notes on the
 
 ### Fixed
 
+- A list field of scalar values no longer scores differently when elements are
+  reordered and several assignments tie on total similarity. The tie now goes to
+  the assignment with more pairs meeting the field's threshold (#658).
 - **`to_stickler_config()` exports a tuple field as a tuple.** It was written
   as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
   value. Tuples of primitives keep their element types (`Tuple[float, float]`);

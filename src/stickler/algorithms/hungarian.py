@@ -17,6 +17,10 @@ from stickler.utils.canonical import canonicalize_json
 # Memory threshold for warning in MB
 HUNGARIAN_SIZE_WARNING_THRESHOLD = 10000  # Matrix size (product of dimensions)
 
+# Total weight of the tie-break, small enough not to outrank a real difference
+# between two assignments' similarity totals.
+_TIE_BREAK_WEIGHT = 1e-9
+
 # Global Munkres instance for optimization
 _MUNKRES = Munkres()
 
@@ -35,6 +39,7 @@ class HungarianMatcher:
         size_threshold: int = HUNGARIAN_SIZE_WARNING_THRESHOLD,
         normalize_values: bool = True,
         match_threshold: float = 0.7,
+        tie_break_threshold: Optional[float] = None,
     ):
         """Initialize the Hungarian matcher.
 
@@ -68,11 +73,16 @@ class HungarianMatcher:
                              never sees ``""`` standing in for a missing
                              element.
             match_threshold: Minimum similarity score to consider a match as TP
+            tie_break_threshold: If given, assignments with equal total
+                similarity are ranked by how many pairs meet this threshold,
+                then by the similarity those pairs add up to, so the counts
+                do not depend on element order. Reported scores are unchanged.
         """
         self.comparator = comparator or (lambda x, y: float(x == y))
         self.size_threshold = size_threshold
         self.normalize_values = normalize_values
         self.match_threshold = match_threshold
+        self.tie_break_threshold = tie_break_threshold
 
     def _normalize_value(self, value: Any) -> Any:
         """Normalize a value to improve string matching.
@@ -188,6 +198,25 @@ class HungarianMatcher:
                 raise
             return compare(self._comparable_form(item1), self._comparable_form(item2))
 
+    def _ranking_matrix(self, similarity_matrix: np.ndarray) -> np.ndarray:
+        """Similarities as the solver should rank them, ties broken."""
+        if self.tie_break_threshold is None:
+            return similarity_matrix
+
+        # Imported here for the same reason as in calculate_metrics.
+        from stickler.structured_object_evaluator.models.threshold_helper import (
+            ThresholdHelper,
+        )
+
+        pairs = min(similarity_matrix.shape)
+        above = np.vectorize(ThresholdHelper.is_above_threshold)(
+            similarity_matrix, self.tie_break_threshold
+        )
+        # One more pair above the threshold outweighs any sum of similarities,
+        # which the division by ``pairs + 1`` keeps below one.
+        bonus = above * (1 + similarity_matrix / (pairs + 1))
+        return similarity_matrix + bonus * (_TIE_BREAK_WEIGHT / pairs)
+
     def match(self, list1: Any, list2: Any) -> Tuple[List[Tuple[int, int]], np.ndarray]:
         """Find optimal assignments between two lists.
 
@@ -233,7 +262,9 @@ class HungarianMatcher:
 
             # Convert to cost matrix for the Hungarian algorithm
             # Cost is 1 - similarity (because Hungarian minimizes cost)
-            cost_matrix = make_cost_matrix(similarity_matrix, lambda x: 1 - x)
+            cost_matrix = make_cost_matrix(
+                self._ranking_matrix(similarity_matrix), lambda x: 1 - x
+            )
 
             # Compute the optimal assignment
             matched_indices = _MUNKRES.compute(cost_matrix)

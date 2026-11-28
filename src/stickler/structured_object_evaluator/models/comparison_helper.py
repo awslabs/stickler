@@ -177,6 +177,7 @@ def _match_non_structured_lists(
     model_cls=None,
     field_name: str = "",
     warn_selected: bool = False,
+    threshold: Optional[float] = None,
 ) -> List[tuple]:
     """Use the same raw-value matcher and class gate for scoring and direct reports."""
     from stickler.algorithms.hungarian import HungarianMatcher
@@ -191,7 +192,10 @@ def _match_non_structured_lists(
             comparator, model_cls=model_cls, field_name=field_name
         )
     matcher = HungarianMatcher(
-        element_comparator, match_threshold=0.0, normalize_values=False
+        element_comparator,
+        match_threshold=0.0,
+        normalize_values=False,
+        tie_break_threshold=threshold,
     )
     pairs = matcher.calculate_metrics(gt_list, pred_list)["matched_pairs"]
     if warn_selected and isinstance(element_comparator, _ClassGatedComparator):
@@ -515,6 +519,7 @@ class ComparisonHelper:
             matched_pairs = _match_non_structured_lists(
                 gt_list, pred_list, comparator,
                 model_cls=model_cls, field_name=field_name, warn_selected=True,
+                threshold=threshold,
             )
 
         result = ComparisonHelper.unordered_list_metrics(
