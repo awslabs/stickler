@@ -324,6 +324,12 @@ GUARD_VERDICTS = {
     # Nothing to find: passes on score unless the prediction invented values.
     "lead/nothing_to_find_empty": True,
     "lead/nothing_to_find_invented": False,
+    # NaN reads as absent, including when no fields are findable.
+    "lead/nan_for_value": False,
+    "lead/nan_both": True,
+    "lead/nan_vs_none": True,
+    "lead/none_vs_nan": True,
+    "lead/nan_both_nothing_to_find": True,
 }
 
 

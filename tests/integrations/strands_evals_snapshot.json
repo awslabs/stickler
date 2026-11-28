@@ -776,6 +776,33 @@
       "recall": 1.0,
       "test_pass": true
     },
+    "lead/nan_both_nothing_to_find": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 10,
+        "tp": 0
+      },
+      "f1": 0.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "test_pass": true
+    },
     "lead/nan_for_value": {
       "confusion_matrix": {
         "fa": 0,
@@ -828,6 +855,33 @@
       "overall_score": 1.0,
       "precision": 1.0,
       "recall": 1.0,
+      "test_pass": true
+    },
+    "lead/none_vs_nan": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 10,
+        "tp": 0
+      },
+      "f1": 0.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 0.0,
+      "recall": 0.0,
       "test_pass": true
     },
     "lead/nothing_to_find_empty": {
@@ -1873,7 +1927,7 @@
       }
     },
     "Lead": {
-      "document_count": 13,
+      "document_count": 15,
       "explain": {
         "annual_revenue": {
           "clip_under_threshold": true,
@@ -1969,7 +2023,7 @@
       },
       "field_metrics": {
         "annual_revenue": {
-          "cm_accuracy": 0.846154,
+          "cm_accuracy": 0.866667,
           "cm_f1": 0.666667,
           "cm_precision": 1.0,
           "cm_recall": 0.5,
@@ -1977,12 +2031,12 @@
           "fd": 0,
           "fn": 2,
           "fp": 0,
-          "mean_score": 0.846154,
-          "tn": 9,
+          "mean_score": 0.866667,
+          "tn": 11,
           "tp": 2
         },
         "company": {
-          "cm_accuracy": 0.769231,
+          "cm_accuracy": 0.8,
           "cm_f1": 0.857143,
           "cm_precision": 0.9,
           "cm_recall": 0.818182,
@@ -1990,12 +2044,12 @@
           "fd": 0,
           "fn": 2,
           "fp": 1,
-          "mean_score": 0.769231,
-          "tn": 1,
+          "mean_score": 0.8,
+          "tn": 3,
           "tp": 9
         },
         "contact_name": {
-          "cm_accuracy": 0.923077,
+          "cm_accuracy": 0.933333,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -2003,12 +2057,12 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.923077,
-          "tn": 10,
+          "mean_score": 0.933333,
+          "tn": 12,
           "tp": 2
         },
         "employees": {
-          "cm_accuracy": 0.692308,
+          "cm_accuracy": 0.733333,
           "cm_f1": 0.777778,
           "cm_precision": 0.875,
           "cm_recall": 0.7,
@@ -2016,12 +2070,12 @@
           "fd": 1,
           "fn": 3,
           "fp": 1,
-          "mean_score": 0.692308,
-          "tn": 2,
+          "mean_score": 0.733333,
+          "tn": 4,
           "tp": 7
         },
         "founded": {
-          "cm_accuracy": 0.923077,
+          "cm_accuracy": 0.933333,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -2029,12 +2083,12 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.923077,
-          "tn": 10,
+          "mean_score": 0.933333,
+          "tn": 12,
           "tp": 2
         },
         "hq": {
-          "cm_accuracy": 0.923077,
+          "cm_accuracy": 0.933333,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -2042,8 +2096,8 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.923077,
-          "tn": 10,
+          "mean_score": 0.933333,
+          "tn": 12,
           "tp": 2
         },
         "hq.city": {
@@ -2086,7 +2140,7 @@
           "tp": 2
         },
         "is_public": {
-          "cm_accuracy": 0.923077,
+          "cm_accuracy": 0.933333,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -2094,12 +2148,12 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.923077,
-          "tn": 10,
+          "mean_score": 0.933333,
+          "tn": 12,
           "tp": 2
         },
         "keywords": {
-          "cm_accuracy": 0.875,
+          "cm_accuracy": 0.888889,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -2107,12 +2161,12 @@
           "fd": 0,
           "fn": 2,
           "fp": 0,
-          "mean_score": 0.923077,
-          "tn": 10,
+          "mean_score": 0.933333,
+          "tn": 12,
           "tp": 4
         },
         "notes": {
-          "cm_accuracy": 0.846154,
+          "cm_accuracy": 0.866667,
           "cm_f1": 0.666667,
           "cm_precision": 0.666667,
           "cm_recall": 0.666667,
@@ -2120,12 +2174,12 @@
           "fd": 0,
           "fn": 1,
           "fp": 1,
-          "mean_score": 0.846154,
-          "tn": 9,
+          "mean_score": 0.866667,
+          "tn": 11,
           "tp": 2
         },
         "status": {
-          "cm_accuracy": 0.923077,
+          "cm_accuracy": 0.933333,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -2133,13 +2187,13 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.923077,
-          "tn": 10,
+          "mean_score": 0.933333,
+          "tn": 12,
           "tp": 2
         }
       },
       "metrics": {
-        "cm_accuracy": 0.864662,
+        "cm_accuracy": 0.882353,
         "cm_f1": 0.790698,
         "cm_precision": 0.918919,
         "cm_recall": 0.693878,
@@ -2147,9 +2201,9 @@
         "fd": 1,
         "fn": 15,
         "fp": 3,
-        "tn": 81,
+        "tn": 101,
         "tp": 34,
-        "weighted_overall_score": 0.869231
+        "weighted_overall_score": 0.886667
       }
     },
     "Order": {

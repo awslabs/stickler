@@ -35,6 +35,10 @@ Each release links to full notes on the
 
 ### Changed
 
+- The Strands Evals snapshot now covers NaN predictions when the expected
+  lead has no findable fields. The integration tests pin all five NaN verdicts
+  ([#458](https://github.com/awslabs/stickler/issues/458)).
+
 - **The Stickler-config and JSON Schema importers now resolve an unstated
   `threshold` and `clip_under_threshold` as the documented Python path
   (`ComparableField`) does.** Both importers filled in their
