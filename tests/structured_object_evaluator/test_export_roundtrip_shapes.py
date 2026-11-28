@@ -534,6 +534,7 @@ def test_json_schema_writes_a_tuple_as_a_string_and_warns():
         # One arm a string field rejects makes the whole union warn.
         Union[str, Level],
         Union[str, Any],
+        Optional[Union[str, Level]],
     ],
 )
 def test_an_unmapped_type_is_written_as_a_string_and_warns(
@@ -606,6 +607,8 @@ class Colour(enum.Enum):
         Letter | Literal["b"],
         Union[Letter, NewType("UserId", str)],
         TypeAliasType("Codes", Union[Letter, Colour]),
+        # A None arm is skipped, as Optional[Letter] is judged by Letter.
+        Optional[Union[Letter, Colour]],
     ],
 )
 def test_a_type_a_string_field_holds_is_written_as_a_string_without_a_warning(

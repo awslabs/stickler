@@ -48,7 +48,7 @@ and `Union[int, str]` (a number is rejected), an enum with a non-string value su
 (the raw `1` is rejected), and a list of any of these in `to_json_schema()`. An enum whose values
 are all strings, and a `Literal` of strings or of such members, are accepted by a string field and
 do not warn. A `NewType` or `type` alias is judged as the type it names, and a union by its arms:
-it warns when any arm would.
+it warns when any arm other than `None` would.
 `to_stickler_config()` writes a list element by its type name, so it warns when
 `model_from_json()` cannot read that name, as for `List[Decimal]`, `List[Literal["a"]]` or
 `List[Union]` ([#636](https://github.com/awslabs/stickler/issues/636)).
