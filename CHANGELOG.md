@@ -290,6 +290,12 @@ Each release links to full notes on the
   the Evaluation guide's snippet no longer reads `similarity_score` on false
   alarms and false negatives.
 
+- The docs recipe for silencing the `auroc_confidence_metric`
+  `DeprecationWarning` never matched it (it filtered on the comparison engine
+  module). It now filters by message, adds the pytest `filterwarnings` form, and
+  names the second `UserWarning` that `compare_with(add_confidence_metrics=True)`
+  emits.
+
 ## [1.0.2] - 2026-11-20
 
 ### Changed
