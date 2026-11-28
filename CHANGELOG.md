@@ -194,7 +194,9 @@ Each release links to full notes on the
   The inferred comparator for a list of tuples is now `ExactComparator`, so that
   pair scores `0.0` and the list `0.5`. A comparator named with `comparator=`
   is never replaced. A tuple field on its own is unchanged
-  ([#659](https://github.com/awslabs/stickler/issues/659)).
+  ([#659](https://github.com/awslabs/stickler/issues/659)). `to_stickler_config()`
+  and `to_json_schema()` name `ExactComparator` for such a list, so a model
+  re-imported from that export scores the pair the same way.
 - **`to_stickler_config()` exports a tuple field as a tuple.** It was written
   as `"str"`, so the model rebuilt by `model_from_json()` rejected the original
   value. Tuples of primitives keep their element types (`Tuple[float, float]`);

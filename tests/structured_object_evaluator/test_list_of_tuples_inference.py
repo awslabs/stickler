@@ -168,3 +168,127 @@ class TestNothingElseMoved:
 
     def test_a_list_of_mappings_is_still_object_grade(self):
         assert _inferred_comparator(List[dict[str, int]]) == "ANLSStarComparator"
+
+
+class TestTheExportNamesTheComparatorThatScores:
+    """The substitution is made at class-definition time, where the export can see it.
+
+    The first version of this fix swapped the comparator in
+    ``ConfigurationHelper.get_comparison_info`` alone. That scored the model
+    right and nothing else: ``to_stickler_config()`` still named
+    ``LevenshteinComparator``, and a model re-imported from that export installed
+    Levenshtein *explicitly*, so it scored the swapped pair ``0.8333`` as before
+    the fix. The engine, the export and the report now read one answer.
+    """
+
+    GT = [(1, 2), (3, 4)]
+    PRED = [(2, 1), (3, 4)]
+
+    def _model(self):
+        class Model(StructuredModel):
+            pts: List[Tuple[int, int]] = ComparableField(threshold=0.5)
+
+        return Model
+
+    def _score(self, model, gt, pred) -> float:
+        return model(pts=gt).compare_with(model(pts=pred))["field_scores"]["pts"]
+
+    def test_to_stickler_config_names_exact(self):
+        config = self._model().to_stickler_config()
+        assert config["fields"]["pts"]["comparator"] == "ExactComparator"
+
+    def test_the_json_schema_names_exact(self):
+        """The HTML report reads ``x-aws-stickler-comparator`` from this schema."""
+        schema = self._model().to_json_schema()
+        assert (
+            schema["properties"]["pts"]["x-aws-stickler-comparator"]
+            == "ExactComparator"
+        )
+
+    def test_a_re_imported_model_scores_the_swapped_pair_half(self):
+        model = self._model()
+        reimported = StructuredModel.model_from_json(model.to_stickler_config())
+        assert self._score(reimported, self.GT, self.PRED) == 0.5
+
+    def test_the_re_imported_model_scores_exactly_as_the_original(self):
+        """Not just this pair: the round trip changes no score."""
+        model = self._model()
+        reimported = StructuredModel.model_from_json(model.to_stickler_config())
+        for gt, pred in (
+            (self.GT, self.PRED),
+            (self.GT, self.GT),
+            ([(1, 2)], [(1, 3)]),
+            ([(1, 2), (3, 4)], [(3, 4), (1, 2)]),
+        ):
+            assert self._score(reimported, gt, pred) == self._score(model, gt, pred)
+
+    def test_the_field_metadata_itself_is_exact(self):
+        """The stored instance, which the exporters read, IS an ``ExactComparator``."""
+        extra = self._model().model_fields["pts"].json_schema_extra
+        assert isinstance(extra._comparator_instance, ExactComparator)
+        # Now effectively explicit: a subclass re-running the install must not
+        # treat the field as unset and substitute again.
+        assert extra._comparator_explicit is True
+
+
+class TestTheSwapChangesTheComparatorAndNothingElse:
+    """``List[Tuple[...]]`` is a list like any other, not an object-grade shape."""
+
+    def _clip(self, **field_kwargs) -> bool:
+        class Model(StructuredModel):
+            pts: List[Tuple[int, int]] = ComparableField(**field_kwargs)
+
+        return Model._get_comparison_info("pts").clip_under_threshold
+
+    def test_the_clip_default_is_what_every_other_list_has(self):
+        """On ``dev`` every non-object-grade list clips, and so does this one.
+
+        Only the four object-grade shapes default to no clipping. Had this fix
+        adopted that default it would have been the one plain list without it.
+        """
+        assert self._clip() is True
+
+    def test_an_explicit_clip_choice_is_kept(self):
+        assert self._clip(clip_under_threshold=False) is False
+
+    def test_an_explicit_levenshtein_is_left_exactly_as_written(self):
+        """Its comparator is the caller's, and so is its clip default."""
+
+        class Model(StructuredModel):
+            pts: List[Tuple[int, int]] = ComparableField(
+                comparator=LevenshteinComparator()
+            )
+
+        extra = Model.model_fields["pts"].json_schema_extra
+        assert isinstance(extra._comparator_instance, LevenshteinComparator)
+        assert extra._clip_under_threshold is True
+        config = Model.to_stickler_config()
+        assert config["fields"]["pts"]["comparator"] == "LevenshteinComparator"
+
+    @pytest.mark.parametrize("tuple_list_first", [True, False])
+    def test_a_field_default_shared_with_other_shapes_is_not_retro_rewritten(
+        self, tuple_list_first
+    ):
+        """The substitution is made on a copy, whichever field is bound first.
+
+        One ``ComparableField(...)`` result can be bound to several fields, and
+        pydantic does not clone its ``json_schema_extra`` closure. Substituting in
+        place would make the comparator of one field depend on the order the
+        classes were defined in.
+        """
+        shared = ComparableField(threshold=0.8)
+        shapes = [
+            ("pts", List[Tuple[int, int]], "ExactComparator"),
+            ("name", str, "LevenshteinComparator"),
+            ("meta", dict[str, int], "ANLSStarComparator"),
+        ]
+        if not tuple_list_first:
+            shapes = shapes[1:] + shapes[:1]
+        for name, annotation, expected in shapes:
+            model = type(
+                "Holder",
+                (StructuredModel,),
+                {"__annotations__": {name: annotation}, name: shared},
+            )
+            extra = model.model_fields[name].json_schema_extra
+            assert type(extra._comparator_instance).__name__ == expected, name

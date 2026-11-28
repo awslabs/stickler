@@ -655,7 +655,7 @@ class ConfigurationHelper:
     def _is_list_of_tuples(field_info) -> bool:
         """Whether an annotation is a list whose ELEMENT is a tuple.
 
-        `List[Tuple[int, int]]` reaches the scalar fallback below, whose
+        `List[Tuple[int, int]]` otherwise reaches the scalar fallback, whose
         LevenshteinComparator scores each element by the edit distance between
         their reprs. That gave a swapped pair most of the credit: `(1, 2)`
         against `(2, 1)` scored 0.67 (#659).
@@ -663,6 +663,11 @@ class ConfigurationHelper:
         A tuple is not routed to `is_object_grade_annotation` on purpose.
         ANLSStarComparator reads a tuple as one of several allowed answers, so
         `(1, 2)` against `(2, 1)` scored 1.0, which is further from the truth.
+
+        Read by `StructuredModel._install_object_grade_comparators`, which
+        installs `ExactComparator` on the field at class-definition time so the
+        export names it too, and by `get_comparison_info` as the last-resort
+        copy of that substitution.
         """
         try:
             annotation = ConfigurationHelper.strip_annotation_wrappers(
@@ -812,10 +817,18 @@ class ConfigurationHelper:
                 elif not getattr(
                     json_func, "_comparator_explicit", True
                 ) and ConfigurationHelper._is_list_of_tuples(field_info):
-                    # Same consent rule as above: only when the caller named no
-                    # comparator. A tuple is one positional value, so it is
-                    # scored whole rather than by the edit distance between two
-                    # reprs (#659).
+                    # The last-resort copy for a list of tuples, on the same
+                    # terms as the object-grade one above. The substitution that
+                    # matters is the one `_install_object_grade_comparators`
+                    # makes at class-definition time, which also rewrites the
+                    # exported metadata. Swapping the comparator here ALONE was
+                    # the first version of #659's fix: the engine scored 0.5
+                    # while `to_stickler_config()` still named Levenshtein, and
+                    # a model re-imported from that export installed Levenshtein
+                    # explicitly and scored 0.8333 as before. Same consent rule
+                    # too: only when the caller named no comparator. The clip
+                    # default is left as it is, as it is on that path: this is a
+                    # list like any other, not an object-grade shape.
                     comparator = ExactComparator()
 
                 from .comparison_info import ComparableFieldConfig
