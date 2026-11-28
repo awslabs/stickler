@@ -1,6 +1,7 @@
 """Exact string comparison comparator."""
 
 from collections.abc import Mapping as abc_Mapping
+from collections.abc import Set as abc_Set
 from typing import Any, Dict, Optional
 
 from stickler.comparators.base import BaseComparator
@@ -99,6 +100,16 @@ class ExactComparator(BaseComparator):
             str1 = canonicalize_json_sorted(str1)
             str2 = canonicalize_json_sorted(str2)
 
+        # A set is compared as a set, not stringified. `str(set)` follows
+        # iteration order, which depends on PYTHONHASHSEED and on how the set was
+        # built, so two equal sets scored 0.0 or 1.0 from one run to the next.
+        # BOTH sides, for the same reason as the mapping branch above.
+        if isinstance(str1, abc_Set) and isinstance(str2, abc_Set):
+            if not self.case_sensitive:
+                str1 = {_casefold(value) for value in str1}
+                str2 = {_casefold(value) for value in str2}
+            return 1.0 if str1 == str2 else 0.0
+
         # Convert to strings if they aren't already
         str1 = str(str1)
         str2 = str(str2)
@@ -116,3 +127,8 @@ class ExactComparator(BaseComparator):
         if not self.case_sensitive:
             parts.append("case_sensitive=False")
         return f"ExactComparator({', '.join(parts)})"
+
+
+def _casefold(value: Any) -> Any:
+    """Case-fold a string; leave any other set member as it is."""
+    return value.casefold() if isinstance(value, str) else value

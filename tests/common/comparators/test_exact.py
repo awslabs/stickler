@@ -167,3 +167,66 @@ class TestExactComparatorIdentifiers:
         # Case-insensitive option for emails
         ci = ExactComparator(case_sensitive=False)
         assert ci.compare("user@example.com", "USER@EXAMPLE.COM") == 1.0
+
+
+class TestExactComparatorSets:
+    """A set is compared by membership, not by its iteration order.
+
+    `str(set)` follows iteration order, which depends on PYTHONHASHSEED and on
+    how the set was built. Before this was fixed, two equal sets scored 0.0 on
+    most hash seeds and 1.0 on a few, so the same comparison changed from one
+    run to the next (#656).
+    """
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.comparator = ExactComparator()
+        self.case_insensitive = ExactComparator(case_sensitive=False)
+
+    def test_equal_sets_score_one_whatever_the_build_order(self):
+        """Two equal sets score 1.0 however each was built."""
+        items = [f"item{i}" for i in range(12)]
+        forward = set(items)
+        backward = set(reversed(items))
+
+        assert self.comparator.compare(forward, backward) == 1.0
+        assert self.comparator.compare(forward, set(items)) == 1.0
+        assert self.comparator.compare(backward, forward) == 1.0
+
+    def test_equal_frozensets_score_one(self):
+        """A frozenset is the same kind of container as a set."""
+        assert self.comparator.compare({"a", "b"}, frozenset({"b", "a"})) == 1.0
+        assert (
+            self.comparator.compare(frozenset({"x", "y"}), frozenset({"y", "x"})) == 1.0
+        )
+
+    def test_unorderable_members_are_compared(self):
+        """Members that cannot be sorted, such as a mix of int and str."""
+        assert self.comparator.compare({1, "a"}, {"a", 1}) == 1.0
+        assert self.comparator.compare({1, "a"}, {"a", 2}) == 0.0
+
+    def test_different_sets_score_zero(self):
+        """Sets that differ score 0.0, including a subset of the other."""
+        assert self.comparator.compare({"a", "b", "c"}, {"a", "b", "d"}) == 0.0
+        assert self.comparator.compare({"a", "b"}, {"a", "b", "c"}) == 0.0
+        assert self.comparator.compare(set(), {"a"}) == 0.0
+
+    def test_empty_sets_match(self):
+        """Two empty sets are equal."""
+        assert self.comparator.compare(set(), set()) == 1.0
+        assert self.comparator.compare(set(), frozenset()) == 1.0
+
+    def test_a_set_is_not_a_list(self):
+        """A set and a list are different shapes, as a mapping and a string are."""
+        assert self.comparator.compare({"a", "b"}, ["b", "a"]) == 0.0
+
+    def test_case_insensitive_folds_the_members(self):
+        """Case folding applies to each string member, not to the repr."""
+        assert self.case_insensitive.compare({"A", "B"}, {"a", "b"}) == 1.0
+        assert self.case_insensitive.compare({"A", "B"}, {"a", "c"}) == 0.0
+        # Non-string members are left as they are.
+        assert self.case_insensitive.compare({1, 2}, {2, 1}) == 1.0
+
+    def test_case_sensitive_sets_differ_by_case(self):
+        """By default, members that differ only by case are different."""
+        assert self.comparator.compare({"A", "B"}, {"a", "b"}) == 0.0
