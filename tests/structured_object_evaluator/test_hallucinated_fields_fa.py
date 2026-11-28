@@ -200,3 +200,44 @@ class TestHallucinatedFieldsFA:
         assert (
             actual_fa == expected_fa
         ), "Hallucinated fields at all nesting levels should count as False Alarms"
+
+    def test_list_structured_model_with_hallucinated_fields(self):
+        """Test list of StructuredModel elements with hallucinated fields (#439)."""
+
+        class ContractBatch(StructuredModel):
+            contracts: list[SimpleContract] = ComparableField(weight=1.0)
+
+        gt_data = {
+            "contracts": [
+                {"date": "2024-01-15", "company_name": "Acme Corp"},
+                {"date": "2024-02-20", "company_name": "Beta Inc"},
+            ]
+        }
+        gt_model = ContractBatch(**gt_data)
+
+        pred_data = {
+            "contracts": [
+                {
+                    "date": "2024-01-15",
+                    "company_name": "Acme Corp",
+                    "tenant_phone": "555-1234",
+                },
+                {
+                    "date": "2024-02-20",
+                    "company_name": "Beta Inc",
+                    "property_address": "123 Main St",
+                    "rent_amount": 2500.0,
+                },
+            ]
+        }
+        pred_model = ContractBatch(**pred_data)
+
+        result = gt_model.compare_with(pred_model, include_confusion_matrix=True)
+
+        # 1 extra field on first element + 2 extra fields on second element = 3 False Alarms
+        expected_fa = 3
+        actual_fa = result["confusion_matrix"]["overall"]["fa"]
+
+        assert actual_fa == expected_fa, (
+            "Hallucinated fields on list elements should count as False Alarms"
+        )

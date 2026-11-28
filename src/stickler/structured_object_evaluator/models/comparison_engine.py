@@ -12,6 +12,7 @@ from stickler.utils.deprecation import warn_once
 
 from .aggregate_metrics_calculator import AggregateMetricsCalculator
 from .derived_metrics_calculator import DerivedMetricsCalculator
+from .null_helper import NullHelper
 from .reporting_context import ReportingContext
 
 if TYPE_CHECKING:
@@ -540,7 +541,8 @@ class ComparisonEngine:
                 and pred_val
             ):
                 # Check if list contains StructuredModel instances
-                if gt_val and isinstance(gt_val[0], StructuredModel) and isinstance(gt_val[0].__class__, StructuredModel):
+                representative = NullHelper.first_present(gt_val, pred_val)
+                if isinstance(representative, StructuredModel):
                     # Import HungarianHelper for matching
                     from .hungarian_helper import HungarianHelper
                     
@@ -566,8 +568,10 @@ class ComparisonEngine:
                             # Check if it's a StructuredModel
                             if hasattr(pred_item, '__class__') and hasattr(pred_item.__class__, 'model_fields'):
                                 # For unmatched items, we need a dummy GT to compare against
-                                if gt_val:  # Use first GT item as template
-                                    dummy_gt = gt_val[0]
+                                dummy_gt = (
+                                    NullHelper.first_present(gt_val) or representative
+                                )
+                                if dummy_gt:  # Use first GT item as template
                                     nested_engine = ComparisonEngine(dummy_gt)
                                     fa_count += nested_engine._count_extra_fields_as_false_alarms(pred_item)
                                 else:
