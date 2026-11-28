@@ -26,6 +26,7 @@ from pydantic.json_schema import GenerateJsonSchema
 
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
+from stickler.comparators.exact import ExactComparator
 from stickler.utils.canonical import jsonable_mapping
 from stickler.utils.deprecation import warn_once
 
@@ -631,6 +632,10 @@ class StructuredModel(BaseModel):
         mapping, a plain pydantic ``BaseModel``, and a list of either. See
         ``ConfigurationHelper.is_object_grade_annotation``.
 
+        A fifth annotation is substituted here with a different comparator: a
+        list of tuples, which gets ``ExactComparator`` (#659). See the comment
+        at the branch below for why it is not object-grade.
+
         ``ComparableField`` resolves its comparator default before the field's
         annotation exists, so it cannot know a field is one of those and installs
         the type-blind ``LevenshteinComparator``, which REJECTS mappings and,
@@ -685,7 +690,23 @@ class StructuredModel(BaseModel):
             # comparator at definition time changes what `to_json_schema()` exports
             # for that shape -- which is exactly the reader alignment this branch is
             # for. All four object-grade shapes now take the one path.
-            if not ConfigurationHelper.is_object_grade_annotation(field_info):
+            #
+            # A list of tuples takes the same path with a different comparator
+            # (#659). It is deliberately NOT object-grade: ANLS* reads a tuple as
+            # one of several allowed answers, so `(1, 2)` against `(2, 1)` scored
+            # 1.0. It fell to the type-blind LevenshteinComparator, which scores
+            # each element by the edit distance between two reprs and gave the
+            # swapped pair 0.67. A tuple is one positional value, so it is scored
+            # whole. Substituting HERE, not at read time, is what makes the export
+            # name it and the round trip keep it: the first version of this fix
+            # swapped in `get_comparison_info` alone, and a re-imported model
+            # installed Levenshtein explicitly and scored 0.8333 as before.
+            object_grade = ConfigurationHelper.is_object_grade_annotation(field_info)
+            if object_grade:
+                comparator = ANLSStarComparator()
+            elif ConfigurationHelper._is_list_of_tuples(field_info):
+                comparator = ExactComparator()
+            else:
                 continue
 
             field_default = field_info
@@ -702,13 +723,31 @@ class StructuredModel(BaseModel):
             # clipping on and zeroed exactly the partial credit ANLS* produces.
             # An object is a container: a partly-correct one keeps its score,
             # the same policy nested objects and lists use.
-            clip = ConfigurationHelper.object_grade_clip(extra)
+            #
+            # Only for the object-grade shapes. A list of tuples is not one of
+            # them, and its clip default stays what every other list has: on
+            # `dev`, `List[int]`, `List[str]` and `List[List[int]]` all clip, and
+            # only the four object-grade shapes do not. This change swaps the
+            # comparator of `List[Tuple[...]]` and nothing else about the field.
+            clip = (
+                ConfigurationHelper.object_grade_clip(extra)
+                if object_grade
+                else getattr(extra, "_clip_under_threshold", True)
+            )
 
             if getattr(extra, "_comparator_explicit", True):
-                # Only the clip default is ours to set. Written here rather than
-                # below because the substitution sets it too, and doing both
-                # replaced `json_schema_extra` twice with the same answer.
-                if clip != getattr(extra, "_clip_under_threshold", True):
+                # Only the clip default is ours to set, and only on an
+                # object-grade field. Written here rather than below because the
+                # substitution sets it too, and doing both replaced
+                # `json_schema_extra` twice with the same answer.
+                #
+                # For a list of tuples the comparator is the caller's alone: that
+                # annotation is not object-grade, so the clip default that goes
+                # with object-grade is not applied to it, and an explicit
+                # `LevenshteinComparator()` on it is left exactly as written.
+                if object_grade and clip != getattr(
+                    extra, "_clip_under_threshold", True
+                ):
                     _amend_clip_default(field_default, extra, clip)
                 continue
 
@@ -723,7 +762,6 @@ class StructuredModel(BaseModel):
             #
             # left M1.v -- a plain string field -- scored by ANLS* with clipping
             # off, order-dependently on which class was defined first.
-            comparator = ANLSStarComparator()
             metadata = getattr(extra, "_comparison_metadata", None)
             new_metadata = dict(metadata) if isinstance(metadata, dict) else None
 
