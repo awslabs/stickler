@@ -104,11 +104,14 @@ class ExactComparator(BaseComparator):
         # iteration order, which depends on PYTHONHASHSEED and on how the set was
         # built, so two equal sets scored 0.0 or 1.0 from one run to the next.
         # BOTH sides, for the same reason as the mapping branch above.
+        # Each member keeps its type, so `1`, `1.0` and `True` stay as far apart
+        # as they are when compared as scalars; plain set equality would merge
+        # them, because it uses `==`.
         if isinstance(str1, abc_Set) and isinstance(str2, abc_Set):
-            if not self.case_sensitive:
-                str1 = {_casefold(value) for value in str1}
-                str2 = {_casefold(value) for value in str2}
-            return 1.0 if str1 == str2 else 0.0
+            fold = not self.case_sensitive
+            left = {_normalize_member(value, fold) for value in str1}
+            right = {_normalize_member(value, fold) for value in str2}
+            return 1.0 if left == right else 0.0
 
         # Convert to strings if they aren't already
         str1 = str(str1)
@@ -129,6 +132,16 @@ class ExactComparator(BaseComparator):
         return f"ExactComparator({', '.join(parts)})"
 
 
-def _casefold(value: Any) -> Any:
-    """Case-fold a string; leave any other set member as it is."""
-    return value.casefold() if isinstance(value, str) else value
+def _normalize_member(value: Any, fold: bool) -> tuple:
+    """Make one set member comparable without depending on iteration order.
+
+    Returns ``(type, value)`` so that members Python treats as equal but that
+    are written differently, such as ``1``, ``1.0`` and ``True``, stay distinct.
+    A string is case-folded when ``fold`` is set. A nested set becomes a
+    frozenset of normalised members, so it is both order-independent and folded.
+    """
+    if isinstance(value, abc_Set):
+        return (frozenset, frozenset(_normalize_member(item, fold) for item in value))
+    if fold and isinstance(value, str):
+        return (str, value.casefold())
+    return (type(value), value)

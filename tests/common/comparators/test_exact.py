@@ -230,3 +230,33 @@ class TestExactComparatorSets:
     def test_case_sensitive_sets_differ_by_case(self):
         """By default, members that differ only by case are different."""
         assert self.comparator.compare({"A", "B"}, {"a", "b"}) == 0.0
+
+    def test_members_keep_their_type(self):
+        """`1`, `1.0` and `True` are as different inside a set as as scalars.
+
+        Plain set equality uses `==`, which treats all three as equal. The scalar
+        path compares their text, which keeps them apart.
+        """
+        assert self.comparator.compare(1, 1.0) == 0.0
+        assert self.comparator.compare({1}, {1.0}) == 0.0
+        assert self.comparator.compare({1}, {True}) == 0.0
+        assert self.comparator.compare({1}, {1}) == 1.0
+        assert self.comparator.compare({1.0}, {1.0}) == 1.0
+
+    def test_case_insensitive_folds_nested_sets(self):
+        """Case folding reaches a set inside the set, whatever the inner order."""
+        assert (
+            self.case_insensitive.compare({frozenset({"A"})}, {frozenset({"a"})}) == 1.0
+        )
+        assert (
+            self.case_insensitive.compare(
+                {frozenset({"A", "B"})}, {frozenset({"b", "a"})}
+            )
+            == 1.0
+        )
+        assert (
+            self.case_insensitive.compare({frozenset({"A"})}, {frozenset({"a", "x"})})
+            == 0.0
+        )
+        # Case-sensitive, the same inner difference stays a difference.
+        assert self.comparator.compare({frozenset({"A"})}, {frozenset({"a"})}) == 0.0
